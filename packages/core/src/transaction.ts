@@ -1,6 +1,6 @@
 import type { Diagnostic } from "./diagnostics"
 import type { PersistentRecord } from "./schema"
-import { RecordStore } from "./store"
+import { RecordStore, updateRecord, validateRecordShape } from "./store"
 
 export type TransactionOrigin =
   | { kind: "local-command"; commandId: string }
@@ -39,6 +39,18 @@ export type TransactionResult =
   | { ok: false; store: RecordStore; diagnostics: Diagnostic[] }
 
 type RecordMap = Map<string, PersistentRecord>
+
+class TransactionError extends Error {
+  constructor(readonly diagnostics: Diagnostic[]) {
+    super(diagnostics[0]?.code ?? "TRANSACTION_FAILED")
+  }
+}
+
+function operationError(code: string, message: string, recordId?: string): TransactionError {
+  const diagnostic: Diagnostic = { code, severity: "error", message }
+  if (recordId !== undefined) diagnostic.recordId = recordId
+  return new TransactionError([diagnostic])
+}
 
 function cloneRecords(store: RecordStore): RecordMap {
   return new Map(store.all().map((record) => [record.id, structuredClone(record)]))
@@ -91,14 +103,30 @@ function buildPatch(before: RecordMap, after: RecordMap): TransactionPatch {
 
 function validateRecords(records: RecordMap): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
-  const document = [...records.values()].find((record) => record.typeName === "document")
+  for (const record of records.values()) {
+    try {
+      validateRecordShape(record)
+    } catch (error) {
+      diagnostics.push({
+        code: error instanceof Error ? error.message : "INVALID_RECORD_SHAPE",
+        severity: "error",
+        message: "Record shape is invalid.",
+        recordId: record.id,
+      })
+    }
+  }
+
+  const documents = [...records.values()].filter((record) => record.typeName === "document")
+  if (documents.length !== 1) {
+    diagnostics.push({
+      code: "DOCUMENT_COUNT_INVALID",
+      severity: "error",
+      message: "Exactly one document record is required.",
+    })
+  }
+  const document = documents[0]
 
   if (document?.typeName !== "document") {
-    diagnostics.push({
-      code: "DOCUMENT_NOT_FOUND",
-      severity: "error",
-      message: "Document record is required.",
-    })
     return diagnostics
   }
 
@@ -157,13 +185,31 @@ function validateRecords(records: RecordMap): Diagnostic[] {
     }
     indexes.add(record.index)
     siblingIndexes.set(record.parentId, indexes)
+
+    const visited = new Set<string>([record.id])
+    let parentId = record.parentId
+    while (true) {
+      if (visited.has(parentId)) {
+        diagnostics.push({
+          code: "NODE_PARENT_CYCLE",
+          severity: "error",
+          message: "Node parent relationships must be acyclic.",
+          recordId: record.id,
+        })
+        break
+      }
+      const ancestor = records.get(parentId)
+      if (ancestor === undefined || ancestor.typeName !== "node") break
+      visited.add(ancestor.id)
+      parentId = ancestor.parentId
+    }
   }
 
   return diagnostics
 }
 
-function diagnosticError(diagnostic: Diagnostic): Error {
-  return new Error(diagnostic.code)
+function validationError(diagnostics: Diagnostic[]): TransactionError {
+  return new TransactionError(diagnostics)
 }
 
 function assertNoPageRemoval(store: RecordStore, ids: readonly string[]): void {
@@ -175,6 +221,15 @@ function assertNoPageRemoval(store: RecordStore, ids: readonly string[]): void {
 function assertNoPageCreation(records: readonly PersistentRecord[]): void {
   if (records.some((record) => record.typeName === "page")) {
     throw new Error("PAGE_CREATE_FORBIDDEN")
+  }
+}
+
+function assertNoDocumentCreation(records: readonly PersistentRecord[]): void {
+  if (records.some((record) => record.typeName === "document")) {
+    throw operationError(
+      "DOCUMENT_CREATE_FORBIDDEN",
+      "Document records can only be created during document initialization.",
+    )
   }
 }
 
@@ -196,7 +251,7 @@ function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): Rec
   })
 
   const diagnostics = validateRecords(cloneRecords(next))
-  if (diagnostics.length > 0) throw diagnosticError(diagnostics[0]!)
+  if (diagnostics.length > 0) throw validationError(diagnostics)
   return next
 }
 
@@ -215,23 +270,51 @@ export function transact(
   try {
     execute({
       create(record) {
-        if (draft.has(record.id)) throw new Error("DUPLICATE_RECORD_ID")
-        if (record.typeName === "page") throw new Error("PAGE_CREATE_FORBIDDEN")
+        if (draft.has(record.id)) {
+          throw operationError("DUPLICATE_RECORD_ID", "Record id already exists.", record.id)
+        }
+        if (record.typeName === "page")
+          throw operationError("PAGE_CREATE_FORBIDDEN", "Pages can only be initialized.", record.id)
+        if (record.typeName === "document")
+          throw operationError(
+            "DOCUMENT_CREATE_FORBIDDEN",
+            "Documents can only be initialized.",
+            record.id,
+          )
+        try {
+          validateRecordShape(record)
+        } catch (error) {
+          throw operationError(
+            error instanceof Error ? error.message : "INVALID_RECORD_SHAPE",
+            "Created record shape is invalid.",
+            record.id,
+          )
+        }
         draft.set(record.id, structuredClone(record))
       },
       update(id, patch) {
         const current = draft.get(id)
-        if (current === undefined) throw new Error("MISSING_RECORD_ID")
-        const update = structuredClone(patch) as Record<string, unknown>
-        update.id = current.id
-        update.typeName = current.typeName
-        update.revision = current.revision + 1
-        draft.set(id, structuredClone({ ...current, ...update }) as PersistentRecord)
+        if (current === undefined) {
+          throw operationError("MISSING_RECORD_ID", "Record id does not exist.", id)
+        }
+        try {
+          draft.set(id, updateRecord(current, patch))
+        } catch (error) {
+          throw operationError(
+            error instanceof Error ? error.message : "INVALID_RECORD_SHAPE",
+            "Record update was rejected.",
+            id,
+          )
+        }
       },
       remove(id) {
         const current = draft.get(id)
-        if (current === undefined) throw new Error("MISSING_RECORD_ID")
-        if (current.typeName === "page") throw new Error("PAGE_REMOVE_FORBIDDEN")
+        if (current === undefined) {
+          throw operationError("MISSING_RECORD_ID", "Record id does not exist.", id)
+        }
+        if (current.typeName === "page") {
+          throw operationError("PAGE_REMOVE_FORBIDDEN", "The root page cannot be removed.", id)
+        }
         draft.delete(id)
       },
     })
@@ -242,25 +325,38 @@ export function transact(
       }
     }
     assertNoPageCreation([...draft.values()].filter((record) => !before.has(record.id)))
+    assertNoDocumentCreation([...draft.values()].filter((record) => !before.has(record.id)))
 
     const validation = validateRecords(draft)
-    if (validation.length > 0) throw diagnosticError(validation[0]!)
+    if (validation.length > 0) throw validationError(validation)
 
     const patch = buildPatch(before, draft)
+    if (patch.created.length === 0 && patch.updated.length === 0 && patch.removed.length === 0) {
+      return {
+        ok: true,
+        store,
+        origin,
+        patch,
+        inverse: { created: [], updated: [], removed: [] },
+        diagnostics: [],
+      }
+    }
     const next = applyTransactionPatch(store, patch)
     const inverse: TransactionPatch = {
-      created: patch.removed,
+      created: patch.removed.map((record) => structuredClone(record)),
       updated: patch.updated.map((update) => ({
         id: update.id,
         typeName: update.typeName,
-        before: update.after,
-        after: update.before,
+        before: structuredClone(update.after),
+        after: structuredClone(update.before),
       })),
-      removed: patch.created,
+      removed: patch.created.map((record) => structuredClone(record)),
     }
 
     return { ok: true, store: next, origin, patch, inverse, diagnostics: [] }
   } catch (error) {
+    if (error instanceof TransactionError)
+      return { ok: false, store, diagnostics: error.diagnostics }
     return {
       ok: false,
       store,

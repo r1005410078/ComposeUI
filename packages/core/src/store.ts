@@ -6,6 +6,95 @@ const UPDATE_FIELDS: Record<PersistentRecord["typeName"], ReadonlySet<string>> =
   node: new Set(["name", "parentId", "index", "layout", "visible", "locked", "props"]),
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
+function isFreeLayout(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false
+  const layout = value as Record<string, unknown>
+  return (
+    layout.mode === "free" &&
+    isFiniteNumber(layout.x) &&
+    isFiniteNumber(layout.y) &&
+    isFiniteNumber(layout.width) &&
+    isFiniteNumber(layout.height)
+  )
+}
+
+export function validateRecordShape(record: PersistentRecord): void {
+  if (typeof record.id !== "string" || !Number.isInteger(record.revision)) {
+    throw new Error("INVALID_RECORD_SHAPE")
+  }
+  if (record.typeName === "document") {
+    if (record.schemaVersion !== 1 || typeof record.rootPageId !== "string") {
+      throw new Error("INVALID_RECORD_SHAPE")
+    }
+    return
+  }
+  if (record.typeName === "page") {
+    if (
+      typeof record.name !== "string" ||
+      !isFiniteNumber(record.width) ||
+      !isFiniteNumber(record.height) ||
+      typeof record.background !== "string" ||
+      !["visible", "hidden", "scroll"].includes(record.overflow) ||
+      record.layout === null ||
+      typeof record.layout !== "object" ||
+      record.layout.mode !== "free"
+    ) {
+      throw new Error("INVALID_RECORD_SHAPE")
+    }
+    return
+  }
+  if (
+    record.nodeType !== "rectangle" ||
+    typeof record.name !== "string" ||
+    typeof record.parentId !== "string" ||
+    typeof record.index !== "string" ||
+    !isFreeLayout(record.layout) ||
+    typeof record.visible !== "boolean" ||
+    typeof record.locked !== "boolean" ||
+    record.props === null ||
+    typeof record.props !== "object" ||
+    typeof record.props.fill !== "string"
+  ) {
+    throw new Error("INVALID_RECORD_SHAPE")
+  }
+}
+
+function sameBusinessValue(left: PersistentRecord, right: PersistentRecord): boolean {
+  const leftValue = { ...left, id: undefined, typeName: undefined, revision: undefined }
+  const rightValue = { ...right, id: undefined, typeName: undefined, revision: undefined }
+  return JSON.stringify(leftValue) === JSON.stringify(rightValue)
+}
+
+export function updateRecord(
+  record: PersistentRecord,
+  patch: Partial<PersistentRecord>,
+): PersistentRecord {
+  const update = structuredClone(patch) as Record<string, unknown>
+  delete update.id
+  delete update.typeName
+  delete update.revision
+  for (const field of Object.keys(update)) {
+    if (!UPDATE_FIELDS[record.typeName].has(field)) {
+      throw new Error(`INVALID_RECORD_PATCH_FIELD:${field}`)
+    }
+  }
+  const updated = structuredClone({
+    ...record,
+    ...update,
+    id: record.id,
+    typeName: record.typeName,
+    revision: record.revision,
+  }) as PersistentRecord
+  validateRecordShape(updated)
+  if (sameBusinessValue(record, updated)) return structuredClone(record)
+  updated.revision = record.revision + 1
+  return updated
+}
+
 export class RecordStore {
   readonly revision: number
   readonly #records: ReadonlyMap<string, PersistentRecord>
@@ -56,22 +145,7 @@ export class RecordStore {
   ): RecordStore {
     const current = this.#records.get(id)
     if (current === undefined) throw new Error("MISSING_RECORD_ID")
-    const update = structuredClone(patch) as Record<string, unknown>
-    delete update.id
-    delete update.typeName
-    delete update.revision
-    for (const field of Object.keys(update)) {
-      if (!UPDATE_FIELDS[current.typeName].has(field)) {
-        throw new Error(`INVALID_RECORD_PATCH_FIELD:${field}`)
-      }
-    }
-    const updated = structuredClone({
-      ...current,
-      ...update,
-      id: current.id,
-      typeName: current.typeName,
-      revision: current.revision + 1,
-    }) as PersistentRecord
+    const updated = updateRecord(current, patch)
     const next = new Map(this.#records)
     next.set(id, updated)
     return new RecordStore(next, this.revision + 1)
