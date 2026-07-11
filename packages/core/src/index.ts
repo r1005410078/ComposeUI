@@ -6,9 +6,11 @@ export type {
   BaseRecord,
   DocumentRecord,
   EditorRecord,
+  FreeLayout,
   NodeRecord,
   PageDocument,
   PageRecord,
+  PersistentRecord,
 } from "./schema"
 export { RecordStore } from "./store"
 export { transact } from "./transaction"

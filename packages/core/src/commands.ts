@@ -45,13 +45,19 @@ export function createEditor(document: PageDocument): Editor {
         revision: 0,
         typeName: "node",
         nodeType: "rectangle",
+        name: "Rectangle",
         parentId: command.payload.parentId,
         index: "a0",
-        props: {
+        layout: {
+          mode: "free",
           x: command.payload.x,
           y: command.payload.y,
           width: command.payload.width,
           height: command.payload.height,
+        },
+        visible: true,
+        locked: false,
+        props: {
           fill: command.payload.fill,
         },
       }

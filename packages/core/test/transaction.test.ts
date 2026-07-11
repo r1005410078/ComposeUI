@@ -6,9 +6,13 @@ const rectangle = {
   revision: 0,
   typeName: "node" as const,
   nodeType: "rectangle" as const,
+  name: "Rectangle",
   parentId: "page-1",
   index: "a0",
-  props: { x: 40, y: 40, width: 160, height: 100, fill: "#2563eb" },
+  layout: { mode: "free" as const, x: 40, y: 40, width: 160, height: 100 },
+  visible: true,
+  locked: false,
+  props: { fill: "#2563eb" },
 }
 
 describe("transact", () => {

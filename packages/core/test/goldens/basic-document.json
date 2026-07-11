@@ -14,13 +14,19 @@
       "revision": 0,
       "typeName": "node",
       "nodeType": "rectangle",
+      "name": "Rectangle",
       "parentId": "page-1",
       "index": "a0",
-      "props": {
+      "layout": {
+        "mode": "free",
         "x": 40,
         "y": 40,
         "width": 160,
-        "height": 100,
+        "height": 100
+      },
+      "visible": true,
+      "locked": false,
+      "props": {
         "fill": "#2563eb"
       }
     },
@@ -30,7 +36,12 @@
       "typeName": "page",
       "name": "Page 1",
       "width": 1440,
-      "height": 900
+      "height": 900,
+      "background": "#ffffff",
+      "overflow": "hidden",
+      "layout": {
+        "mode": "free"
+      }
     }
   ]
 }

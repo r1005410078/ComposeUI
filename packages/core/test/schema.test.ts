@@ -8,5 +8,12 @@ describe("createEmptyDocument", () => {
     expect(document.schemaVersion).toBe(1)
     expect(document.rootPageId).toBe("page-1")
     expect(document.records.map((record) => record.id)).toEqual(["doc-1", "page-1"])
+
+    expect(document.records[1]).toMatchObject({
+      typeName: "page",
+      background: "#ffffff",
+      overflow: "hidden",
+      layout: { mode: "free" },
+    })
   })
 })

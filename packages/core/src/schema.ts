@@ -14,17 +14,33 @@ export interface PageRecord extends BaseRecord {
   name: string
   width: number
   height: number
+  background: string
+  overflow: "visible" | "hidden" | "scroll"
+  layout: { mode: "free" }
+}
+
+export interface FreeLayout {
+  mode: "free"
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface NodeRecord extends BaseRecord {
   typeName: "node"
   nodeType: "rectangle"
+  name: string
   parentId: string
   index: string
-  props: { x: number; y: number; width: number; height: number; fill: string }
+  layout: FreeLayout
+  visible: boolean
+  locked: boolean
+  props: { fill: string }
 }
 
-export type EditorRecord = DocumentRecord | PageRecord | NodeRecord
+export type PersistentRecord = DocumentRecord | PageRecord | NodeRecord
+export type EditorRecord = PersistentRecord
 
 export interface PageDocument {
   schemaVersion: 1
@@ -51,6 +67,9 @@ export function createEmptyDocument(input: { documentId: string; pageId: string 
         name: "Page 1",
         width: 1440,
         height: 900,
+        background: "#ffffff",
+        overflow: "hidden",
+        layout: { mode: "free" },
       },
     ],
   }
