@@ -9,3 +9,10 @@ export type {
   PageRecord,
 } from "./schema"
 export { RecordStore } from "./store"
+export { transact } from "./transaction"
+export type {
+  TransactionDraft,
+  TransactionOrigin,
+  TransactionPatch,
+  TransactionResult,
+} from "./transaction"
