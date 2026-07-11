@@ -108,8 +108,14 @@ export class RecordStore {
     const records = new Map<string, PersistentRecord>()
     for (const record of document.records) {
       if (records.has(record.id)) throw new Error("DUPLICATE_RECORD_ID")
+      validateRecordShape(record)
       records.set(record.id, structuredClone(record))
     }
+    const documents = [...records.values()].filter((record) => record.typeName === "document")
+    if (documents.length !== 1) throw new Error("DOCUMENT_COUNT_INVALID")
+    const pages = [...records.values()].filter((record) => record.typeName === "page")
+    if (pages.length !== 1) throw new Error("PAGE_COUNT_INVALID")
+    if (pages[0]!.id !== documents[0]!.rootPageId) throw new Error("ROOT_PAGE_INVALID")
     return new RecordStore(records, 0)
   }
 

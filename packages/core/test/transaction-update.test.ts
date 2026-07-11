@@ -3,6 +3,7 @@ import {
   applyPatch,
   canonicalizeDocument,
   createEmptyDocument,
+  createEditor,
   RecordStore,
   transact,
 } from "../src/index"
@@ -44,6 +45,11 @@ const documentRecord: DocumentRecord = {
 
 function createStore(): RecordStore {
   return RecordStore.fromDocument(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+}
+
+function createMultiPageDocument() {
+  const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
+  return { ...document, records: [...document.records, secondPage] }
 }
 
 describe("record transaction", () => {
@@ -112,7 +118,7 @@ describe("record transaction", () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.diagnostics[0]?.code).toBe("ROOT_PAGE_NOT_FOUND")
+    expect(result.diagnostics[0]?.code).toBe("ROOT_PAGE_INVALID")
     expect(before.get("doc-1")).toMatchObject({ rootPageId: "page-1" })
     expect(before.revision).toBe(0)
   })
@@ -143,9 +149,30 @@ describe("record transaction", () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.diagnostics[0]?.code).toBe("PARENT_NOT_ROOT_PAGE")
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(
+      expect.arrayContaining(["PAGE_COUNT_INVALID", "PARENT_NOT_ROOT_PAGE"]),
+    )
     expect(before.get("node-1")).toBeUndefined()
     expect(before.revision).toBe(1)
+  })
+
+  it("rejects multi-page documents before editor or transaction use", () => {
+    const document = createMultiPageDocument()
+
+    expect(() => RecordStore.fromDocument(document)).toThrow("PAGE_COUNT_INVALID")
+    expect(() => createEditor(document)).toThrow("PAGE_COUNT_INVALID")
+
+    const store = createStore().withCreated(secondPage)
+    const result = transact(store, { kind: "local-command", commandId: "page.noop" }, (tx) => {
+      tx.update("page-1", { name: "Page 1" })
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(
+        result.diagnostics.some((diagnostic) => diagnostic.code === "PAGE_COUNT_INVALID"),
+      ).toBe(true)
+      expect(result.store).toBe(store)
+    }
   })
 
   it("rejects creating an additional page", () => {
@@ -244,6 +271,24 @@ describe("record transaction", () => {
     }
     expect(before.get("page-1")).toMatchObject({ name: "Page 1" })
     expect(before.get("node-1")).toEqual(rectangle("node-1"))
+  })
+
+  it("rejects explicit identity fields in transaction updates", () => {
+    const before = createStore()
+    const result = transact(before, { kind: "local-command", commandId: "page.edit" }, (tx) => {
+      tx.update("page-1", { typeName: "node" } as never)
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics[0]).toMatchObject({
+        code: "INVALID_IDENTITY_PATCH",
+        recordId: "page-1",
+      })
+      expect(result.diagnostics[0]?.message.length).toBeGreaterThan(0)
+    }
+    expect(result.ok ? result.store : result.store).toBe(before)
+    expect(before.get("page-1")).toMatchObject({ typeName: "page", name: "Page 1", revision: 0 })
   })
 
   it("rejects dangling and self parents atomically", () => {

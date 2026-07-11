@@ -130,12 +130,21 @@ function validateRecords(records: RecordMap): Diagnostic[] {
     return diagnostics
   }
 
+  const pages = [...records.values()].filter((record) => record.typeName === "page")
+  if (pages.length !== 1) {
+    diagnostics.push({
+      code: "PAGE_COUNT_INVALID",
+      severity: "error",
+      message: "Exactly one page record is required.",
+      recordId: document.rootPageId,
+    })
+  }
   const rootPage = records.get(document.rootPageId)
   if (rootPage?.typeName !== "page") {
     diagnostics.push({
-      code: "ROOT_PAGE_NOT_FOUND",
+      code: "ROOT_PAGE_INVALID",
       severity: "error",
-      message: "Document rootPageId must identify a page record.",
+      message: "Document rootPageId must identify the page record.",
       recordId: document.rootPageId,
     })
   }
@@ -296,6 +305,16 @@ export function transact(
         const current = draft.get(id)
         if (current === undefined) {
           throw operationError("MISSING_RECORD_ID", "Record id does not exist.", id)
+        }
+        const rawPatch = patch as Record<string, unknown>
+        for (const field of ["id", "typeName", "revision"] as const) {
+          if (Object.prototype.hasOwnProperty.call(rawPatch, field)) {
+            throw operationError(
+              "INVALID_IDENTITY_PATCH",
+              `Identity field ${field} cannot be updated in a transaction.`,
+              id,
+            )
+          }
         }
         try {
           draft.set(id, updateRecord(current, patch))
