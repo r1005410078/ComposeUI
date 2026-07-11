@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest"
 import { createEmptyDocument, RecordStore } from "../src/index"
+import type { NodeRecord } from "../src/index"
+
+const rectangle: NodeRecord = {
+  id: "node-1",
+  revision: 0,
+  typeName: "node",
+  nodeType: "rectangle",
+  name: "Rectangle",
+  parentId: "page-1",
+  index: "a0",
+  layout: { mode: "free", x: 40, y: 40, width: 160, height: 100 },
+  visible: true,
+  locked: false,
+  props: { fill: "#2563eb" },
+}
 
 describe("RecordStore persistent operations", () => {
   it("updates a record without mutating the prior store", () => {
@@ -13,15 +28,30 @@ describe("RecordStore persistent operations", () => {
     expect(after.revision).toBe(1)
   })
 
-  it("clones update patches and records", () => {
+  it("clones nested records and update patches", () => {
     const before = RecordStore.fromDocument(
       createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-    )
-    const layout = { mode: "free" as const }
-    const after = before.withUpdated("page-1", { layout })
-    layout.mode = "free"
+    ).withCreated(rectangle)
 
-    expect(after.get("page-1")?.layout).toEqual({ mode: "free" })
+    const read = before.get("node-1")
+    if (read?.typeName !== "node") throw new Error("NODE_NOT_FOUND")
+    read.layout.x = 999
+    read.props.fill = "#dc2626"
+
+    const layout = { mode: "free" as const, x: 80, y: 40, width: 160, height: 100 }
+    const props = { fill: "#16a34a" }
+    const after = before.withUpdated("node-1", { layout, props })
+    layout.x = 999
+    props.fill = "#dc2626"
+
+    expect(before.get("node-1")).toMatchObject({
+      layout: { x: 40 },
+      props: { fill: "#2563eb" },
+    })
+    expect(after.get("node-1")).toMatchObject({
+      layout: { x: 80 },
+      props: { fill: "#16a34a" },
+    })
   })
 
   it("rejects missing and identity-changing updates", () => {
@@ -34,6 +64,18 @@ describe("RecordStore persistent operations", () => {
     expect(() => store.withUpdated("page-1", { typeName: "document" })).toThrow(
       "INVALID_RECORD_PATCH",
     )
+  })
+
+  it("rejects fields from another record type without changing the store", () => {
+    const before = RecordStore.fromDocument(
+      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+    )
+
+    expect(() => before.withUpdated("page-1", { parentId: "node-1" } as never)).toThrow(
+      "INVALID_RECORD_PATCH_FIELD:parentId",
+    )
+    expect(before.revision).toBe(0)
+    expect(before.get("page-1")).toMatchObject({ name: "Page 1", layout: { mode: "free" } })
   })
 
   it("removes many records in one immutable revision", () => {

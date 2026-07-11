@@ -1,5 +1,11 @@
 import type { PageDocument, PersistentRecord } from "./schema"
 
+const UPDATE_FIELDS: Record<PersistentRecord["typeName"], ReadonlySet<string>> = {
+  document: new Set(),
+  page: new Set(["name", "width", "height", "background", "overflow", "layout"]),
+  node: new Set(["name", "parentId", "index", "layout", "visible", "locked", "props"]),
+}
+
 export class RecordStore {
   readonly revision: number
   readonly #records: ReadonlyMap<string, PersistentRecord>
@@ -56,7 +62,11 @@ export class RecordStore {
     if (patch.typeName !== undefined && patch.typeName !== current.typeName) {
       throw new Error("INVALID_RECORD_PATCH")
     }
-
+    for (const field of Object.keys(patch)) {
+      if (!UPDATE_FIELDS[current.typeName].has(field)) {
+        throw new Error(`INVALID_RECORD_PATCH_FIELD:${field}`)
+      }
+    }
     const updated = structuredClone({
       ...current,
       ...patch,
