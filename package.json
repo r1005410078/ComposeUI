@@ -1,0 +1,31 @@
+{
+  "name": "composeui",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun --cwd apps/playground run dev",
+    "build": "bun --filter '*' run build",
+    "typecheck": "tsc -b --pretty false",
+    "lint": "oxlint --deny-warnings .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "test": "vitest run",
+    "test:golden": "vitest run packages/core/test/snapshot.golden.test.ts",
+    "test:e2e": "playwright test",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/node": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest"
+  },
+  "engines": {
+    "bun": ">=1.2"
+  }
+}
