@@ -61,9 +61,9 @@ describe("RecordStore persistent operations", () => {
 
     expect(() => store.withUpdated("missing", { name: "Dashboard" })).toThrow("MISSING_RECORD_ID")
     const after = store.withUpdated("page-1", {
-      id: "page-1",
-      typeName: "page",
-      revision: 0,
+      id: "other-id",
+      typeName: "document",
+      revision: 999,
       name: "Dashboard",
     } as never)
 
@@ -85,6 +85,18 @@ describe("RecordStore persistent operations", () => {
     )
     expect(before.revision).toBe(0)
     expect(before.get("page-1")).toMatchObject({ name: "Page 1", layout: { mode: "free" } })
+  })
+
+  it("rejects page-only fields on nodes without changing the store", () => {
+    const before = RecordStore.fromDocument(
+      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+    ).withCreated(rectangle)
+
+    expect(() => before.withUpdated("node-1", { width: 800 } as never)).toThrow(
+      "INVALID_RECORD_PATCH_FIELD:width",
+    )
+    expect(before.revision).toBe(1)
+    expect(before.get("node-1")).toEqual(rectangle)
   })
 
   it("removes many records in one immutable revision", () => {
