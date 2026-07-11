@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { applyPatch, createEmptyDocument, RecordStore, transact } from "../src/index"
+import {
+  applyPatch,
+  canonicalizeDocument,
+  createEmptyDocument,
+  RecordStore,
+  transact,
+} from "../src/index"
 import type { NodeRecord, PageRecord } from "../src/index"
 
 const rectangle = (id: string, parentId = "page-1", index = "a0"): NodeRecord => ({
@@ -35,6 +41,7 @@ function createStore(): RecordStore {
 describe("record transaction", () => {
   it("creates an exact inverse for an update", () => {
     const before = createStore()
+    const initial = canonicalizeDocument(before)
     const result = transact(before, { kind: "local-command", commandId: "page.rename" }, (tx) => {
       tx.update("page-1", { name: "Dashboard" })
     })
@@ -44,12 +51,10 @@ describe("record transaction", () => {
     expect(result.patch.updated[0]).toMatchObject({
       id: "page-1",
       typeName: "page",
-      before: { name: "Page 1" },
-      after: { name: "Dashboard" },
+      before: { name: "Page 1", revision: 0 },
+      after: { name: "Dashboard", revision: 1 },
     })
-    expect(applyPatch(result.store, result.inverse).get("page-1")).toMatchObject({
-      name: "Page 1",
-    })
+    expect(canonicalizeDocument(applyPatch(result.store, result.inverse))).toEqual(initial)
   })
 
   it("rejects a transaction that removes the page board", () => {
@@ -162,9 +167,7 @@ describe("record transaction", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const restored = applyPatch(result.store, result.inverse)
-    expect(restored.get("page-1")).toMatchObject({ name: "Page 1" })
-    expect(restored.get("node-1")).toEqual(rectangle("node-1"))
-    expect(restored.get("node-2")).toBeUndefined()
+    expect(canonicalizeDocument(restored)).toEqual(canonicalizeDocument(before))
   })
 
   it("rejects updates that create invalid node relationships", () => {

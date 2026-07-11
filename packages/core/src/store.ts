@@ -77,6 +77,29 @@ export class RecordStore {
     return new RecordStore(next, this.revision + 1)
   }
 
+  withAppliedChanges(input: {
+    removed: readonly string[]
+    replaced: readonly PersistentRecord[]
+    created: readonly PersistentRecord[]
+  }): RecordStore {
+    const next = new Map(this.#records)
+    for (const id of input.removed) {
+      if (!next.has(id)) throw new Error("MISSING_RECORD_ID")
+      next.delete(id)
+    }
+    for (const record of input.replaced) {
+      const current = next.get(record.id)
+      if (current === undefined) throw new Error("MISSING_RECORD_ID")
+      if (current.typeName !== record.typeName) throw new Error("RECORD_TYPE_MISMATCH")
+      next.set(record.id, structuredClone(record))
+    }
+    for (const record of input.created) {
+      if (next.has(record.id)) throw new Error("DUPLICATE_RECORD_ID")
+      next.set(record.id, structuredClone(record))
+    }
+    return new RecordStore(next, this.revision + 1)
+  }
+
   withRemovedMany(ids: readonly string[]): RecordStore {
     for (const id of ids) {
       if (!this.#records.has(id)) throw new Error("MISSING_RECORD_ID")

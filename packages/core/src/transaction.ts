@@ -11,8 +11,8 @@ export type TransactionOrigin =
 export interface UpdatedRecordPatch {
   id: string
   typeName: PersistentRecord["typeName"]
-  before: Partial<PersistentRecord>
-  after: Partial<PersistentRecord>
+  before: PersistentRecord
+  after: PersistentRecord
 }
 
 export interface TransactionPatch {
@@ -48,27 +48,17 @@ function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-function changedFields(
-  before: PersistentRecord,
-  after: PersistentRecord,
-): { before: Partial<PersistentRecord>; after: Partial<PersistentRecord> } {
-  const beforePatch: Record<string, unknown> = {}
-  const afterPatch: Record<string, unknown> = {}
+function recordsDiffer(before: PersistentRecord, after: PersistentRecord): boolean {
   const beforeRecord = before as unknown as Record<string, unknown>
   const afterRecord = after as unknown as Record<string, unknown>
 
   for (const field of Object.keys(afterRecord)) {
     if (field === "id" || field === "typeName" || field === "revision") continue
     if (!sameValue(beforeRecord[field], afterRecord[field])) {
-      beforePatch[field] = structuredClone(beforeRecord[field])
-      afterPatch[field] = structuredClone(afterRecord[field])
+      return true
     }
   }
-
-  return {
-    before: beforePatch as Partial<PersistentRecord>,
-    after: afterPatch as Partial<PersistentRecord>,
-  }
+  return false
 }
 
 function buildPatch(before: RecordMap, after: RecordMap): TransactionPatch {
@@ -82,13 +72,12 @@ function buildPatch(before: RecordMap, after: RecordMap): TransactionPatch {
       removed.push(structuredClone(record))
       continue
     }
-    const fields = changedFields(record, next)
-    if (Object.keys(fields.after).length > 0) {
+    if (recordsDiffer(record, next)) {
       updated.push({
         id,
         typeName: next.typeName,
-        before: fields.before,
-        after: fields.after,
+        before: structuredClone(record),
+        after: structuredClone(next),
       })
     }
   }
@@ -184,20 +173,20 @@ function assertNoPageRemoval(store: RecordStore, ids: readonly string[]): void {
 }
 
 function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): RecordStore {
-  let next = store
-  if (patch.removed.length > 0) {
-    assertNoPageRemoval(
-      store,
-      patch.removed.map((record) => record.id),
-    )
-    next = next.withRemovedMany(patch.removed.map((record) => record.id))
-  }
+  assertNoPageRemoval(
+    store,
+    patch.removed.map((record) => record.id),
+  )
   for (const update of patch.updated) {
-    next = next.withUpdated(update.id, update.after as never)
+    if (update.after.id !== update.id || update.after.typeName !== update.typeName) {
+      throw new Error("INVALID_TRANSACTION_PATCH")
+    }
   }
-  if (patch.created.length > 0) {
-    next = next.withCreatedMany(patch.created)
-  }
+  const next = store.withAppliedChanges({
+    removed: patch.removed.map((record) => record.id),
+    replaced: patch.updated.map((update) => update.after),
+    created: patch.created,
+  })
 
   const diagnostics = validateRecords(cloneRecords(next))
   if (diagnostics.length > 0) throw diagnosticError(diagnostics[0]!)
@@ -228,7 +217,7 @@ export function transact(
         const update = structuredClone(patch) as Record<string, unknown>
         update.id = current.id
         update.typeName = current.typeName
-        update.revision = current.revision
+        update.revision = current.revision + 1
         draft.set(id, structuredClone({ ...current, ...update }) as PersistentRecord)
       },
       remove(id) {
