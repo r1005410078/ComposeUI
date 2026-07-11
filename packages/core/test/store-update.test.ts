@@ -54,6 +54,23 @@ describe("RecordStore persistent operations", () => {
     })
   })
 
+  it("clones nested records returned by all", () => {
+    const store = RecordStore.fromDocument(
+      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+    ).withCreated(rectangle)
+
+    const records = store.all()
+    const node = records.find((record) => record.id === "node-1")
+    if (node?.typeName !== "node") throw new Error("NODE_NOT_FOUND")
+    node.layout.x = 999
+    node.props.fill = "#dc2626"
+
+    expect(store.get("node-1")).toMatchObject({
+      layout: { x: 40 },
+      props: { fill: "#2563eb" },
+    })
+  })
+
   it("ignores identity fields in a runtime update patch", () => {
     const store = RecordStore.fromDocument(
       createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
