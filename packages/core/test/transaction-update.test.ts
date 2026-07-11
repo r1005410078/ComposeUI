@@ -102,6 +102,57 @@ describe("record transaction", () => {
     expect(current.get("page-1")).toMatchObject({ name: "Later", revision: 2 })
   })
 
+  it("rejects duplicate patch record entries before applying any section", () => {
+    const before = createStore()
+    const result = transact(before, { kind: "local-command", commandId: "page.rename" }, (tx) => {
+      tx.update("page-1", { name: "Dashboard" })
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const duplicateUpdated = applyPatch(before, {
+      ...result.patch,
+      updated: [result.patch.updated[0]!, structuredClone(result.patch.updated[0]!)],
+    })
+    expect(duplicateUpdated.ok).toBe(false)
+    if (!duplicateUpdated.ok) {
+      expect(duplicateUpdated.diagnostics[0]).toMatchObject({
+        code: "PATCH_DUPLICATE_RECORD_ENTRY",
+        recordId: "page-1",
+      })
+    }
+    expect(before.get("page-1")).toMatchObject({ name: "Page 1", revision: 0 })
+
+    const nodeStore = before.withCreated(rectangle("node-1"))
+    const node = nodeStore.get("node-1")!
+    const crossSection = applyPatch(nodeStore, {
+      created: [node],
+      updated: [],
+      removed: [node],
+    })
+    expect(crossSection.ok).toBe(false)
+    if (!crossSection.ok) {
+      expect(crossSection.diagnostics[0]?.code).toBe("PATCH_DUPLICATE_RECORD_ENTRY")
+    }
+    expect(nodeStore.get("node-1")).toEqual(node)
+  })
+
+  it("rejects unknown records from external patches", () => {
+    const unknown = {
+      id: "mystery-1",
+      revision: 0,
+      typeName: "mystery",
+    } as never
+    const result = applyPatch(createStore(), {
+      created: [unknown],
+      updated: [],
+      removed: [],
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.diagnostics[0]?.code).toBe("UNKNOWN_RECORD_TYPE")
+  })
+
   it("rejects a stale remove patch without deleting the newer record", () => {
     const before = createStore().withCreated(rectangle("node-1"))
     const removal = transact(before, { kind: "local-command", commandId: "node.remove" }, (tx) => {
@@ -288,6 +339,18 @@ describe("record transaction", () => {
       { kind: "local-command", commandId: "page.edit" },
       (tx) => tx.update("page-1", { layout: { mode: "broken" } } as never),
     )
+    const arrayLayout = Object.assign([], {
+      mode: "free",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    })
+    const invalidArrayLayout = transact(
+      before,
+      { kind: "local-command", commandId: "node.edit" },
+      (tx) => tx.update("node-1", { layout: arrayLayout } as never),
+    )
     const invalidNodeLayout = transact(
       before,
       { kind: "local-command", commandId: "node.edit" },
@@ -328,6 +391,13 @@ describe("record transaction", () => {
     expect(invalidNodeLayout.ok).toBe(false)
     if (!invalidNodeLayout.ok) {
       expect(invalidNodeLayout.diagnostics[0]).toMatchObject({
+        code: "INVALID_RECORD_SHAPE",
+        recordId: "node-1",
+      })
+    }
+    expect(invalidArrayLayout.ok).toBe(false)
+    if (!invalidArrayLayout.ok) {
+      expect(invalidArrayLayout.diagnostics[0]).toMatchObject({
         code: "INVALID_RECORD_SHAPE",
         recordId: "node-1",
       })

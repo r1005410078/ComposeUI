@@ -182,7 +182,35 @@ function patchConflict(message: string, recordId?: string): PatchApplyResult {
   return { ok: false, diagnostics: [diagnostic] }
 }
 
+function duplicatePatchRecordId(patch: TransactionPatch): string | undefined {
+  const seen = new Set<string>()
+  const ids = [
+    ...patch.created.map((record) => record.id),
+    ...patch.updated.map((record) => record.id),
+    ...patch.removed.map((record) => record.id),
+  ]
+  for (const id of ids) {
+    if (seen.has(id)) return id
+    seen.add(id)
+  }
+  return undefined
+}
+
 function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): PatchApplyResult {
+  const duplicateId = duplicatePatchRecordId(patch)
+  if (duplicateId !== undefined) {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: "PATCH_DUPLICATE_RECORD_ENTRY",
+          severity: "error",
+          message: "A record id may appear in only one patch entry.",
+          recordId: duplicateId,
+        },
+      ],
+    }
+  }
   if (patch.created.length === 0 && patch.updated.length === 0 && patch.removed.length === 0) {
     return { ok: true, value: store, diagnostics: [] }
   }

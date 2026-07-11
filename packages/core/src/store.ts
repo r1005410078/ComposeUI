@@ -12,7 +12,7 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function isFreeLayout(value: unknown): boolean {
-  if (value === null || typeof value !== "object") return false
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false
   const layout = value as Record<string, unknown>
   return (
     layout.mode === "free" &&
@@ -24,6 +24,9 @@ function isFreeLayout(value: unknown): boolean {
 }
 
 export function validateRecordShape(record: PersistentRecord): void {
+  if (record.typeName !== "document" && record.typeName !== "page" && record.typeName !== "node") {
+    throw new Error("UNKNOWN_RECORD_TYPE")
+  }
   if (typeof record.id !== "string" || !Number.isInteger(record.revision)) {
     throw new Error("INVALID_RECORD_SHAPE")
   }
@@ -42,6 +45,7 @@ export function validateRecordShape(record: PersistentRecord): void {
       !["visible", "hidden", "scroll"].includes(record.overflow) ||
       record.layout === null ||
       typeof record.layout !== "object" ||
+      Array.isArray(record.layout) ||
       record.layout.mode !== "free"
     ) {
       throw new Error("INVALID_RECORD_SHAPE")
@@ -58,6 +62,7 @@ export function validateRecordShape(record: PersistentRecord): void {
     typeof record.locked !== "boolean" ||
     record.props === null ||
     typeof record.props !== "object" ||
+    Array.isArray(record.props) ||
     typeof record.props.fill !== "string"
   ) {
     throw new Error("INVALID_RECORD_SHAPE")
