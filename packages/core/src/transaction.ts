@@ -188,7 +188,8 @@ function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): Pat
   }
   const removedIds = new Set(patch.removed.map((record) => record.id))
   for (const record of patch.removed) {
-    if (store.get(record.id) === undefined) {
+    const current = store.get(record.id)
+    if (current === undefined || !deepEqual(current, record)) {
       return patchConflict("Patch removal precondition failed.", record.id)
     }
   }

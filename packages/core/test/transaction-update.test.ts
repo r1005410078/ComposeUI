@@ -102,6 +102,27 @@ describe("record transaction", () => {
     expect(current.get("page-1")).toMatchObject({ name: "Later", revision: 2 })
   })
 
+  it("rejects a stale remove patch without deleting the newer record", () => {
+    const before = createStore().withCreated(rectangle("node-1"))
+    const removal = transact(before, { kind: "local-command", commandId: "node.remove" }, (tx) => {
+      tx.remove("node-1")
+    })
+    expect(removal.ok).toBe(true)
+    if (!removal.ok) return
+
+    const current = before.withUpdated("node-1", { name: "Changed" })
+    const applyResult = applyPatch(current, removal.patch)
+
+    expect(applyResult.ok).toBe(false)
+    if (!applyResult.ok) {
+      expect(applyResult.diagnostics[0]).toMatchObject({
+        code: "PATCH_PRECONDITION_FAILED",
+        recordId: "node-1",
+      })
+    }
+    expect(current.get("node-1")).toMatchObject({ name: "Changed", revision: 1 })
+  })
+
   it("does not advance revision for an empty patch", () => {
     const before = createStore()
     const result = applyPatch(before, { created: [], updated: [], removed: [] })
