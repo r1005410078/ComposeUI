@@ -20,6 +20,7 @@ export type {
   TransactionOrigin,
   TransactionPatch,
   TransactionResult,
+  PatchApplyResult,
   UpdatedRecordPatch,
 } from "./transaction"
 export { canonicalizeDocument } from "./snapshot"

@@ -1,6 +1,7 @@
-import type { Diagnostic } from "./diagnostics"
+import type { Diagnostic, Result } from "./diagnostics"
 import type { PersistentRecord } from "./schema"
 import { RecordStore, updateRecord, validateRecordShape } from "./store"
+import { deepEqual, validateNodeTree } from "./validation"
 
 export type TransactionOrigin =
   | { kind: "local-command"; commandId: string }
@@ -39,6 +40,7 @@ export type TransactionResult =
   | { ok: false; store: RecordStore; diagnostics: Diagnostic[] }
 
 type RecordMap = Map<string, PersistentRecord>
+export type PatchApplyResult = Result<RecordStore>
 
 class TransactionError extends Error {
   constructor(readonly diagnostics: Diagnostic[]) {
@@ -57,7 +59,7 @@ function cloneRecords(store: RecordStore): RecordMap {
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  return deepEqual(left, right)
 }
 
 function recordsDiffer(before: PersistentRecord, after: PersistentRecord): boolean {
@@ -149,88 +151,13 @@ function validateRecords(records: RecordMap): Diagnostic[] {
     })
   }
 
-  const siblingIndexes = new Map<string, Set<string>>()
-  for (const record of records.values()) {
-    if (record.typeName !== "node") continue
-
-    if (record.parentId === record.id) {
-      diagnostics.push({
-        code: "NODE_SELF_PARENT",
-        severity: "error",
-        message: "A node cannot be its own parent.",
-        recordId: record.id,
-      })
-      continue
-    }
-
-    const parent = records.get(record.parentId)
-    if (parent?.typeName !== "page" && parent?.typeName !== "node") {
-      diagnostics.push({
-        code: "NODE_PARENT_NOT_FOUND",
-        severity: "error",
-        message: "Node parentId must identify a page or node record.",
-        recordId: record.id,
-      })
-      continue
-    }
-    if (parent.typeName === "page" && parent.id !== document.rootPageId) {
-      diagnostics.push({
-        code: "PARENT_NOT_ROOT_PAGE",
-        severity: "error",
-        message: "A node parent page must be the document root page.",
-        recordId: record.id,
-      })
-      continue
-    }
-
-    const indexes = siblingIndexes.get(record.parentId) ?? new Set<string>()
-    if (indexes.has(record.index)) {
-      diagnostics.push({
-        code: "SIBLING_INDEX_CONFLICT",
-        severity: "error",
-        message: "Sibling node indexes must be unique.",
-        recordId: record.id,
-      })
-    }
-    indexes.add(record.index)
-    siblingIndexes.set(record.parentId, indexes)
-
-    const visited = new Set<string>([record.id])
-    let parentId = record.parentId
-    while (true) {
-      if (visited.has(parentId)) {
-        diagnostics.push({
-          code: "NODE_PARENT_CYCLE",
-          severity: "error",
-          message: "Node parent relationships must be acyclic.",
-          recordId: record.id,
-        })
-        break
-      }
-      const ancestor = records.get(parentId)
-      if (ancestor === undefined || ancestor.typeName !== "node") break
-      visited.add(ancestor.id)
-      parentId = ancestor.parentId
-    }
-  }
+  diagnostics.push(...validateNodeTree(records, document.rootPageId))
 
   return diagnostics
 }
 
 function validationError(diagnostics: Diagnostic[]): TransactionError {
   return new TransactionError(diagnostics)
-}
-
-function assertNoPageRemoval(store: RecordStore, ids: readonly string[]): void {
-  for (const id of ids) {
-    if (store.get(id)?.typeName === "page") throw new Error("PAGE_REMOVE_FORBIDDEN")
-  }
-}
-
-function assertNoPageCreation(records: readonly PersistentRecord[]): void {
-  if (records.some((record) => record.typeName === "page")) {
-    throw new Error("PAGE_CREATE_FORBIDDEN")
-  }
 }
 
 function assertNoDocumentCreation(records: readonly PersistentRecord[]): void {
@@ -242,29 +169,73 @@ function assertNoDocumentCreation(records: readonly PersistentRecord[]): void {
   }
 }
 
-function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): RecordStore {
-  assertNoPageCreation(patch.created)
-  assertNoPageRemoval(
-    store,
-    patch.removed.map((record) => record.id),
-  )
-  for (const update of patch.updated) {
-    if (update.after.id !== update.id || update.after.typeName !== update.typeName) {
-      throw new Error("INVALID_TRANSACTION_PATCH")
-    }
+function assertNoPageCreation(records: readonly PersistentRecord[]): void {
+  const page = records.find((record) => record.typeName === "page")
+  if (page !== undefined) {
+    throw operationError("PAGE_CREATE_FORBIDDEN", "Pages can only be initialized.", page.id)
   }
-  const next = store.withAppliedChanges({
-    removed: patch.removed.map((record) => record.id),
-    replaced: patch.updated.map((update) => update.after),
-    created: patch.created,
-  })
-
-  const diagnostics = validateRecords(cloneRecords(next))
-  if (diagnostics.length > 0) throw validationError(diagnostics)
-  return next
 }
 
-export function applyPatch(store: RecordStore, patch: TransactionPatch): RecordStore {
+function patchConflict(message: string, recordId?: string): PatchApplyResult {
+  const diagnostic: Diagnostic = { code: "PATCH_PRECONDITION_FAILED", severity: "error", message }
+  if (recordId !== undefined) diagnostic.recordId = recordId
+  return { ok: false, diagnostics: [diagnostic] }
+}
+
+function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): PatchApplyResult {
+  if (patch.created.length === 0 && patch.updated.length === 0 && patch.removed.length === 0) {
+    return { ok: true, value: store, diagnostics: [] }
+  }
+  const removedIds = new Set(patch.removed.map((record) => record.id))
+  for (const record of patch.removed) {
+    if (store.get(record.id) === undefined) {
+      return patchConflict("Patch removal precondition failed.", record.id)
+    }
+  }
+  for (const update of patch.updated) {
+    const current = store.get(update.id)
+    if (
+      current === undefined ||
+      removedIds.has(update.id) ||
+      current.typeName !== update.typeName ||
+      !deepEqual(current, update.before)
+    ) {
+      return patchConflict("Patch update precondition failed.", update.id)
+    }
+  }
+  for (const record of patch.created) {
+    if (store.get(record.id) !== undefined) {
+      return patchConflict("Patch creation precondition failed.", record.id)
+    }
+  }
+  const createdPage = patch.created.find((record) => record.typeName === "page")
+  if (createdPage !== undefined) {
+    return patchConflict("Page creation is forbidden in a patch.", createdPage.id)
+  }
+  const removedPage = patch.removed.find((record) => store.get(record.id)?.typeName === "page")
+  if (removedPage !== undefined) {
+    return patchConflict("Page removal is forbidden in a patch.", removedPage.id)
+  }
+  for (const update of patch.updated) {
+    if (update.after.id !== update.id || update.after.typeName !== update.typeName) {
+      return patchConflict("Patch update identity is invalid.", update.id)
+    }
+  }
+  try {
+    const next = store.withAppliedChanges({
+      removed: patch.removed.map((record) => record.id),
+      replaced: patch.updated.map((update) => update.after),
+      created: patch.created,
+    })
+    const diagnostics = validateRecords(cloneRecords(next))
+    if (diagnostics.length > 0) return { ok: false, diagnostics }
+    return { ok: true, value: next, diagnostics: [] }
+  } catch (error) {
+    return patchConflict(error instanceof Error ? error.message : "Patch application failed.")
+  }
+}
+
+export function applyPatch(store: RecordStore, patch: TransactionPatch): PatchApplyResult {
   return applyTransactionPatch(store, patch)
 }
 
@@ -360,7 +331,9 @@ export function transact(
         diagnostics: [],
       }
     }
-    const next = applyTransactionPatch(store, patch)
+    const applied = applyTransactionPatch(store, patch)
+    if (!applied.ok) throw new TransactionError(applied.diagnostics)
+    const next = applied.value
     const inverse: TransactionPatch = {
       created: patch.removed.map((record) => structuredClone(record)),
       updated: patch.updated.map((update) => ({

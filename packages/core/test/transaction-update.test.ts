@@ -47,6 +47,15 @@ function createStore(): RecordStore {
   return RecordStore.fromDocument(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
 }
 
+function applyPatchOrThrow(
+  store: RecordStore,
+  patch: Parameters<typeof applyPatch>[1],
+): RecordStore {
+  const result = applyPatch(store, patch)
+  if (!result.ok) throw new Error(result.diagnostics[0]?.code)
+  return result.value
+}
+
 function createMultiPageDocument() {
   const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
   return { ...document, records: [...document.records, secondPage] }
@@ -68,7 +77,40 @@ describe("record transaction", () => {
       before: { name: "Page 1", revision: 0 },
       after: { name: "Dashboard", revision: 1 },
     })
-    expect(canonicalizeDocument(applyPatch(result.store, result.inverse))).toEqual(initial)
+    expect(canonicalizeDocument(applyPatchOrThrow(result.store, result.inverse))).toEqual(initial)
+  })
+
+  it("rejects a stale patch without changing the current store", () => {
+    const before = createStore()
+    const result = transact(before, { kind: "local-command", commandId: "page.rename" }, (tx) => {
+      tx.update("page-1", { name: "Dashboard" })
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const current = result.store.withUpdated("page-1", { name: "Later" })
+    const applyResult = applyPatch(current, result.inverse)
+
+    expect(applyResult.ok).toBe(false)
+    if (!applyResult.ok) {
+      expect(applyResult.diagnostics[0]).toMatchObject({
+        code: "PATCH_PRECONDITION_FAILED",
+        recordId: "page-1",
+      })
+      expect(applyResult.diagnostics[0]?.message.length).toBeGreaterThan(0)
+    }
+    expect(current.get("page-1")).toMatchObject({ name: "Later", revision: 2 })
+  })
+
+  it("does not advance revision for an empty patch", () => {
+    const before = createStore()
+    const result = applyPatch(before, { created: [], updated: [], removed: [] })
+
+    expect(result).toMatchObject({ ok: true, value: before })
+    if (result.ok) {
+      expect(result.value).toBe(before)
+      expect(result.value.revision).toBe(0)
+    }
   })
 
   it("isolates every forward and inverse patch snapshot", () => {
@@ -88,7 +130,7 @@ describe("record transaction", () => {
     expect(result.inverse.updated[0]!.after).toMatchObject({ name: "Page 1", revision: 0 })
     expect(result.inverse.created[0]).toEqual(rectangle("node-1"))
     expect(result.inverse.removed[0]).toEqual(rectangle("node-2"))
-    expect(canonicalizeDocument(applyPatch(result.store, result.inverse))).toEqual(
+    expect(canonicalizeDocument(applyPatchOrThrow(result.store, result.inverse))).toEqual(
       canonicalizeDocument(before),
     )
   })
@@ -379,7 +421,9 @@ describe("record transaction", () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(applyPatch(result.store, result.inverse).get("node-1")).toEqual(rectangle("node-1"))
+    expect(applyPatchOrThrow(result.store, result.inverse).get("node-1")).toEqual(
+      rectangle("node-1"),
+    )
   })
 
   it("restores a mixed create update remove patch in inverse order", () => {
@@ -392,7 +436,7 @@ describe("record transaction", () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    const restored = applyPatch(result.store, result.inverse)
+    const restored = applyPatchOrThrow(result.store, result.inverse)
     expect(canonicalizeDocument(restored)).toEqual(canonicalizeDocument(before))
   })
 
@@ -438,5 +482,19 @@ describe("record transaction", () => {
     expect(result.store.revision).toBe(0)
     expect(result.patch).toEqual({ created: [], updated: [], removed: [] })
     expect(result.inverse).toEqual({ created: [], updated: [], removed: [] })
+  })
+
+  it("treats reordered layout keys as a no-op update", () => {
+    const before = createStore().withCreated(rectangle("node-1"))
+    const result = transact(before, { kind: "local-command", commandId: "node.layout" }, (tx) => {
+      tx.update("node-1", {
+        layout: { height: 100, width: 160, y: 40, x: 40, mode: "free" },
+      })
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.store).toBe(before)
+    expect(result.patch).toEqual({ created: [], updated: [], removed: [] })
   })
 })
