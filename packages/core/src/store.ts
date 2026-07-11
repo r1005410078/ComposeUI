@@ -1,4 +1,4 @@
-import type { PageDocument, PersistentRecord } from "./schema"
+import type { PageDocument, PersistentRecord, RecordUpdatePatch } from "./schema"
 
 const UPDATE_FIELDS: Record<PersistentRecord["typeName"], ReadonlySet<string>> = {
   document: new Set(),
@@ -52,24 +52,22 @@ export class RecordStore {
 
   withUpdated<T extends PersistentRecord["typeName"]>(
     id: string,
-    patch: Partial<Extract<PersistentRecord, { typeName: T }>>,
+    patch: RecordUpdatePatch<T>,
   ): RecordStore {
     const current = this.#records.get(id)
     if (current === undefined) throw new Error("MISSING_RECORD_ID")
-    if (patch.id !== undefined && patch.id !== current.id) {
-      throw new Error("INVALID_RECORD_PATCH")
-    }
-    if (patch.typeName !== undefined && patch.typeName !== current.typeName) {
-      throw new Error("INVALID_RECORD_PATCH")
-    }
-    for (const field of Object.keys(patch)) {
+    const update = structuredClone(patch) as Record<string, unknown>
+    delete update.id
+    delete update.typeName
+    delete update.revision
+    for (const field of Object.keys(update)) {
       if (!UPDATE_FIELDS[current.typeName].has(field)) {
         throw new Error(`INVALID_RECORD_PATCH_FIELD:${field}`)
       }
     }
     const updated = structuredClone({
       ...current,
-      ...patch,
+      ...update,
       id: current.id,
       typeName: current.typeName,
       revision: current.revision + 1,

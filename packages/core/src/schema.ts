@@ -41,6 +41,9 @@ export interface NodeRecord extends BaseRecord {
 
 export type PersistentRecord = DocumentRecord | PageRecord | NodeRecord
 export type EditorRecord = PersistentRecord
+export type RecordUpdatePatch<T extends PersistentRecord["typeName"]> = Partial<
+  Omit<Extract<PersistentRecord, { typeName: T }>, "id" | "typeName" | "revision">
+>
 
 export interface PageDocument {
   schemaVersion: 1

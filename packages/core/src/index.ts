@@ -11,6 +11,7 @@ export type {
   PageDocument,
   PageRecord,
   PersistentRecord,
+  RecordUpdatePatch,
 } from "./schema"
 export { RecordStore } from "./store"
 export { transact } from "./transaction"

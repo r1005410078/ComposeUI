@@ -54,16 +54,25 @@ describe("RecordStore persistent operations", () => {
     })
   })
 
-  it("rejects missing and identity-changing updates", () => {
+  it("ignores identity fields in a runtime update patch", () => {
     const store = RecordStore.fromDocument(
       createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
     )
 
     expect(() => store.withUpdated("missing", { name: "Dashboard" })).toThrow("MISSING_RECORD_ID")
-    expect(() => store.withUpdated("page-1", { id: "other" })).toThrow("INVALID_RECORD_PATCH")
-    expect(() => store.withUpdated("page-1", { typeName: "document" })).toThrow(
-      "INVALID_RECORD_PATCH",
-    )
+    const after = store.withUpdated("page-1", {
+      id: "page-1",
+      typeName: "page",
+      revision: 0,
+      name: "Dashboard",
+    } as never)
+
+    expect(after.get("page-1")).toMatchObject({
+      id: "page-1",
+      typeName: "page",
+      revision: 1,
+      name: "Dashboard",
+    })
   })
 
   it("rejects fields from another record type without changing the store", () => {
