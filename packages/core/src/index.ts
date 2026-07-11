@@ -14,11 +14,12 @@ export type {
   RecordUpdatePatch,
 } from "./schema"
 export { RecordStore } from "./store"
-export { transact } from "./transaction"
+export { applyPatch, transact } from "./transaction"
 export type {
   TransactionDraft,
   TransactionOrigin,
   TransactionPatch,
   TransactionResult,
+  UpdatedRecordPatch,
 } from "./transaction"
 export { canonicalizeDocument } from "./snapshot"

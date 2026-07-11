@@ -1,7 +1,7 @@
 import type { PageDocument, PersistentRecord, RecordUpdatePatch } from "./schema"
 
 const UPDATE_FIELDS: Record<PersistentRecord["typeName"], ReadonlySet<string>> = {
-  document: new Set(),
+  document: new Set(["rootPageId"]),
   page: new Set(["name", "width", "height", "background", "overflow", "layout"]),
   node: new Set(["name", "parentId", "index", "layout", "visible", "locked", "props"]),
 }
