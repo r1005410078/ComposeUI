@@ -48,4 +48,18 @@ describe("RecordStore persistent operations", () => {
     expect(after.get("page-1")).toBeUndefined()
     expect(after.revision).toBe(1)
   })
+
+  it("creates a new revision for an empty removal", () => {
+    const before = RecordStore.fromDocument(
+      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+    )
+    const beforeRecords = before.all()
+    const after = before.withRemovedMany([])
+
+    expect(after).not.toBe(before)
+    expect(after.revision).toBe(1)
+    expect(after.all()).toEqual(beforeRecords)
+    expect(before.revision).toBe(0)
+    expect(before.all()).toEqual(beforeRecords)
+  })
 })

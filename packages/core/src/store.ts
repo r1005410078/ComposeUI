@@ -73,7 +73,6 @@ export class RecordStore {
     for (const id of ids) {
       if (!this.#records.has(id)) throw new Error("MISSING_RECORD_ID")
     }
-    if (ids.length === 0) return this
 
     const next = new Map(this.#records)
     for (const id of ids) next.delete(id)
