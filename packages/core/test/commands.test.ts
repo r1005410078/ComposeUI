@@ -9,6 +9,7 @@ describe("node.create", () => {
       payload: {
         id: "node-1",
         parentId: "page-1",
+        name: "Rectangle",
         x: 40,
         y: 40,
         width: 160,
@@ -28,6 +29,7 @@ describe("node.create", () => {
       payload: {
         id: "node-1",
         parentId: "missing",
+        name: "Rectangle",
         x: 0,
         y: 0,
         width: 10,

@@ -1,6 +1,20 @@
 export type { Diagnostic, Result } from "./diagnostics"
 export { createEditor } from "./commands"
-export type { CreateNodeCommand, Editor, EditorCommand } from "./commands"
+export type {
+  CreateNodeCommand,
+  DeleteNodeCommand,
+  Editor,
+  EditorChangeEvent,
+  EditorCommand,
+  MoveNodeCommand,
+  RenameNodeCommand,
+  ReorderNodeCommand,
+  ResizeNodeCommand,
+  SetNodeLockedCommand,
+  SetNodeVisibleCommand,
+} from "./commands"
+export { History } from "./history"
+export type { HistoryChange, HistoryEntry } from "./history"
 export { createEmptyDocument } from "./schema"
 export type {
   BaseRecord,

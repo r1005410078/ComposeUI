@@ -10,6 +10,7 @@ describe("basic document golden", () => {
       payload: {
         id: "node-1",
         parentId: "page-1",
+        name: "Rectangle",
         x: 40,
         y: 40,
         width: 160,
