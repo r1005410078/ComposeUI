@@ -12,9 +12,10 @@ ComposeUI is not a general low-code platform and is not a Figma replacement. Its
 
 - Product and architecture design documents exist.
 - The first implementation plan exists: [M0 Core Loop](docs/superpowers/plans/2026-07-11-m0-core-loop-implementation.md).
-- Project scaffold, production code, and automated test infrastructure have not started.
+- The M0 Core Loop is implemented on `main`: scaffold, minimal Core transaction path, JSON golden, Playground, and Chromium E2E.
+- M1 has not been planned or implemented. Follow the [specification roadmap](docs/superpowers/specs/2026-07-11-specification-roadmap-design.md) before proposing or implementing later milestones.
 - Do not claim features are implemented because they appear in design documents.
-- Execute M0 before planning later editor capabilities; create a separate scoped plan for each later milestone.
+- Create a separate scoped plan for each milestone and update the roadmap only after its exit criteria pass.
 
 ## Source Of Truth
 
@@ -29,6 +30,7 @@ Read the relevant documents before changing architecture or behavior:
 - [Testing and golden files](docs/superpowers/specs/2026-07-11-testing-and-golden-files-strategy.md)
 - [Vite Playground](docs/superpowers/specs/2026-07-11-vite-playground-demo-design.md)
 - [TypeScript, Bun, and Oxc scaffold](docs/superpowers/specs/2026-07-11-typescript-bun-oxc-scaffold-design.md)
+- [Specification roadmap](docs/superpowers/specs/2026-07-11-specification-roadmap-design.md)
 
 If documents conflict, use this priority:
 

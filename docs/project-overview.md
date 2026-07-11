@@ -137,13 +137,14 @@ ComposeUI 不负责替代宿主项目，也不是完整的低代码平台或 Fig
 | Yjs 实时协同架构 | 已完成设计 | 已确定共享数据映射、事务桥接、Provider、Awareness、本地撤销、权限边界和交付路线。 |
 | 测试与黄金文件策略 | 已完成设计 | 已确定 Vitest、fast-check、Playwright、Golden 规范、视觉回归、协同和性能测试分层。 |
 | 示例与演示方案 | 已完成设计 | 已确定只使用单一 Vite Playground，并复用场景 Fixture 服务演示、E2E、视觉和性能测试。 |
-| 技术实施计划 | 尚未开始 | 需要根据设计文档拆分模块、任务、接口和验收标准。 |
-| 工程代码 | 尚未开始 | 当前工作区只有设计文档，尚未创建项目骨架和实现代码。 |
-| 自动化测试工程 | 尚未开始 | 测试策略和范围已定义，测试工具链、Fixture、Golden 与 CI 尚未建立。 |
+| 规范地图 | 已完成 | 已建立 M0–M6 依赖路线、阶段边界和验收出口，见[规范地图](./superpowers/specs/2026-07-11-specification-roadmap-design.md)。 |
+| M0 实施计划 | 已完成 | 已完成脚手架、最小文档/事务闭环、Golden、Playground 和 E2E。 |
+| 工程代码 | M0 已完成 | 已实现最小 `@composeui/core` 与 `apps/playground`；编辑器骨架、布局、运行时和集成能力尚未开始。 |
+| 自动化测试工程 | M0 已完成 | Vitest、Golden 和 Chromium Playwright 已建立；属性、视觉、协同和性能测试尚未开始。 |
 
 ## 下一步
 
-基于已确认的设计文档编写第一阶段实施计划，优先确定 monorepo 包结构、`PageDocument` Schema、宿主 API、命令系统，以及无限工作区和页面画板的最小可运行闭环，然后再开始工程实现。
+依据[规范地图](./superpowers/specs/2026-07-11-specification-roadmap-design.md)为 M1 编写实施计划，优先完成 Transaction/History、Session Scope、无限工作区、页面画板、选区、组件树和 Free Layout 的最小可运行闭环。
 
 详细设计见：[ComposeUI 可嵌入式可视化页面编排引擎设计](./superpowers/specs/2026-07-11-embeddable-visual-page-composer-design.md)。
 
