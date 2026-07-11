@@ -95,6 +95,40 @@ export function updateRecord(
   return updated
 }
 
+function validateNodeTree(
+  records: ReadonlyMap<string, PersistentRecord>,
+  rootPageId: string,
+): void {
+  const siblingIndexes = new Map<string, Set<string>>()
+  for (const record of records.values()) {
+    if (record.typeName !== "node") continue
+    if (record.parentId === record.id) throw new Error("NODE_SELF_PARENT")
+
+    const parent = records.get(record.parentId)
+    if (parent?.typeName !== "page" && parent?.typeName !== "node") {
+      throw new Error("NODE_PARENT_NOT_FOUND")
+    }
+    if (parent.typeName === "page" && parent.id !== rootPageId) {
+      throw new Error("PARENT_NOT_ROOT_PAGE")
+    }
+
+    const indexes = siblingIndexes.get(record.parentId) ?? new Set<string>()
+    if (indexes.has(record.index)) throw new Error("SIBLING_INDEX_CONFLICT")
+    indexes.add(record.index)
+    siblingIndexes.set(record.parentId, indexes)
+
+    const visited = new Set<string>([record.id])
+    let parentId = record.parentId
+    while (true) {
+      if (visited.has(parentId)) throw new Error("NODE_PARENT_CYCLE")
+      const ancestor = records.get(parentId)
+      if (ancestor === undefined || ancestor.typeName !== "node") break
+      visited.add(ancestor.id)
+      parentId = ancestor.parentId
+    }
+  }
+}
+
 export class RecordStore {
   readonly revision: number
   readonly #records: ReadonlyMap<string, PersistentRecord>
@@ -113,9 +147,13 @@ export class RecordStore {
     }
     const documents = [...records.values()].filter((record) => record.typeName === "document")
     if (documents.length !== 1) throw new Error("DOCUMENT_COUNT_INVALID")
+    const documentRecord = documents[0]!
+    const rootPage = records.get(documentRecord.rootPageId)
+    if (rootPage?.typeName !== "page") throw new Error("ROOT_PAGE_INVALID")
+    validateNodeTree(records, documentRecord.rootPageId)
     const pages = [...records.values()].filter((record) => record.typeName === "page")
     if (pages.length !== 1) throw new Error("PAGE_COUNT_INVALID")
-    if (pages[0]!.id !== documents[0]!.rootPageId) throw new Error("ROOT_PAGE_INVALID")
+    if (pages[0]!.id !== documentRecord.rootPageId) throw new Error("ROOT_PAGE_INVALID")
     return new RecordStore(records, 0)
   }
 
