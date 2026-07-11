@@ -18,3 +18,4 @@ export type {
   TransactionPatch,
   TransactionResult,
 } from "./transaction"
+export { canonicalizeDocument } from "./snapshot"

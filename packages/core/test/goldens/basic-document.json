@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "rootPageId": "page-1",
+  "records": [
+    {
+      "id": "doc-1",
+      "revision": 0,
+      "typeName": "document",
+      "schemaVersion": 1,
+      "rootPageId": "page-1"
+    },
+    {
+      "id": "node-1",
+      "revision": 0,
+      "typeName": "node",
+      "nodeType": "rectangle",
+      "parentId": "page-1",
+      "index": "a0",
+      "props": {
+        "x": 40,
+        "y": 40,
+        "width": 160,
+        "height": 100,
+        "fill": "#2563eb"
+      }
+    },
+    {
+      "id": "page-1",
+      "revision": 0,
+      "typeName": "page",
+      "name": "Page 1",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}
