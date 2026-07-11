@@ -1,8 +1,11 @@
 {
   "name": "composeui",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "bun --cwd apps/playground run dev",
     "build": "bun run --workspaces build",
