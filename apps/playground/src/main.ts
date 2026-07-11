@@ -32,10 +32,10 @@ const renderedNode = app.querySelector<HTMLElement>("[data-node-id='node-1']")
 const output = app.querySelector<HTMLElement>("pre")
 if (renderedNode === null || output === null) throw new Error("PLAYGROUND_RENDER_FAILED")
 Object.assign(renderedNode.style, {
-  left: `${node.props.x}px`,
-  top: `${node.props.y}px`,
-  width: `${node.props.width}px`,
-  height: `${node.props.height}px`,
+  left: `${node.layout.x}px`,
+  top: `${node.layout.y}px`,
+  width: `${node.layout.width}px`,
+  height: `${node.layout.height}px`,
   background: node.props.fill,
 })
 output.textContent = JSON.stringify(pageDocument, null, 2)

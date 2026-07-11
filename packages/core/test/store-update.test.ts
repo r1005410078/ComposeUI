@@ -29,12 +29,8 @@ describe("RecordStore persistent operations", () => {
       createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
     )
 
-    expect(() => store.withUpdated("missing", { name: "Dashboard" })).toThrow(
-      "MISSING_RECORD_ID",
-    )
-    expect(() => store.withUpdated("page-1", { id: "other" })).toThrow(
-      "INVALID_RECORD_PATCH",
-    )
+    expect(() => store.withUpdated("missing", { name: "Dashboard" })).toThrow("MISSING_RECORD_ID")
+    expect(() => store.withUpdated("page-1", { id: "other" })).toThrow("INVALID_RECORD_PATCH")
     expect(() => store.withUpdated("page-1", { typeName: "document" })).toThrow(
       "INVALID_RECORD_PATCH",
     )
