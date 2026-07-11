@@ -7,7 +7,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "bun --cwd apps/playground run dev",
+    "dev": "bun run --cwd apps/playground dev",
     "build": "bun run --workspaces build",
     "typecheck": "tsc -b --pretty false",
     "lint": "oxlint --deny-warnings .",
