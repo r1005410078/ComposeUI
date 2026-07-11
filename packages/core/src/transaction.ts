@@ -147,6 +147,15 @@ function validateRecords(records: RecordMap): Diagnostic[] {
       })
       continue
     }
+    if (parent.typeName === "page" && parent.id !== document.rootPageId) {
+      diagnostics.push({
+        code: "PARENT_NOT_ROOT_PAGE",
+        severity: "error",
+        message: "A node parent page must be the document root page.",
+        recordId: record.id,
+      })
+      continue
+    }
 
     const indexes = siblingIndexes.get(record.parentId) ?? new Set<string>()
     if (indexes.has(record.index)) {
