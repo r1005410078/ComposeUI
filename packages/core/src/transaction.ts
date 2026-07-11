@@ -172,7 +172,14 @@ function assertNoPageRemoval(store: RecordStore, ids: readonly string[]): void {
   }
 }
 
+function assertNoPageCreation(records: readonly PersistentRecord[]): void {
+  if (records.some((record) => record.typeName === "page")) {
+    throw new Error("PAGE_CREATE_FORBIDDEN")
+  }
+}
+
 function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): RecordStore {
+  assertNoPageCreation(patch.created)
   assertNoPageRemoval(
     store,
     patch.removed.map((record) => record.id),
@@ -209,6 +216,7 @@ export function transact(
     execute({
       create(record) {
         if (draft.has(record.id)) throw new Error("DUPLICATE_RECORD_ID")
+        if (record.typeName === "page") throw new Error("PAGE_CREATE_FORBIDDEN")
         draft.set(record.id, structuredClone(record))
       },
       update(id, patch) {
@@ -233,6 +241,7 @@ export function transact(
         throw new Error("PAGE_REMOVE_FORBIDDEN")
       }
     }
+    assertNoPageCreation([...draft.values()].filter((record) => !before.has(record.id)))
 
     const validation = validateRecords(draft)
     if (validation.length > 0) throw diagnosticError(validation[0]!)

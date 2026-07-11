@@ -100,6 +100,20 @@ describe("record transaction", () => {
     expect(before.revision).toBe(1)
   })
 
+  it("rejects creating an additional page", () => {
+    const before = createStore()
+    const result = transact(before, { kind: "local-command", commandId: "page.create" }, (tx) => {
+      tx.create(secondPage)
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.diagnostics[0]?.code).toBe("PAGE_CREATE_FORBIDDEN")
+    expect(before.get("page-2")).toBeUndefined()
+    expect(before.get("page-1")).toBeDefined()
+    expect(before.revision).toBe(0)
+  })
+
   it("rejects duplicate records atomically", () => {
     const before = createStore()
     const result = transact(before, { kind: "local-command", commandId: "node.create" }, (tx) => {
