@@ -8,3 +8,4 @@ export type {
   PageDocument,
   PageRecord,
 } from "./schema"
+export { RecordStore } from "./store"
