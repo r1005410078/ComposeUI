@@ -32,10 +32,7 @@ export interface PageDocument {
   records: EditorRecord[]
 }
 
-export function createEmptyDocument(input: {
-  documentId: string
-  pageId: string
-}): PageDocument {
+export function createEmptyDocument(input: { documentId: string; pageId: string }): PageDocument {
   return {
     schemaVersion: 1,
     rootPageId: input.pageId,

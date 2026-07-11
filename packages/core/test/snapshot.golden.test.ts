@@ -4,9 +4,7 @@ import { canonicalizeDocument, createEditor, createEmptyDocument } from "../src/
 
 describe("basic document golden", () => {
   it("matches the reviewed canonical JSON", async () => {
-    const editor = createEditor(
-      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-    )
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     editor.dispatch({
       id: "node.create",
       payload: {

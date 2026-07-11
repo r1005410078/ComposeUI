@@ -3,9 +3,7 @@ import { createEditor, createEmptyDocument } from "../src/index"
 
 describe("node.create", () => {
   it("creates a rectangle under an existing page", () => {
-    const editor = createEditor(
-      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-    )
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     const result = editor.dispatch({
       id: "node.create",
       payload: {
@@ -24,9 +22,7 @@ describe("node.create", () => {
   })
 
   it("returns a diagnostic for a missing parent", () => {
-    const editor = createEditor(
-      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-    )
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     const result = editor.dispatch({
       id: "node.create",
       payload: {
