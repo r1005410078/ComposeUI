@@ -1,0 +1,42 @@
+:root {
+  color: #18181b;
+  background: #f4f4f5;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+header {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d4d4d8;
+  display: flex;
+  gap: 16px;
+  height: 48px;
+  padding: 0 20px;
+}
+
+.page-board {
+  background: #ffffff;
+  border: 1px solid #a1a1aa;
+  height: 450px;
+  margin: 24px;
+  overflow: hidden;
+  position: relative;
+  width: 720px;
+}
+
+.node {
+  position: absolute;
+}
+
+pre {
+  background: #18181b;
+  color: #f4f4f5;
+  margin: 24px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 16px;
+}
