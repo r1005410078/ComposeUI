@@ -21,6 +21,7 @@
 .composeui-editor__workspace-host {
   --composeui-workspace-min-width: 480px;
   --composeui-workspace-min-height: 320px;
+  display: block;
   height: 100%;
   min-height: var(--composeui-workspace-min-height);
   min-width: 0;

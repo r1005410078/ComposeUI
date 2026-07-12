@@ -658,6 +658,15 @@ test("runs workspace commands for creation, grid, overflow, and canonical export
 })
 
 async function assertViewportLayout(page: Page) {
+  const viewport = page.viewportSize()
+  const host = await page.locator(".composeui-editor__workspace-host").boundingBox()
+  const shell = await page.locator(".composeui-editor__workspace-shell").boundingBox()
+  if (viewport === null || host === null || shell === null) {
+    throw new Error("workspace host was not rendered")
+  }
+  expect(host.width).toBeGreaterThanOrEqual(viewport.width - 1)
+  expect(shell.width).toBeGreaterThanOrEqual(viewport.width - 1)
+
   const toolbar = await page.locator(".composeui-editor__toolbar").boundingBox()
   const dockview = await page.locator(".composeui-editor__dockview-host").boundingBox()
   if (toolbar === null || dockview === null) {
