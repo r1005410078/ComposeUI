@@ -59,8 +59,15 @@ function addRectangle(
   }
 }
 
-function pointerEvent(type: string, x: number, y: number): MouseEvent {
-  return new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y })
+function pointerEvent(type: string, x: number, y: number, pointerId = 1): PointerEvent {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    button: 0,
+    clientX: x,
+    clientY: y,
+  }) as PointerEvent
+  Object.defineProperty(event, "pointerId", { value: pointerId })
+  return event
 }
 
 describe("mountEditor", () => {
@@ -116,6 +123,50 @@ describe("mountEditor", () => {
     root.remove()
   })
 
+  it.each(["lostpointercapture", "blur", "destroy"])(
+    "cleans an active move on %s without committing or leaving listeners",
+    (reason) => {
+      const root = document.createElement("div")
+      document.body.append(root)
+      const editor = createEditor(createDocumentWithPage())
+      addRectangle(editor, { id: "node-1" })
+      const dispatch = vi.spyOn(editor, "dispatch")
+      const mounted = mountEditor(root, editor, { pageId: "page-1" })
+      const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+      const setPointerCapture = vi.fn()
+      const releasePointerCapture = vi.fn()
+      node.setPointerCapture = setPointerCapture
+      node.releasePointerCapture = releasePointerCapture
+
+      node.dispatchEvent(pointerEvent("pointerdown", 10, 20, 7))
+      window.dispatchEvent(pointerEvent("pointermove", 30, 40, 7))
+      expect(node.style.transform).toBe("translate(20px, 20px)")
+
+      if (reason === "lostpointercapture") {
+        node.dispatchEvent(pointerEvent("lostpointercapture", 30, 40, 7))
+      } else if (reason === "blur") {
+        window.dispatchEvent(new Event("blur"))
+      } else {
+        mounted.destroy()
+      }
+
+      expect(setPointerCapture).toHaveBeenCalledOnce()
+      expect(setPointerCapture).toHaveBeenCalledWith(7)
+      expect(releasePointerCapture).toHaveBeenCalledOnce()
+      expect(releasePointerCapture).toHaveBeenCalledWith(7)
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(node.style.transform).toBe("")
+
+      window.dispatchEvent(pointerEvent("pointermove", 50, 60, 7))
+      window.dispatchEvent(pointerEvent("pointerup", 50, 60, 7))
+      expect(node.style.transform).toBe("")
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(editor.getRecord("node-1")).toMatchObject({ layout: { x: 20, y: 30 } })
+      mounted.destroy()
+      root.remove()
+    },
+  )
+
   it("does not start transforms for locked rectangles", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())
@@ -143,16 +194,25 @@ describe("mountEditor", () => {
     mountEditor(root, editor, { pageId: "page-1" })
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
     const handle = root.querySelector<HTMLElement>("[data-testid='resize-node-1-se']")!
+    const setPointerCapture = vi.fn()
+    const releasePointerCapture = vi.fn()
+    handle.setPointerCapture = setPointerCapture
+    handle.releasePointerCapture = releasePointerCapture
 
-    handle.dispatchEvent(pointerEvent("pointerdown", 120, 80))
-    window.dispatchEvent(pointerEvent("pointermove", -20, -40))
+    handle.dispatchEvent(pointerEvent("pointerdown", 120, 80, 9))
+    window.dispatchEvent(pointerEvent("pointermove", -20, -40, 9))
 
     expect(node.style.width).toBe("1px")
     expect(node.style.height).toBe("1px")
     expect(dispatch).not.toHaveBeenCalled()
 
-    window.dispatchEvent(pointerEvent("pointerup", -20, -40))
+    window.dispatchEvent(pointerEvent("pointerup", -20, -40, 9))
+    window.dispatchEvent(pointerEvent("pointerup", -20, -40, 9))
 
+    expect(setPointerCapture).toHaveBeenCalledOnce()
+    expect(setPointerCapture).toHaveBeenCalledWith(9)
+    expect(releasePointerCapture).toHaveBeenCalledOnce()
+    expect(releasePointerCapture).toHaveBeenCalledWith(9)
     expect(dispatch).toHaveBeenCalledTimes(1)
     expect(dispatch).toHaveBeenCalledWith({
       id: "node.resize",
@@ -185,6 +245,8 @@ describe("mountEditor", () => {
       new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }),
     )
     expect(redo).toHaveBeenCalledTimes(1)
+    shell.dispatchEvent(new KeyboardEvent("keydown", { key: "y", ctrlKey: true, bubbles: true }))
+    expect(redo).toHaveBeenCalledTimes(2)
     root.remove()
   })
 

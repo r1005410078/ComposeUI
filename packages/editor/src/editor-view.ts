@@ -371,6 +371,7 @@ export function mountEditor(
     event: PointerEvent,
     node: NodeRecord,
     element: HTMLElement,
+    captureTarget: Element,
     kind: "move" | "resize",
   ): void => {
     if (event.button !== 0 || shell.dataset.mode !== "stage-edit" || isTransformLocked(node)) return
@@ -393,6 +394,7 @@ export function mountEditor(
     }
 
     const pointerId = event.pointerId
+    let ended = false
     const matchesPointer = (nextEvent: PointerEvent): boolean =>
       pointerId === undefined ||
       nextEvent.pointerId === undefined ||
@@ -410,11 +412,22 @@ export function mountEditor(
       window.removeEventListener("pointerup", onPointerUp)
       window.removeEventListener("pointercancel", onPointerCancel)
       window.removeEventListener("keydown", onInteractionKeyDown)
+      window.removeEventListener("blur", onWindowBlur)
+      captureTarget.removeEventListener("lostpointercapture", onLostPointerCapture)
     }
     const cancel = (): void => {
+      if (ended) return
+      ended = true
       removeListeners()
       restorePreview()
       if (activeInteraction?.cancel === cancel) activeInteraction = undefined
+      if (typeof captureTarget.releasePointerCapture === "function") {
+        try {
+          captureTarget.releasePointerCapture(pointerId)
+        } catch {
+          // Capture may already be gone when the browser reports lostpointercapture.
+        }
+      }
     }
     const updatePreview = (nextEvent: PointerEvent): boolean => {
       if (!matchesPointer(nextEvent)) return false
@@ -453,15 +466,30 @@ export function mountEditor(
     function onPointerCancel(nextEvent: PointerEvent): void {
       if (matchesPointer(nextEvent)) cancel()
     }
+    function onLostPointerCapture(nextEvent: Event): void {
+      if (matchesPointer(nextEvent as PointerEvent)) cancel()
+    }
+    function onWindowBlur(): void {
+      cancel()
+    }
     function onInteractionKeyDown(keyEvent: KeyboardEvent): void {
       if (keyEvent.key === "Escape") cancel()
     }
 
     activeInteraction = { cancel }
+    if (typeof captureTarget.setPointerCapture === "function") {
+      try {
+        captureTarget.setPointerCapture(pointerId)
+      } catch {
+        // Synthetic events and partial DOM implementations may not support active capture.
+      }
+    }
     window.addEventListener("pointermove", onPointerMove)
     window.addEventListener("pointerup", onPointerUp)
     window.addEventListener("pointercancel", onPointerCancel)
     window.addEventListener("keydown", onInteractionKeyDown)
+    window.addEventListener("blur", onWindowBlur)
+    captureTarget.addEventListener("lostpointercapture", onLostPointerCapture)
   }
 
   const onBoardPointerDown = (event: PointerEvent): void => {
@@ -474,13 +502,17 @@ export function mountEditor(
     if (id === undefined) return
     const record = currentStore.get(id)
     if (record?.typeName !== "node" || record.nodeType !== "rectangle") return
-    startPointerInteraction(event, record, nodeElement, handle === null ? "move" : "resize")
+    startPointerInteraction(event, record, nodeElement, target, handle === null ? "move" : "resize")
   }
   const onShellKeyDown = (event: KeyboardEvent): void => {
-    if (document.activeElement !== shell || event.key.toLowerCase() !== "z") return
+    if (document.activeElement !== shell) return
+    const key = event.key.toLowerCase()
     if (!event.metaKey && !event.ctrlKey) return
+    const undo = key === "z" && !event.shiftKey
+    const redo = (key === "z" && event.shiftKey) || (key === "y" && event.ctrlKey)
+    if (!undo && !redo) return
     event.preventDefault()
-    if (event.shiftKey) coreEditor.redo()
+    if (redo) coreEditor.redo()
     else coreEditor.undo()
   }
   board.addEventListener("pointerdown", onBoardPointerDown)
