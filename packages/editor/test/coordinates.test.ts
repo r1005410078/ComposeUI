@@ -51,4 +51,16 @@ describe("Workspace coordinates", () => {
       "INVALID_COORDINATE",
     )
   })
+
+  it("rejects non-finite calculated coordinates", () => {
+    expect(() => worldToScreen({ x: Number.MAX_VALUE, y: 0 }, { x: 0, y: 0, zoom: 2 })).toThrow(
+      RangeError,
+    )
+    expect(() =>
+      screenToWorld({ x: Number.MAX_VALUE, y: 0 }, { x: -Number.MAX_VALUE, y: 0, zoom: 1 }),
+    ).toThrow(RangeError)
+    expect(() => zoomAt({ x: 0, y: 0, zoom: 1 }, { x: Number.MAX_VALUE, y: 0 }, 2)).toThrow(
+      RangeError,
+    )
+  })
 })

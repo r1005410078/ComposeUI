@@ -25,22 +25,32 @@ function assertValidViewport(viewport: Viewport): void {
   assertValidZoom(viewport.zoom)
 }
 
+function assertFiniteResult(point: Point): void {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    throw new RangeError("COORDINATE_RESULT_OUT_OF_RANGE")
+  }
+}
+
 export function worldToScreen(point: Point, viewport: Viewport): Point {
   assertValidPoint(point)
   assertValidViewport(viewport)
-  return {
+  const result = {
     x: point.x * viewport.zoom + viewport.x,
     y: point.y * viewport.zoom + viewport.y,
   }
+  assertFiniteResult(result)
+  return result
 }
 
 export function screenToWorld(point: Point, viewport: Viewport): Point {
   assertValidPoint(point)
   assertValidViewport(viewport)
-  return {
+  const result = {
     x: (point.x - viewport.x) / viewport.zoom,
     y: (point.y - viewport.y) / viewport.zoom,
   }
+  assertFiniteResult(result)
+  return result
 }
 
 export function worldToParentLocal(point: Point, parentWorldOrigin: Point): Point {
@@ -57,9 +67,11 @@ export function zoomAt(viewport: Viewport, screenPoint: Point, nextZoom: number)
   assertValidPoint(screenPoint)
   assertValidZoom(nextZoom)
   const world = screenToWorld(screenPoint, viewport)
-  return {
+  const result = {
     x: screenPoint.x - world.x * nextZoom,
     y: screenPoint.y - world.y * nextZoom,
     zoom: nextZoom,
   }
+  assertFiniteResult(result)
+  return result
 }
