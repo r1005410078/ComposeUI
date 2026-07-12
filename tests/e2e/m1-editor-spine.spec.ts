@@ -600,7 +600,7 @@ test("persists a closed History panel across reload", async ({ page }) => {
   await historyTab.press("Delete")
   await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0)
   await expect(
-    page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v1")),
+    page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v2")),
   ).resolves.not.toContain('"component":"history"')
   await page.reload()
   await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0)
@@ -611,7 +611,7 @@ test("falls back to the canonical workspace when persisted layout JSON is corrup
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("composeui:workspace:2d:v1", "{not valid json")
+    localStorage.setItem("composeui:workspace:2d:v2", "{not valid json")
   })
   await page.goto("/")
 

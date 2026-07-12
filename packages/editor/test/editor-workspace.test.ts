@@ -41,12 +41,30 @@ function createDockviewFake(
   factory: DockviewFactory
   dockview: EditorWorkspaceDockview
   panels: Map<string, FakePanel>
-  panelOptions: Map<string, { component: string; tabComponent?: string }>
+  panelOptions: Map<
+    string,
+    {
+      component: string
+      tabComponent?: string
+      position?: { direction?: string; referencePanel?: string }
+      initialWidth?: number
+      initialHeight?: number
+    }
+  >
   tabs: Map<string, HTMLElement>
   triggerLayoutChange: () => void
 } {
   const panels = new Map<string, FakePanel>()
-  const panelOptions = new Map<string, { component: string; tabComponent?: string }>()
+  const panelOptions = new Map<
+    string,
+    {
+      component: string
+      tabComponent?: string
+      position?: { direction?: string; referencePanel?: string }
+      initialWidth?: number
+      initialHeight?: number
+    }
+  >()
   const tabs = new Map<string, HTMLElement>()
   const tabList = document.createElement("div")
   tabList.addEventListener("keydown", (event) => {
@@ -96,6 +114,9 @@ function createDockviewFake(
       panelOptions.set(options.id, {
         component: options.component,
         ...(options.tabComponent === undefined ? {} : { tabComponent: options.tabComponent }),
+        ...(options.position === undefined ? {} : { position: options.position }),
+        ...(options.initialWidth === undefined ? {} : { initialWidth: options.initialWidth }),
+        ...(options.initialHeight === undefined ? {} : { initialHeight: options.initialHeight }),
       })
       const renderer = componentFactory?.({ id: options.id, name: options.component })
       if (renderer !== undefined) {
@@ -211,10 +232,10 @@ describe("editor workspace", () => {
     })
 
     expect([...fake.panels.keys()]).toEqual([
+      "canvas:page-1",
       "scene",
       "resources",
       "history",
-      "canvas:page-1",
       "inspector",
       "signals",
       "output",
@@ -222,6 +243,27 @@ describe("editor workspace", () => {
       "animation",
       "shader-editor",
     ])
+    expect(fake.panelOptions.get("scene")).toMatchObject({
+      position: { direction: "left", referencePanel: "canvas:page-1" },
+      initialWidth: 280,
+    })
+    expect(fake.panelOptions.get("resources")).toMatchObject({
+      position: { direction: "below", referencePanel: "scene" },
+      initialHeight: 280,
+    })
+    expect(fake.panelOptions.get("history")?.position).toEqual({ referencePanel: "resources" })
+    expect(fake.panelOptions.get("inspector")).toMatchObject({
+      position: { direction: "right", referencePanel: "canvas:page-1" },
+      initialWidth: 300,
+    })
+    expect(fake.panelOptions.get("signals")?.position).toEqual({ referencePanel: "inspector" })
+    expect(fake.panelOptions.get("output")).toMatchObject({
+      position: { direction: "below", referencePanel: "canvas:page-1" },
+      initialHeight: 220,
+    })
+    for (const id of ["debugger", "animation", "shader-editor"]) {
+      expect(fake.panelOptions.get(id)?.position).toEqual({ referencePanel: "output" })
+    }
     expect(mounted.api.closePanel("canvas:page-1")).toBe(false)
     expect(root.querySelector("[data-testid='workspace-mode-bar']")).toBeNull()
   })

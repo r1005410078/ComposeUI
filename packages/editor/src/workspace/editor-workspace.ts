@@ -318,9 +318,46 @@ export function mountEditorWorkspace(
           ? { initialWidth: descriptor.defaultSize }
           : { initialHeight: descriptor.defaultSize }),
     }
-    if (actualId === "scene") optionsForPanel.position = { direction: "left" }
-    else if (actualId === canvasId(pageId)) optionsForPanel.position = { direction: "right" }
-    else if (descriptor.defaultPosition === "bottom") {
+    if (actualId === canvasId(pageId)) {
+      // Canvas is the anchor for the Godot-style default layout.
+      optionsForPanel.minimumWidth = 320
+      optionsForPanel.minimumHeight = 500
+    } else if (actualId === "scene") {
+      optionsForPanel.position = { direction: "left", referencePanel: canvasId(pageId) }
+      optionsForPanel.initialWidth = 280
+      optionsForPanel.minimumWidth = 220
+      optionsForPanel.maximumWidth = 320
+      optionsForPanel.minimumHeight = 500
+    } else if (actualId === "resources") {
+      optionsForPanel.position = { direction: "below", referencePanel: "scene" }
+      optionsForPanel.initialHeight = 280
+      optionsForPanel.minimumWidth = 220
+      optionsForPanel.maximumWidth = 320
+      optionsForPanel.minimumHeight = 120
+    } else if (actualId === "history") {
+      optionsForPanel.position = { referencePanel: "resources" }
+      optionsForPanel.minimumWidth = 220
+      optionsForPanel.maximumWidth = 320
+      optionsForPanel.minimumHeight = 120
+    } else if (actualId === "inspector") {
+      optionsForPanel.position = { direction: "right", referencePanel: canvasId(pageId) }
+      optionsForPanel.initialWidth = 300
+      optionsForPanel.minimumWidth = 240
+      optionsForPanel.maximumWidth = 320
+    } else if (actualId === "signals") {
+      optionsForPanel.position = { referencePanel: "inspector" }
+      optionsForPanel.minimumWidth = 240
+      optionsForPanel.maximumWidth = 320
+    } else if (actualId === "output") {
+      optionsForPanel.position = { direction: "below", referencePanel: canvasId(pageId) }
+      optionsForPanel.initialHeight = 220
+      optionsForPanel.minimumHeight = 120
+      optionsForPanel.maximumHeight = 360
+    } else if (["debugger", "animation", "shader-editor"].includes(actualId)) {
+      optionsForPanel.position = { referencePanel: "output" }
+      optionsForPanel.minimumHeight = 120
+      optionsForPanel.maximumHeight = 360
+    } else if (descriptor.defaultPosition === "bottom") {
       optionsForPanel.position = { direction: "below", referencePanel: canvasId(pageId) }
     } else if (descriptor.defaultPosition === "right") {
       optionsForPanel.position = { direction: "right", referencePanel: canvasId(pageId) }
@@ -331,10 +368,10 @@ export function mountEditorWorkspace(
   }
 
   const defaultPanelIds = [
+    CANVAS,
     "scene",
     "resources",
     "history",
-    CANVAS,
     "inspector",
     "signals",
     "output",

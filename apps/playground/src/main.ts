@@ -6,7 +6,7 @@ import {
 import { createM1Scenario } from "./m1-free-layout-scenario"
 import "./styles.css"
 
-const PLAYGROUND_LAYOUT_KEY = "composeui:workspace:2d:v1"
+const PLAYGROUND_LAYOUT_KEY = "composeui:workspace:2d:v2"
 
 export function createPlaygroundLayoutStore(storage: StorageLike) {
   return createLocalStorageLayoutStore(storage, PLAYGROUND_LAYOUT_KEY)

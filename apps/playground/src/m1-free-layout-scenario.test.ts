@@ -25,7 +25,7 @@ describe("M1 Playground scenario", () => {
 
     await store.save({ version: 1, modeId: "2d", layout })
 
-    expect(storage.getItem("composeui:workspace:2d:v1")).toContain('"modeId":"2d"')
+    expect(storage.getItem("composeui:workspace:2d:v2")).toContain('"modeId":"2d"')
     await expect(store.load()).resolves.toEqual({ version: 1, modeId: "2d", layout })
   })
 
