@@ -11,7 +11,11 @@ describe("editor theme artifact", () => {
 
     const sourcePath = `${editorRoot}src/theme.css`
     const artifactPath = `${editorRoot}dist/theme.css`
+    const bundledEditorPath = `${editorRoot}dist/editor.css`
     expect(existsSync(artifactPath)).toBe(true)
     expect(readFileSync(artifactPath, "utf8")).toBe(readFileSync(sourcePath, "utf8"))
+
+    const bundledEditor = readFileSync(bundledEditorPath, "utf8")
+    expect(bundledEditor.match(/--composeui-surface-app:/g)).toHaveLength(1)
   })
 })

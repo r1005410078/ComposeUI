@@ -1,3 +1,5 @@
+@import "./theme.css";
+
 .composeui-editor,
 .composeui-editor__component-tree,
 .composeui-editor__workspace-host {

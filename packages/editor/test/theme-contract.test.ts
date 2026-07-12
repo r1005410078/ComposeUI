@@ -66,6 +66,12 @@ describe("editor theme contract", () => {
     }
   })
 
+  it("makes the standalone editor stylesheet self-contained for source consumers", () => {
+    const editorCss = readEditorFile("src/editor.css")
+
+    expect(editorCss.startsWith('@import "./theme.css";')).toBe(true)
+  })
+
   it("tokenizes Dockview group backgrounds and renders the active tab indicator", () => {
     const workspaceCss = readEditorFile("src/workspace/workspace.css")
 
