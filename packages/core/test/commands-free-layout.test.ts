@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { canonicalizeDocument, createEditor, createEmptyDocument } from "../src/index"
+import type { NodeRecord } from "../src/index"
 
 const createRectangle = (
   editor: ReturnType<typeof createEditor>,
@@ -18,6 +19,38 @@ const createRectangle = (
       fill: "#111827",
     },
   })
+
+const initializedTree = () => {
+  const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
+  const parent: NodeRecord = {
+    id: "parent",
+    revision: 0,
+    typeName: "node",
+    nodeType: "rectangle",
+    name: "Parent",
+    parentId: "page-1",
+    index: "a0",
+    layout: { mode: "free", x: 100, y: 200, width: 100, height: 80 },
+    visible: true,
+    locked: false,
+    props: { fill: "#111827" },
+  }
+  const child: NodeRecord = {
+    ...parent,
+    id: "child",
+    name: "Child",
+    parentId: "parent",
+    layout: { ...parent.layout, x: 20, y: 30 },
+  }
+  const grandchild: NodeRecord = {
+    ...child,
+    id: "grandchild",
+    name: "Grandchild",
+    parentId: "child",
+    layout: { ...child.layout, x: 4, y: 5 },
+  }
+  return { ...document, records: [...document.records, parent, child, grandchild] }
+}
 
 describe("Free Layout commands", () => {
   it("executes all eight commands through one complete lifecycle", () => {
@@ -172,6 +205,40 @@ describe("Free Layout commands", () => {
 
     expect(editor.undo().ok).toBe(true)
     expect(canonicalizeDocument(editor.getStore())).toEqual(beforeDelete)
+  })
+
+  it("moves only selected top-level nodes and undoes the batch in one step", () => {
+    const editor = createEditor(initializedTree())
+    const before = canonicalizeDocument(editor.store)
+
+    expect(
+      editor.dispatch({
+        id: "node.move",
+        payload: { ids: ["parent", "child"], delta: { x: 10, y: 15 } },
+      }).ok,
+    ).toBe(true)
+    expect(editor.store.get("parent")).toMatchObject({ layout: { x: 110, y: 215 } })
+    expect(editor.store.get("child")).toMatchObject({ layout: { x: 20, y: 30 } })
+    expect(editor.undo().ok).toBe(true)
+    expect(canonicalizeDocument(editor.store)).toEqual(before)
+    expect(editor.canUndo()).toBe(false)
+  })
+
+  it("deletes an initialized subtree and restores it with one undo step", () => {
+    const editor = createEditor(initializedTree())
+    const before = canonicalizeDocument(editor.store)
+    let eventCount = 0
+    editor.subscribe(() => eventCount++)
+
+    expect(editor.dispatch({ id: "node.delete", payload: { ids: ["parent"] } }).ok).toBe(true)
+    expect(editor.store.get("parent")).toBeUndefined()
+    expect(editor.store.get("child")).toBeUndefined()
+    expect(editor.store.get("grandchild")).toBeUndefined()
+    expect(eventCount).toBe(1)
+    expect(editor.undo().ok).toBe(true)
+    expect(canonicalizeDocument(editor.store)).toEqual(before)
+    expect(editor.canUndo()).toBe(false)
+    expect(eventCount).toBe(2)
   })
 
   it("rejects deleting the page board", () => {

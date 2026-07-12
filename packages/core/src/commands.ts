@@ -72,7 +72,9 @@ export interface EditorChangeEvent {
 }
 
 export interface Editor {
+  readonly store: RecordStore
   dispatch(command: EditorCommand): Result<void>
+  execute(command: EditorCommand): Result<void>
   getRecord(id: string): ReturnType<RecordStore["get"]>
   getStore(): RecordStore
   undo(): Result<void>
@@ -195,7 +197,8 @@ function prepareCreate(store: RecordStore, command: CreateNodeCommand): Prepared
 
 function prepareMove(store: RecordStore, command: MoveNodeCommand): PreparedCommand {
   const nodes: NodeRecord[] = []
-  for (const id of new Set(command.payload.ids)) {
+  const selected = new Set(command.payload.ids)
+  for (const id of selected) {
     const result = nodeResult(store, id)
     if (!result.ok) return result
     const locked = lockedTransformBarrier(store, result.value)
@@ -208,8 +211,17 @@ function prepareMove(store: RecordStore, command: MoveNodeCommand): PreparedComm
     nodes.push(result.value)
   }
 
+  const topLevelNodes = nodes.filter((node) => {
+    let parent = store.get(node.parentId)
+    while (parent?.typeName === "node") {
+      if (selected.has(parent.id)) return false
+      parent = store.get(parent.parentId)
+    }
+    return true
+  })
+
   return success((draft) => {
-    for (const node of nodes) {
+    for (const node of topLevelNodes) {
       draft.update(node.id, {
         layout: {
           ...node.layout,
@@ -374,22 +386,28 @@ export function createEditor(document: PageDocument): Editor {
     return { ok: true, value: undefined, diagnostics: [] }
   }
 
-  return {
-    dispatch(command) {
-      const result = runCommand(store, command)
-      if (!result.ok) return { ok: false, diagnostics: result.diagnostics }
+  const dispatch = (command: EditorCommand): Result<void> => {
+    const result = runCommand(store, command)
+    if (!result.ok) return { ok: false, diagnostics: result.diagnostics }
 
-      store = result.store
-      const entry: HistoryEntry = {
-        transactionId: `transaction-${++transactionSequence}`,
-        label: command.id,
-        forward: result.patch,
-        inverse: result.inverse,
-      }
-      history.record(entry)
-      emit({ store, transaction: entry, origin: result.origin })
-      return { ok: true, value: undefined, diagnostics: [] }
+    store = result.store
+    const entry: HistoryEntry = {
+      transactionId: `transaction-${++transactionSequence}`,
+      label: command.id,
+      forward: result.patch,
+      inverse: result.inverse,
+    }
+    history.record(entry)
+    emit({ store, transaction: entry, origin: result.origin })
+    return { ok: true, value: undefined, diagnostics: [] }
+  }
+
+  const editor: Editor = {
+    get store() {
+      return store
     },
+    dispatch,
+    execute: dispatch,
     getRecord: (id) => store.get(id),
     getStore: () => store,
     undo: () => applyHistory("undo"),
@@ -401,4 +419,5 @@ export function createEditor(document: PageDocument): Editor {
       return () => listeners.delete(listener)
     },
   }
+  return editor
 }

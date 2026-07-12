@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { createEditor, createEmptyDocument, History, RecordStore } from "../src/index"
-import type { EditorChangeEvent, HistoryEntry } from "../src/index"
+import { applyPatch, createEditor, createEmptyDocument, History, RecordStore } from "../src/index"
+import type { EditorChangeEvent, HistoryEntry, NodeRecord } from "../src/index"
 
 const createNode = (editor: ReturnType<typeof createEditor>, id: string) =>
   editor.dispatch({
@@ -18,6 +18,59 @@ const createNode = (editor: ReturnType<typeof createEditor>, id: string) =>
   })
 
 describe("Editor history", () => {
+  it("does not record initialized records or external patch applications", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    const events: EditorChangeEvent[] = []
+    editor.subscribe((event) => events.push(event))
+    const externalNode: NodeRecord = {
+      id: "external",
+      revision: 0,
+      typeName: "node",
+      nodeType: "rectangle",
+      name: "External",
+      parentId: "page-1",
+      index: "a0",
+      layout: { mode: "free", x: 1, y: 2, width: 10, height: 10 },
+      visible: true,
+      locked: false,
+      props: { fill: "#000000" },
+    }
+
+    expect(editor.canUndo()).toBe(false)
+    const external = applyPatch(editor.store, {
+      created: [externalNode],
+      updated: [],
+      removed: [],
+    })
+
+    expect(external.ok).toBe(true)
+    expect(editor.store.get("external")).toBeUndefined()
+    expect(editor.canUndo()).toBe(false)
+    expect(events).toHaveLength(0)
+  })
+
+  it("exposes the live store and execute while preserving dispatch compatibility", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+
+    expect(editor.store).toBe(editor.getStore())
+    expect(
+      editor.execute({
+        id: "node.create",
+        payload: {
+          id: "node-1",
+          parentId: "page-1",
+          name: "Card",
+          x: 0,
+          y: 0,
+          width: 20,
+          height: 20,
+          fill: "#2563eb",
+        },
+      }).ok,
+    ).toBe(true)
+    expect(editor.store.get("node-1")).toBeDefined()
+  })
+
   it("undoes and redoes one multi-node move as one history item", () => {
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     createNode(editor, "node-1")
