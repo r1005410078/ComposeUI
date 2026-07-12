@@ -183,6 +183,34 @@
   vector-effect: non-scaling-stroke;
 }
 
+.composeui-editor__selection-overlay .composeui-editor__group-resize-handle {
+  cursor: default;
+  fill: #ffffff;
+  height: 8px;
+  pointer-events: auto;
+  width: 8px;
+}
+
+.composeui-editor__selection-overlay [data-group-resize-handle="n"],
+.composeui-editor__selection-overlay [data-group-resize-handle="s"] {
+  cursor: ns-resize;
+}
+
+.composeui-editor__selection-overlay [data-group-resize-handle="e"],
+.composeui-editor__selection-overlay [data-group-resize-handle="w"] {
+  cursor: ew-resize;
+}
+
+.composeui-editor__selection-overlay [data-group-resize-handle="ne"],
+.composeui-editor__selection-overlay [data-group-resize-handle="sw"] {
+  cursor: nesw-resize;
+}
+
+.composeui-editor__selection-overlay [data-group-resize-handle="nw"],
+.composeui-editor__selection-overlay [data-group-resize-handle="se"] {
+  cursor: nwse-resize;
+}
+
 .composeui-editor__selection-overlay [data-marquee="true"] {
   fill: rgb(37 99 235 / 12%);
   stroke-dasharray: 4 3;

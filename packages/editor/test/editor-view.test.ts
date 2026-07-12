@@ -580,6 +580,105 @@ describe("mountEditor", () => {
     expect(editor.getRecord("node-1")).toMatchObject({ layout: { width: 1, height: 1 } })
   })
 
+  it("resizes all selected sibling rectangles from the group southeast handle", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", x: 20, y: 30, width: 100, height: 80 })
+    addRectangle(editor, { id: "node-b", x: 200, y: 160, width: 120, height: 80 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(["node-a", "node-b"])
+
+    const handles = [...root.querySelectorAll<SVGRectElement>("[data-group-resize-handle]")]
+    expect(handles.map((handle) => handle.dataset.testid)).toEqual([
+      "group-resize-n",
+      "group-resize-ne",
+      "group-resize-e",
+      "group-resize-se",
+      "group-resize-s",
+      "group-resize-sw",
+      "group-resize-w",
+      "group-resize-nw",
+    ])
+    expect(handles.every((handle) => handle.getAttribute("width") === "8")).toBe(true)
+    const southeast = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
+    const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
+    const second = root.querySelector<HTMLElement>("[data-node-id='node-b']")!
+    const frame = root.querySelector<SVGRectElement>("[data-testid='group-selection-frame']")!
+    const firstOutline = root.querySelector<SVGRectElement>("[data-testid='selection-node-a']")!
+    const initialFrameWidth = frame.getAttribute("width")
+    const initialOutlineX = firstOutline.getAttribute("x")
+
+    southeast.dispatchEvent(pointerEvent("pointerdown", 320, 240, 11))
+    window.dispatchEvent(pointerEvent("pointermove", 360, 280, 11))
+
+    expect(first.style.width).not.toBe("100px")
+    expect(second.style.width).not.toBe("120px")
+    const previewFrame = root.querySelector<SVGRectElement>(
+      "[data-testid='group-selection-frame']",
+    )!
+    const previewOutline = root.querySelector<SVGRectElement>("[data-testid='selection-node-a']")!
+    expect(previewFrame.getAttribute("width")).not.toBe(initialFrameWidth)
+    expect(previewOutline.getAttribute("x")).toBe(initialOutlineX)
+    expect(dispatch).not.toHaveBeenCalled()
+
+    window.dispatchEvent(pointerEvent("pointerup", 360, 280, 11))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.resizeMany",
+      payload: {
+        items: [
+          { id: "node-a", x: 20, y: 30, width: 113.33333333333333, height: 95.23809523809524 },
+          { id: "node-b", x: 224, y: 184.76190476190476, width: 136, height: 95.23809523809524 },
+        ],
+      },
+    })
+    expect(editor.getRecord("node-a")).toMatchObject({ layout: { width: 113.33333333333333 } })
+    expect(editor.getRecord("node-b")).toMatchObject({ layout: { width: 136 } })
+    mounted.destroy()
+    root.remove()
+  })
+
+  it.each(["pointercancel", "Escape", "blur"] as const)(
+    "cancels group resize on %s and restores persisted layouts",
+    (reason) => {
+      const root = document.createElement("div")
+      document.body.append(root)
+      const editor = createEditor(createDocumentWithPage())
+      addRectangle(editor, { id: "node-a", x: 20, y: 30 })
+      addRectangle(editor, { id: "node-b", x: 200, y: 160 })
+      const dispatch = vi.spyOn(editor, "dispatch")
+      const mounted = mountEditor(root, editor, { pageId: "page-1" })
+      mounted.session.setSelection(["node-a", "node-b"])
+      const handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
+      const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
+      const frame = root.querySelector<SVGRectElement>("[data-testid='group-selection-frame']")!
+
+      handle.dispatchEvent(pointerEvent("pointerdown", 320, 240, 12))
+      window.dispatchEvent(pointerEvent("pointermove", 360, 280, 12))
+      expect(first.style.width).not.toBe("120px")
+
+      if (reason === "pointercancel") window.dispatchEvent(pointerEvent(reason, 360, 280, 12))
+      else if (reason === "Escape")
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: reason }))
+      else window.dispatchEvent(new Event(reason))
+
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(first.style.left).toBe("20px")
+      expect(first.style.top).toBe("30px")
+      expect(first.style.width).toBe("120px")
+      expect(first.style.height).toBe("80px")
+      expect(frame.getAttribute("transform")).toBeNull()
+      expect(editor.getRecord("node-a")).toMatchObject({
+        layout: { x: 20, y: 30, width: 120, height: 80 },
+      })
+      mounted.destroy()
+      root.remove()
+    },
+  )
+
   it("handles undo and redo only when the shell itself has focus", () => {
     const root = document.createElement("div")
     document.body.append(root)

@@ -1,8 +1,10 @@
 import type { Editor, NodeRecord, PageRecord, RecordStore } from "@composeui/core"
 import type { EditorChangeEvent, TransactionPatch } from "@composeui/core"
 import { safeColor } from "./colors"
-import { worldToScreen, zoomAt } from "./coordinates"
+import { screenToWorld, worldToScreen, zoomAt } from "./coordinates"
 import { createComponentTree } from "./component-tree"
+import { resizeGroup, selectionBounds } from "./group-resize"
+import type { GroupResizeHandle, GroupResizeItem } from "./group-resize"
 import { createPointerMoveSession } from "./interactions"
 import type { PointerMoveSession } from "./interactions"
 import { EditorSession } from "./session"
@@ -11,6 +13,16 @@ import type { EditorSessionState } from "./session"
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 const SAFE_PAGE_BACKGROUND = "#ffffff"
 const SAFE_NODE_FILL = "#2563eb"
+const GROUP_RESIZE_HANDLES: readonly GroupResizeHandle[] = [
+  "n",
+  "ne",
+  "e",
+  "se",
+  "s",
+  "sw",
+  "w",
+  "nw",
+]
 
 export interface MountEditorOptions {
   pageId: string
@@ -39,6 +51,13 @@ interface CanvasView {
 
 interface ActivePointerInteraction {
   cancel(): void
+}
+
+interface GroupSelectionPreview {
+  items: GroupResizeItem[]
+  bounds: ReturnType<typeof selectionBounds>
+  parentWorldX: number
+  parentWorldY: number
 }
 
 function indexChildren(store: RecordStore): Map<string, NodeRecord[]> {
@@ -171,21 +190,77 @@ function collectVisibleNodes(
   }
 }
 
-function renderSelectionOverlay(
-  overlay: SVGSVGElement,
+function isTransformLocked(store: RecordStore, node: NodeRecord): boolean {
+  let current: NodeRecord | undefined = node
+  while (current !== undefined) {
+    if (current.locked) return true
+    const parent = store.get(current.parentId)
+    current = parent?.typeName === "node" ? parent : undefined
+  }
+  return false
+}
+
+function getGroupSelection(
+  store: RecordStore,
   visibleNodes: ReadonlyMap<string, VisibleNode>,
   state: EditorSessionState,
+): { items: GroupResizeItem[]; parentWorldX: number; parentWorldY: number } | undefined {
+  if (state.selection.length < 2) return undefined
+  const selected = state.selection.map((id) => visibleNodes.get(id))
+  if (selected.some((item) => item === undefined)) return undefined
+  const visible = selected as VisibleNode[]
+  const first = visible[0]!
+  if (first.node.nodeType !== "rectangle" || isTransformLocked(store, first.node)) return undefined
+  if (
+    visible.some(
+      (item) =>
+        item.node.nodeType !== "rectangle" ||
+        item.node.parentId !== first.node.parentId ||
+        isTransformLocked(store, item.node),
+    )
+  ) {
+    return undefined
+  }
+  return {
+    items: visible.map(({ node }) => ({
+      id: node.id,
+      x: node.layout.x,
+      y: node.layout.y,
+      width: node.layout.width,
+      height: node.layout.height,
+    })),
+    parentWorldX: first.worldX - first.node.layout.x,
+    parentWorldY: first.worldY - first.node.layout.y,
+  }
+}
+
+function renderSelectionOverlay(
+  overlay: SVGSVGElement,
+  store: RecordStore,
+  visibleNodes: ReadonlyMap<string, VisibleNode>,
+  state: EditorSessionState,
+  preview?: GroupSelectionPreview,
 ): void {
-  for (const outline of overlay.querySelectorAll("[data-selection-outline]")) outline.remove()
+  for (const element of overlay.querySelectorAll(
+    "[data-selection-outline], [data-group-selection-frame], [data-group-resize-handle]",
+  )) {
+    element.remove()
+  }
   const fragment = document.createDocumentFragment()
+  const previewItems = new Map(preview?.items.map((item) => [item.id, item]))
   for (const id of state.selection) {
     const selected = visibleNodes.get(id)
     if (selected === undefined) continue
-    const origin = worldToScreen({ x: selected.worldX, y: selected.worldY }, state.viewport)
+    const item = previewItems.get(id)
+    const worldX = item === undefined ? selected.worldX : preview!.parentWorldX + item.x
+    const worldY = item === undefined ? selected.worldY : preview!.parentWorldY + item.y
+    const width = item?.width ?? selected.node.layout.width
+    const height = item?.height ?? selected.node.layout.height
+    const origin = worldToScreen({ x: worldX, y: worldY }, state.viewport)
     const end = worldToScreen(
       {
-        x: selected.worldX + selected.node.layout.width,
-        y: selected.worldY + selected.node.layout.height,
+        x: worldX + width,
+        y: worldY + height,
       },
       state.viewport,
     )
@@ -197,6 +272,53 @@ function renderSelectionOverlay(
     rect.setAttribute("width", String(end.x - origin.x))
     rect.setAttribute("height", String(end.y - origin.y))
     fragment.append(rect)
+  }
+
+  const group = getGroupSelection(store, visibleNodes, state)
+  if (group !== undefined) {
+    const bounds = preview?.bounds ?? selectionBounds(group.items)
+    const origin = worldToScreen(
+      { x: group.parentWorldX + bounds.left, y: group.parentWorldY + bounds.top },
+      state.viewport,
+    )
+    const end = worldToScreen(
+      { x: group.parentWorldX + bounds.right, y: group.parentWorldY + bounds.bottom },
+      state.viewport,
+    )
+    const frame = document.createElementNS(SVG_NAMESPACE, "rect")
+    frame.dataset.testid = "group-selection-frame"
+    frame.dataset.groupSelectionFrame = "true"
+    frame.setAttribute("x", String(origin.x))
+    frame.setAttribute("y", String(origin.y))
+    frame.setAttribute("width", String(end.x - origin.x))
+    frame.setAttribute("height", String(end.y - origin.y))
+    fragment.append(frame)
+
+    const centerX = (origin.x + end.x) / 2
+    const centerY = (origin.y + end.y) / 2
+    const positions: Record<GroupResizeHandle, { x: number; y: number }> = {
+      n: { x: centerX, y: origin.y },
+      ne: { x: end.x, y: origin.y },
+      e: { x: end.x, y: centerY },
+      se: { x: end.x, y: end.y },
+      s: { x: centerX, y: end.y },
+      sw: { x: origin.x, y: end.y },
+      w: { x: origin.x, y: centerY },
+      nw: { x: origin.x, y: origin.y },
+    }
+    for (const handle of GROUP_RESIZE_HANDLES) {
+      const position = positions[handle]
+      const element = document.createElementNS(SVG_NAMESPACE, "rect")
+      element.classList.add("composeui-editor__group-resize-handle")
+      element.dataset.testid = `group-resize-${handle}`
+      element.dataset.groupResizeHandle = handle
+      element.setAttribute("x", String(position.x - 4))
+      element.setAttribute("y", String(position.y - 4))
+      element.setAttribute("width", "8")
+      element.setAttribute("height", "8")
+      element.setAttribute("aria-hidden", "true")
+      fragment.append(element)
+    }
   }
   overlay.append(fragment)
 }
@@ -395,21 +517,12 @@ export function mountEditor(
     grid.hidden = !sessionState.gridVisible
   }
   updateViewport()
-  renderSelectionOverlay(overlay, canvas.visibleNodes, sessionState)
+  renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
 
   let destroyed = false
   let spacePressed = false
+  let groupResizeActive = false
   let activeInteraction: ActivePointerInteraction | undefined
-
-  const isTransformLocked = (node: NodeRecord): boolean => {
-    let current: NodeRecord | undefined = node
-    while (current !== undefined) {
-      if (current.locked) return true
-      const parent = currentStore.get(current.parentId)
-      current = parent?.typeName === "node" ? parent : undefined
-    }
-    return false
-  }
 
   const startPointerInteraction = (
     event: PointerEvent,
@@ -418,7 +531,12 @@ export function mountEditor(
     captureTarget: Element,
     kind: "move" | "resize",
   ): void => {
-    if (event.button !== 0 || shell.dataset.mode !== "stage-edit" || isTransformLocked(node)) return
+    if (
+      event.button !== 0 ||
+      shell.dataset.mode !== "stage-edit" ||
+      isTransformLocked(currentStore, node)
+    )
+      return
 
     activeInteraction?.cancel()
     shell.focus()
@@ -435,7 +553,7 @@ export function mountEditor(
         ? (sessionState.selection.includes(node.id) ? sessionState.selection : [node.id]).filter(
             (id) => {
               const selected = currentStore.get(id)
-              return selected?.typeName === "node" && !isTransformLocked(selected)
+              return selected?.typeName === "node" && !isTransformLocked(currentStore, selected)
             },
           )
         : [node.id]
@@ -575,6 +693,156 @@ export function mountEditor(
     window.addEventListener("keydown", onInteractionKeyDown)
     window.addEventListener("blur", onWindowBlur)
     captureTarget.addEventListener("lostpointercapture", onLostPointerCapture)
+  }
+
+  const startGroupResizeInteraction = (event: PointerEvent, handle: GroupResizeHandle): void => {
+    if (event.button !== 0 || shell.dataset.mode !== "stage-edit") return
+    const group = getGroupSelection(currentStore, canvas.visibleNodes, sessionState)
+    if (group === undefined) return
+
+    activeInteraction?.cancel()
+    groupResizeActive = true
+    shell.focus()
+    event.preventDefault()
+
+    const initialItems = group.items.map((item) => ({ ...item }))
+    const initialBounds = selectionBounds(initialItems)
+    const pointerWorld = screenToWorld(
+      { x: event.clientX, y: event.clientY },
+      sessionState.viewport,
+    )
+    const startLocal = {
+      x: pointerWorld.x - group.parentWorldX,
+      y: pointerWorld.y - group.parentWorldY,
+    }
+    let pointerSession: PointerMoveSession
+    try {
+      pointerSession = createPointerMoveSession(
+        { x: event.clientX, y: event.clientY },
+        startLocal,
+        sessionState.viewport.zoom,
+      )
+    } catch {
+      return
+    }
+
+    const pointerId = event.pointerId
+    let ended = false
+    const matchesPointer = (nextEvent: PointerEvent): boolean =>
+      pointerId === undefined ||
+      nextEvent.pointerId === undefined ||
+      nextEvent.pointerId === pointerId
+    const restorePreview = (): void => {
+      for (const item of initialItems) {
+        const element = canvas.nodeElements.get(item.id)
+        const node = currentStore.get(item.id)
+        if (element !== undefined && node?.typeName === "node") applyNodeStyle(element, node)
+      }
+      renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
+    }
+    const removeListeners = (): void => {
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerCancel)
+      window.removeEventListener("keydown", onInteractionKeyDown)
+      window.removeEventListener("blur", onWindowBlur)
+      overlay.removeEventListener("lostpointercapture", onLostPointerCapture)
+    }
+    const cancel = (): void => {
+      if (ended) return
+      ended = true
+      groupResizeActive = false
+      removeListeners()
+      restorePreview()
+      if (activeInteraction?.cancel === cancel) activeInteraction = undefined
+      if (typeof overlay.releasePointerCapture === "function") {
+        try {
+          overlay.releasePointerCapture(pointerId)
+        } catch {
+          // Capture may already be gone when the browser reports lostpointercapture.
+        }
+      }
+    }
+    const updatePreview = (nextEvent: PointerEvent): boolean => {
+      if (!matchesPointer(nextEvent)) return false
+      try {
+        pointerSession.update({ x: nextEvent.clientX, y: nextEvent.clientY })
+        const resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
+        for (const item of resized.items) {
+          const element = canvas.nodeElements.get(item.id)
+          if (element === undefined) continue
+          element.style.left = `${item.x}px`
+          element.style.top = `${item.y}px`
+          element.style.width = `${item.width}px`
+          element.style.height = `${item.height}px`
+        }
+        renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState, {
+          items: resized.items,
+          bounds: resized.bounds,
+          parentWorldX: group.parentWorldX,
+          parentWorldY: group.parentWorldY,
+        })
+        return true
+      } catch {
+        cancel()
+        return false
+      }
+    }
+    function onPointerMove(nextEvent: PointerEvent): void {
+      updatePreview(nextEvent)
+    }
+    function onPointerUp(nextEvent: PointerEvent): void {
+      if (!updatePreview(nextEvent)) return
+      const resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
+      const changed = resized.items.some((item, index) => {
+        const initial = initialItems[index]!
+        return (
+          item.x !== initial.x ||
+          item.y !== initial.y ||
+          item.width !== initial.width ||
+          item.height !== initial.height
+        )
+      })
+      cancel()
+      if (changed) coreEditor.dispatch({ id: "node.resizeMany", payload: { items: resized.items } })
+    }
+    function onPointerCancel(nextEvent: PointerEvent): void {
+      if (matchesPointer(nextEvent)) cancel()
+    }
+    function onLostPointerCapture(nextEvent: Event): void {
+      if (matchesPointer(nextEvent as PointerEvent)) cancel()
+    }
+    function onWindowBlur(): void {
+      cancel()
+    }
+    function onInteractionKeyDown(keyEvent: KeyboardEvent): void {
+      if (keyEvent.key === "Escape") cancel()
+    }
+
+    activeInteraction = { cancel }
+    if (typeof overlay.setPointerCapture === "function") {
+      try {
+        overlay.setPointerCapture(pointerId)
+      } catch {
+        // Synthetic events and partial DOM implementations may not support active capture.
+      }
+    }
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerCancel)
+    window.addEventListener("keydown", onInteractionKeyDown)
+    window.addEventListener("blur", onWindowBlur)
+    overlay.addEventListener("lostpointercapture", onLostPointerCapture)
+  }
+
+  const onOverlayPointerDown = (event: PointerEvent): void => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const handle = target.closest<SVGElement>("[data-group-resize-handle]")?.dataset
+      .groupResizeHandle
+    if (handle === undefined || !GROUP_RESIZE_HANDLES.includes(handle as GroupResizeHandle)) return
+    event.stopPropagation()
+    startGroupResizeInteraction(event, handle as GroupResizeHandle)
   }
 
   const onBoardPointerDown = (event: PointerEvent): void => {
@@ -763,6 +1031,7 @@ export function mountEditor(
     delete shell.dataset.panning
   }
   board.addEventListener("pointerdown", onBoardPointerDown)
+  overlay.addEventListener("pointerdown", onOverlayPointerDown)
   workspace.addEventListener("pointerdown", onWorkspacePointerDown)
   workspace.addEventListener("wheel", onWorkspaceWheel, { passive: false })
   shell.addEventListener("keydown", onShellKeyDown)
@@ -780,7 +1049,7 @@ export function mountEditor(
     if (treeNeedsUpdate(event.transaction.forward)) {
       tree.update(currentStore, options.pageId, sessionState, true)
     }
-    renderSelectionOverlay(overlay, canvas.visibleNodes, sessionState)
+    renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
   }
   const onSessionChange = (nextState: EditorSessionState): void => {
     if (destroyed) return
@@ -791,12 +1060,13 @@ export function mountEditor(
       sessionState.viewport.zoom !== nextState.viewport.zoom
     const expandedChanged = !sameArray(sessionState.expanded, nextState.expanded)
     const gridChanged = sessionState.gridVisible !== nextState.gridVisible
+    if (groupResizeActive && (selectionChanged || viewportChanged)) activeInteraction?.cancel()
     sessionState = nextState
     if (expandedChanged) tree.update(currentStore, options.pageId, nextState, true)
     else if (selectionChanged) tree.update(currentStore, options.pageId, nextState, false)
     if (viewportChanged || gridChanged) updateViewport()
     if (selectionChanged || viewportChanged) {
-      renderSelectionOverlay(overlay, canvas.visibleNodes, nextState)
+      renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, nextState)
     }
   }
 
@@ -810,6 +1080,7 @@ export function mountEditor(
       destroyed = true
       activeInteraction?.cancel()
       board.removeEventListener("pointerdown", onBoardPointerDown)
+      overlay.removeEventListener("pointerdown", onOverlayPointerDown)
       workspace.removeEventListener("pointerdown", onWorkspacePointerDown)
       workspace.removeEventListener("wheel", onWorkspaceWheel)
       shell.removeEventListener("keydown", onShellKeyDown)
