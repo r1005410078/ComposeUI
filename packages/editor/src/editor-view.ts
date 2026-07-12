@@ -388,6 +388,7 @@ export function mountEditor(
   renderSelectionOverlay(overlay, canvas.visibleNodes, sessionState)
 
   let destroyed = false
+  let spacePressed = false
   let activeInteraction: ActivePointerInteraction | undefined
 
   const isTransformLocked = (node: NodeRecord): boolean => {
@@ -531,6 +532,10 @@ export function mountEditor(
   }
 
   const onBoardPointerDown = (event: PointerEvent): void => {
+    if (shell.dataset.mode === "stage-edit" && (spacePressed || event.pointerType === "touch")) {
+      startWorkspacePan(event)
+      return
+    }
     const target = event.target
     if (!(target instanceof Element)) return
     const handle = target.closest<HTMLElement>("[data-resize-node-id]")
@@ -641,7 +646,7 @@ export function mountEditor(
   }
   const onWorkspacePointerDown = (event: PointerEvent): void => {
     if (event.defaultPrevented || shell.dataset.mode !== "stage-edit") return
-    if (event.button === 1) {
+    if (spacePressed || event.pointerType === "touch" || event.button === 1) {
       startWorkspacePan(event)
       return
     }
@@ -659,6 +664,12 @@ export function mountEditor(
     session.setViewport(zoomAt(sessionState.viewport, point, nextZoom))
   }
   const onShellKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === " " || event.code === "Space") {
+      event.preventDefault()
+      spacePressed = true
+      shell.dataset.panning = "true"
+      return
+    }
     const target = event.target
     if (event.key === "Delete" && target instanceof Element) {
       const treeControl = target.closest<HTMLElement>("[data-tree-control='select']")
@@ -684,10 +695,21 @@ export function mountEditor(
     if (redo) coreEditor.redo()
     else coreEditor.undo()
   }
+  const onWindowKeyUp = (event: KeyboardEvent): void => {
+    if (event.key !== " " && event.code !== "Space") return
+    spacePressed = false
+    delete shell.dataset.panning
+  }
+  const onWindowBlur = (): void => {
+    spacePressed = false
+    delete shell.dataset.panning
+  }
   board.addEventListener("pointerdown", onBoardPointerDown)
   workspace.addEventListener("pointerdown", onWorkspacePointerDown)
   workspace.addEventListener("wheel", onWorkspaceWheel, { passive: false })
   shell.addEventListener("keydown", onShellKeyDown)
+  window.addEventListener("keyup", onWindowKeyUp)
+  window.addEventListener("blur", onWindowBlur)
 
   const onCoreChange = (event: EditorChangeEvent): void => {
     if (destroyed) return
@@ -732,6 +754,8 @@ export function mountEditor(
       workspace.removeEventListener("pointerdown", onWorkspacePointerDown)
       workspace.removeEventListener("wheel", onWorkspaceWheel)
       shell.removeEventListener("keydown", onShellKeyDown)
+      window.removeEventListener("keyup", onWindowKeyUp)
+      window.removeEventListener("blur", onWindowBlur)
       unsubscribeCore()
       unsubscribeSession()
       shell.remove()

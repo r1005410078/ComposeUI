@@ -150,6 +150,27 @@ describe("mountEditor", () => {
     expect(grid.hidden).toBe(true)
   })
 
+  it("pans with space plus left drag without starting marquee selection", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const shell = root.querySelector<HTMLElement>("[data-testid='editor-shell']")!
+    const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
+
+    shell.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: " ", code: "Space" }))
+    expect(shell.dataset.panning).toBe("true")
+    workspace.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 40, clientY: 50 }),
+    )
+    window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 90, clientY: 80 }))
+    window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 90, clientY: 80 }))
+
+    expect(mounted.session.getState().viewport).toMatchObject({ x: 50, y: 30, zoom: 1 })
+    expect(root.querySelector("[data-testid='marquee-selection']")).toBeNull()
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: " ", code: "Space" }))
+    expect(shell.dataset.panning).toBeUndefined()
+  })
+
   it("supports modifier multi-selection and renders one SVG outline per selected node", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())
