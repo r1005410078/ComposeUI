@@ -431,6 +431,8 @@ describe("mountEditor", () => {
     const second = root.querySelector<HTMLElement>("[data-node-id='node-b']")!
     const firstOutline = root.querySelector<SVGRectElement>("[data-testid='selection-node-a']")!
     const secondOutline = root.querySelector<SVGRectElement>("[data-testid='selection-node-b']")!
+    const groupFrame = root.querySelector<SVGRectElement>("[data-testid='group-selection-frame']")!
+    const groupHandle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
 
     first.dispatchEvent(pointerEvent("pointerdown", 100, 50))
     window.dispatchEvent(pointerEvent("pointermove", 140, 90))
@@ -439,6 +441,8 @@ describe("mountEditor", () => {
     expect(second.style.transform).toBe("translate(40px, 40px)")
     expect(firstOutline.getAttribute("transform")).toBe("translate(40 40)")
     expect(secondOutline.getAttribute("transform")).toBe("translate(40 40)")
+    expect(groupFrame.getAttribute("transform")).toBe("translate(40 40)")
+    expect(groupHandle.getAttribute("transform")).toBe("translate(40 40)")
     expect(dispatch).not.toHaveBeenCalled()
 
     window.dispatchEvent(pointerEvent("pointerup", 140, 90))

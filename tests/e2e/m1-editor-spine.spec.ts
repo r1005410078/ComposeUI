@@ -148,6 +148,11 @@ test("moves all marquee-selected nodes in one drag", async ({ page }) => {
     "transform",
     "translate(30 25)",
   )
+  await expect(page.getByTestId("group-selection-frame")).toHaveAttribute(
+    "transform",
+    "translate(30 25)",
+  )
+  await expect(page.getByTestId("group-resize-se")).toHaveAttribute("transform", "translate(30 25)")
   await page.mouse.up()
 
   await expect(red).toHaveCSS("left", "110px")
@@ -156,6 +161,8 @@ test("moves all marquee-selected nodes in one drag", async ({ page }) => {
   await expect(blue).toHaveCSS("top", "265px")
   await expect(page.getByTestId("selection-node-red")).not.toHaveAttribute("transform", /.+/)
   await expect(page.getByTestId("selection-node-blue")).not.toHaveAttribute("transform", /.+/)
+  await expect(page.getByTestId("group-selection-frame")).not.toHaveAttribute("transform", /.+/)
+  await expect(page.getByTestId("group-resize-se")).not.toHaveAttribute("transform", /.+/)
 })
 
 test("resizes a multi-selection from the southeast handle and undoes both layouts", async ({

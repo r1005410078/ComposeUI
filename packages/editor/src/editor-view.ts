@@ -339,7 +339,9 @@ function setSelectionOutlinePreview(
   overlay: SVGSVGElement,
   offset: { x: number; y: number } | undefined,
 ): void {
-  for (const outline of overlay.querySelectorAll<SVGRectElement>("[data-selection-outline]")) {
+  for (const outline of overlay.querySelectorAll<SVGRectElement>(
+    "[data-selection-outline], [data-group-selection-frame], [data-group-resize-handle]",
+  )) {
     if (offset === undefined) outline.removeAttribute("transform")
     else outline.setAttribute("transform", `translate(${offset.x} ${offset.y})`)
   }
