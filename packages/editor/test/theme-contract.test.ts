@@ -64,6 +64,14 @@ describe("editor theme contract", () => {
 
   it("keeps disabled hierarchy actions low contrast in active row states", () => {
     const editorCss = readEditorFile("src/editor.css")
+    const activeOpacityRule = editorCss.indexOf(
+      ".composeui-editor__tree-row:hover .composeui-editor__tree-action,",
+    )
+    const disabledOverrideStart = editorCss.indexOf(
+      ".composeui-editor__tree-row:hover .composeui-editor__tree-action:disabled,",
+    )
+    const disabledOverrideEnd = editorCss.indexOf("\n\n", disabledOverrideStart)
+    const disabledOverride = editorCss.slice(disabledOverrideStart, disabledOverrideEnd)
 
     for (const selector of [
       ".composeui-editor__tree-row:hover .composeui-editor__tree-action:disabled",
@@ -72,7 +80,9 @@ describe("editor theme contract", () => {
     ]) {
       expect(editorCss).toContain(selector)
     }
-    expect(editorCss).toContain("opacity: var(--composeui-tree-action-opacity);")
+    expect(activeOpacityRule).toBeGreaterThanOrEqual(0)
+    expect(disabledOverrideStart).toBeGreaterThan(activeOpacityRule)
+    expect(disabledOverride).toContain("opacity: var(--composeui-tree-action-opacity);")
   })
 
   it("loads Dockview first, then theme tokens, then structural styles", () => {

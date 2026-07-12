@@ -423,6 +423,32 @@ describe("mountEditor", () => {
     }
   })
 
+  it("assigns depth custom properties to nested page and node rows", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "parent", parentId: "page-1" })
+    addRectangle(editor, { id: "child", parentId: "parent" })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+
+    mounted.session.toggleExpanded("parent")
+
+    expect(
+      root
+        .querySelector<HTMLElement>("[data-testid='tree-row-page-1']")
+        ?.style.getPropertyValue("--composeui-tree-depth"),
+    ).toBe("0")
+    expect(
+      root
+        .querySelector<HTMLElement>("[data-testid='tree-row-parent']")
+        ?.style.getPropertyValue("--composeui-tree-depth"),
+    ).toBe("1")
+    expect(
+      root
+        .querySelector<HTMLElement>("[data-testid='tree-row-child']")
+        ?.style.getPropertyValue("--composeui-tree-depth"),
+    ).toBe("2")
+  })
+
   it("rejects page-root, cross-parent and locked tree drops with diagnostics", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())
