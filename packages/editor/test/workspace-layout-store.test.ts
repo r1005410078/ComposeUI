@@ -41,13 +41,29 @@ describe("workspace layout storage", () => {
     expect(await createLocalStorageLayoutStore(wrongVersion, "key").load()).toBeUndefined()
   })
 
-  it("resets by removing the injected storage entry", async () => {
+  it("removes the injected storage entry", async () => {
     const storage = createMemoryStorage(JSON.stringify({ version: 1, modeId: "2d", layout: {} }))
     const store = createLocalStorageLayoutStore(storage, "workspace-layout")
 
-    await store.reset()
+    await store.remove()
 
     expect(storage.value).toBeNull()
     expect(await store.load()).toBeUndefined()
+    expect("reset" in store).toBe(false)
+  })
+
+  it("propagates storage read failures so the workspace can report them", async () => {
+    const failure = new Error("storage unavailable")
+    const storage: StorageLike = {
+      getItem() {
+        throw failure
+      },
+      setItem() {},
+      removeItem() {},
+    }
+
+    await expect(createLocalStorageLayoutStore(storage, "workspace-layout").load()).rejects.toBe(
+      failure,
+    )
   })
 })

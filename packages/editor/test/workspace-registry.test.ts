@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
+import * as editorApi from "../src/index"
 import type { WorkspaceModeDescriptor, WorkspacePanelDescriptor } from "../src/workspace/types"
 import { PanelRegistry, WorkspaceRegistryError } from "../src/workspace/panel-registry"
 import { ModeRegistry, ModeRegistryError } from "../src/workspace/mode-registry"
@@ -19,6 +20,14 @@ function mode(id: string): WorkspaceModeDescriptor {
 }
 
 describe("workspace registries", () => {
+  it("exports workspace contracts and factories from the package entrypoint", () => {
+    expect(editorApi.PanelRegistry).toBe(PanelRegistry)
+    expect(editorApi.ModeRegistry).toBe(ModeRegistry)
+    expect(editorApi.createPanelRegistry).toBeTypeOf("function")
+    expect(editorApi.createModeRegistry).toBeTypeOf("function")
+    expect(editorApi.createLocalStorageLayoutStore).toBeTypeOf("function")
+  })
+
   it("keeps panel registration order and rejects duplicate ids", () => {
     const registry = new PanelRegistry()
 

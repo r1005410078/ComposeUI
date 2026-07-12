@@ -8,3 +8,36 @@ export { mountComponentTree } from "./component-tree"
 export type { MountComponentTreeOptions, MountedComponentTree } from "./component-tree"
 export { EditorSession } from "./session"
 export type { EditorSessionState, Viewport } from "./session"
+
+export {
+  PanelRegistry,
+  WorkspacePanelRegistry,
+  WorkspaceRegistryError,
+  createPanelRegistry,
+} from "./workspace/panel-registry"
+export {
+  ModeRegistry,
+  WorkspaceModeRegistry,
+  ModeRegistryError,
+  createModeRegistry,
+} from "./workspace/mode-registry"
+export { createLocalStorageLayoutStore } from "./workspace/layout-store"
+export type { StorageLike } from "./workspace/layout-store"
+export type {
+  MountedWorkspace,
+  StoredWorkspaceLayout,
+  WorkspaceCommand,
+  WorkspaceCommandApi,
+  WorkspaceContext,
+  WorkspaceEvent,
+  WorkspaceLayoutFailureEvent,
+  WorkspaceLayoutStore,
+  WorkspaceModeDescriptor,
+  WorkspacePanelDescriptor,
+  WorkspacePanelFailureEvent,
+  WorkspacePanelMount,
+  WorkspacePanelPosition,
+  WorkspaceResourceService,
+  WorkspaceToolbar,
+  WorkspaceToolbarItem,
+} from "./workspace/types"

@@ -68,7 +68,6 @@ export interface WorkspaceLayoutStore {
   load(): Promise<StoredWorkspaceLayout | undefined>
   save(layout: StoredWorkspaceLayout): Promise<void>
   remove(): Promise<void>
-  reset(): Promise<void>
 }
 
 export interface WorkspaceResourceService {

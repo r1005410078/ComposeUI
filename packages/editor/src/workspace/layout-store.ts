@@ -20,15 +20,12 @@ export function createLocalStorageLayoutStore(
   storage: StorageLike,
   key: string,
 ): WorkspaceLayoutStore {
-  const reset = async (): Promise<void> => {
-    storage.removeItem(key)
-  }
-
   return {
     async load(): Promise<StoredWorkspaceLayout | undefined> {
+      const raw = storage.getItem(key)
+      if (raw === null) return undefined
+
       try {
-        const raw = storage.getItem(key)
-        if (raw === null) return undefined
         const value: unknown = JSON.parse(raw)
         return isStoredWorkspaceLayout(value) ? value : undefined
       } catch {
@@ -39,9 +36,8 @@ export function createLocalStorageLayoutStore(
       storage.setItem(key, JSON.stringify(layout))
     },
     async remove(): Promise<void> {
-      await reset()
+      storage.removeItem(key)
     },
-    reset,
   }
 }
 
