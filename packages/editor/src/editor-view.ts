@@ -94,47 +94,11 @@ function applyPageStyle(board: HTMLElement, page: PageRecord): void {
   })
 }
 
-function findResizeHandle(element: HTMLElement): HTMLElement | undefined {
-  return [...element.children].find(
-    (child): child is HTMLElement =>
-      child instanceof HTMLElement && child.dataset.resizeNodeId !== undefined,
-  )
-}
-
-function syncResizeHandle(element: HTMLElement, node: NodeRecord, transformLocked: boolean): void {
-  const existing = findResizeHandle(element)
-  if (transformLocked) {
-    existing?.remove()
-    return
-  }
-  if (existing !== undefined) return
-
-  const handle = document.createElement("span")
-  handle.className = "composeui-editor__resize-handle composeui-editor__resize-handle--se"
-  handle.dataset.testid = `resize-${node.id}-se`
-  handle.dataset.resizeNodeId = node.id
-  handle.setAttribute("aria-hidden", "true")
-  element.append(handle)
-}
-
-function syncNodeResizeHandleVisibility(
-  nodeElements: ReadonlyMap<string, HTMLElement>,
-  groupSelectionActive: boolean,
-): void {
-  for (const element of nodeElements.values()) {
-    const handle = findResizeHandle(element)
-    if (handle === undefined) continue
-    handle.hidden = groupSelectionActive
-    handle.setAttribute("aria-hidden", String(groupSelectionActive))
-  }
-}
-
-function createNodeElement(node: NodeRecord, transformLocked: boolean): HTMLElement {
+function createNodeElement(node: NodeRecord): HTMLElement {
   const element = document.createElement("div")
   element.className = "composeui-editor__node"
   element.dataset.nodeId = node.id
   applyNodeStyle(element, node)
-  syncResizeHandle(element, node, transformLocked)
   return element
 }
 
@@ -150,7 +114,7 @@ function renderNode(
   if (!node.visible) return undefined
 
   const transformLocked = parentLocked || node.locked
-  const element = createNodeElement(node, transformLocked)
+  const element = createNodeElement(node)
   nodeElements.set(node.id, element)
   const worldX = parentWorldX + node.layout.x
   const worldY = parentWorldY + node.layout.y
@@ -185,10 +149,7 @@ function collectVisibleNodes(
   const worldY = parentWorldY + node.layout.y
   visibleNodes.set(node.id, { node, worldX, worldY })
   const element = nodeElements.get(node.id)
-  if (element !== undefined) {
-    applyNodeStyle(element, node)
-    syncResizeHandle(element, node, transformLocked)
-  }
+  if (element !== undefined) applyNodeStyle(element, node)
   for (const child of children.get(node.id) ?? []) {
     collectVisibleNodes(
       child,
@@ -534,10 +495,6 @@ export function mountEditor(
     grid.hidden = !sessionState.gridVisible
   }
   updateViewport()
-  syncNodeResizeHandleVisibility(
-    canvas.nodeElements,
-    getGroupSelection(currentStore, canvas.visibleNodes, sessionState) !== undefined,
-  )
   renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
 
   let destroyed = false
@@ -876,15 +833,13 @@ export function mountEditor(
     }
     const target = event.target
     if (!(target instanceof Element)) return
-    const handle = target.closest<HTMLElement>("[data-resize-node-id]")
-    if (handle?.hidden === true) return
     const nodeElement = target.closest<HTMLElement>("[data-node-id]")
     if (nodeElement === null) return
-    const id = handle?.dataset.resizeNodeId ?? nodeElement.dataset.nodeId
+    const id = nodeElement.dataset.nodeId
     if (id === undefined) return
     const record = currentStore.get(id)
     if (record?.typeName !== "node" || record.nodeType !== "rectangle") return
-    startPointerInteraction(event, record, nodeElement, target, handle === null ? "move" : "resize")
+    startPointerInteraction(event, record, nodeElement, target, "move")
   }
   const startWorkspacePan = (event: PointerEvent): void => {
     activeInteraction?.cancel()
@@ -1071,10 +1026,6 @@ export function mountEditor(
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return
     canvas.update(currentStore, page, canvasNeedsRebuild(event.transaction.forward))
-    syncNodeResizeHandleVisibility(
-      canvas.nodeElements,
-      getGroupSelection(currentStore, canvas.visibleNodes, sessionState) !== undefined,
-    )
     if (treeNeedsUpdate(event.transaction.forward)) {
       tree.update(currentStore, options.pageId, sessionState, true)
     }
@@ -1095,12 +1046,6 @@ export function mountEditor(
     else if (selectionChanged) tree.update(currentStore, options.pageId, nextState, false)
     if (viewportChanged || gridChanged) updateViewport()
     if (selectionChanged || viewportChanged) {
-      if (selectionChanged) {
-        syncNodeResizeHandleVisibility(
-          canvas.nodeElements,
-          getGroupSelection(currentStore, canvas.visibleNodes, nextState) !== undefined,
-        )
-      }
       renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, nextState)
     }
   }

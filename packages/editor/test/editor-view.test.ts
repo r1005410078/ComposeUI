@@ -471,7 +471,8 @@ describe("mountEditor", () => {
     const editor = createEditor(createDocumentWithPage())
     addRectangle(editor, { id: "node-1" })
     const dispatch = vi.spyOn(editor, "dispatch")
-    mountEditor(root, editor, { pageId: "page-1" })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(["node-1"])
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
 
     node.dispatchEvent(pointerEvent("pointerdown", 10, 20))
@@ -539,8 +540,7 @@ describe("mountEditor", () => {
     mountEditor(root, editor, { pageId: "page-1" })
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
 
-    expect(root.querySelector("[data-testid='resize-node-1-se']")).toBeNull()
-    expect(root.querySelector("[data-testid='resize-node-2-se']")).not.toBeNull()
+    expect(root.querySelectorAll("[data-resize-node-id]")).toHaveLength(0)
     node.dispatchEvent(pointerEvent("pointerdown", 10, 20))
     window.dispatchEvent(pointerEvent("pointermove", 30, 40))
     window.dispatchEvent(pointerEvent("pointerup", 30, 40))
@@ -554,13 +554,15 @@ describe("mountEditor", () => {
     const editor = createEditor(createDocumentWithPage())
     addRectangle(editor, { id: "node-1", width: 120, height: 80 })
     const dispatch = vi.spyOn(editor, "dispatch")
-    mountEditor(root, editor, { pageId: "page-1" })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(["node-1"])
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
-    const handle = root.querySelector<HTMLElement>("[data-testid='resize-node-1-se']")!
+    const handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
+    const overlay = root.querySelector<SVGSVGElement>("[data-testid='selection-overlay']")!
     const setPointerCapture = vi.fn()
     const releasePointerCapture = vi.fn()
-    handle.setPointerCapture = setPointerCapture
-    handle.releasePointerCapture = releasePointerCapture
+    overlay.setPointerCapture = setPointerCapture
+    overlay.releasePointerCapture = releasePointerCapture
 
     handle.dispatchEvent(pointerEvent("pointerdown", 120, 80, 9))
     window.dispatchEvent(pointerEvent("pointermove", -20, -40, 9))
@@ -579,7 +581,7 @@ describe("mountEditor", () => {
     expect(dispatch).toHaveBeenCalledTimes(1)
     expect(dispatch).toHaveBeenCalledWith({
       id: "node.resize",
-      payload: { id: "node-1", width: 1, height: 1 },
+      payload: { id: "node-1", x: 20, y: 30, width: 1, height: 1 },
     })
     expect(editor.getRecord("node-1")).toMatchObject({ layout: { width: 1, height: 1 } })
   })
@@ -653,24 +655,14 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-b", x: 200 })
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
 
-    expect(root.querySelectorAll("[data-resize-node-id]")).toHaveLength(2)
+    expect(root.querySelectorAll("[data-resize-node-id]")).toHaveLength(0)
 
     mounted.session.setSelection(["node-a", "node-b"])
 
-    const hiddenHandles = [...root.querySelectorAll<HTMLElement>("[data-resize-node-id]")]
-    expect(hiddenHandles).toHaveLength(2)
-    expect(hiddenHandles.every((handle) => handle.hidden)).toBe(true)
     expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
-
-    const dispatch = vi.spyOn(editor, "dispatch")
-    hiddenHandles[0]!.dispatchEvent(pointerEvent("pointerdown", 140, 110, 31))
-    window.dispatchEvent(pointerEvent("pointermove", 180, 150, 31))
-    window.dispatchEvent(pointerEvent("pointerup", 180, 150, 31))
-    expect(dispatch).not.toHaveBeenCalled()
 
     mounted.session.setSelection(["node-a"])
 
-    expect(root.querySelectorAll("[data-resize-node-id]:not([hidden])")).toHaveLength(0)
     expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
     mounted.destroy()
     root.remove()
@@ -686,7 +678,7 @@ describe("mountEditor", () => {
     mounted.session.setSelection(["node-1"])
 
     expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
-    expect(root.querySelector("[data-testid='resize-node-1-se']")).toHaveProperty("hidden", true)
+    expect(root.querySelectorAll("[data-resize-node-id]")).toHaveLength(0)
 
     const northwest = root.querySelector<SVGRectElement>("[data-testid='group-resize-nw']")!
     northwest.dispatchEvent(pointerEvent("pointerdown", 21, 30, 14))

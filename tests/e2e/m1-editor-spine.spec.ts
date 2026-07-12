@@ -75,7 +75,7 @@ test("shows eight resize handles for a single selected rectangle", async ({ page
   for (const handle of ["n", "ne", "e", "se", "s", "sw", "w", "nw"]) {
     await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
   }
-  await expect(page.getByTestId("resize-node-red-se")).toBeHidden()
+  await expect(page.locator("[data-resize-node-id]")).toHaveCount(0)
 
   const handle = await page.getByTestId("group-resize-se").boundingBox()
   if (handle === null) throw new Error("southeast resize handle was not rendered")
