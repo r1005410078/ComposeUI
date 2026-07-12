@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+
+import { describe, expect, it, vi } from "vitest"
+import { createEditor, createEmptyDocument } from "@composeui/core"
+import type { PageDocument } from "@composeui/core"
+import { EditorSession } from "../src/index"
+import type { WorkspaceContext } from "../src/workspace/types"
+import { createWorkspacePanels } from "../src/workspace/panels"
+
+function createContext(resources?: WorkspaceContext["resources"]): WorkspaceContext {
+  const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+  editor.dispatch({
+    id: "node.create",
+    payload: {
+      id: "node-1",
+      parentId: "page-1",
+      name: "Rectangle",
+      x: 20,
+      y: 30,
+      width: 120,
+      height: 80,
+      fill: "#2563eb",
+    },
+  })
+  return {
+    editor,
+    session: new EditorSession(),
+    pageId: "page-1",
+    resources,
+    api: {
+      execute: vi.fn(),
+      undo: vi.fn(),
+      redo: vi.fn(),
+      openPanel: vi.fn(),
+      closePanel: vi.fn(),
+      resetLayout: vi.fn(),
+    },
+    emit: vi.fn(),
+  }
+}
+
+function panel(id: string) {
+  const descriptor = createWorkspacePanels().find((candidate) => candidate.id === id)
+  if (descriptor === undefined) throw new Error(`Missing panel ${id}`)
+  return descriptor
+}
+
+describe("workspace panel renderers", () => {
+  it("mounts Scene and Canvas with the shared session", () => {
+    const context = createContext()
+    const sceneRoot = document.createElement("div")
+    const canvasRoot = document.createElement("div")
+
+    const disposeScene = panel("scene").mount(sceneRoot, context)
+    const disposeCanvas = panel("canvas").mount(canvasRoot, context)
+
+    expect(sceneRoot.querySelector("[aria-label='Component tree']")).not.toBeNull()
+    expect(canvasRoot.querySelector("[data-testid='page-board']")).not.toBeNull()
+    context.session.setSelection(["node-1"])
+    expect(canvasRoot.querySelector("[data-testid='selection-node-1']")).not.toBeNull()
+
+    expect(() => {
+      if (typeof disposeScene === "function") disposeScene()
+      if (typeof disposeScene === "function") disposeScene()
+      if (typeof disposeCanvas === "function") disposeCanvas()
+      if (typeof disposeCanvas === "function") disposeCanvas()
+    }).not.toThrow()
+  })
+
+  it("renders and updates the selected record in Inspector", () => {
+    const context = createContext()
+    const root = document.createElement("div")
+    const dispose = panel("inspector").mount(root, context)
+
+    context.session.setSelection(["node-1"])
+    expect(root.querySelector("[data-testid='inspector-name']")?.textContent).toBe("Rectangle")
+    expect(root.querySelector("[data-testid='inspector-type']")?.textContent).toBe("node")
+
+    expect(
+      context.editor.dispatch({ id: "node.rename", payload: { id: "node-1", name: "Renamed" } }).ok,
+    ).toBe(true)
+    expect(root.querySelector("[data-testid='inspector-name']")?.textContent).toBe("Renamed")
+
+    if (typeof dispose === "function") {
+      dispose()
+      dispose()
+    }
+  })
+
+  it("renders resources or an honest empty state", async () => {
+    const resources = { list: vi.fn().mockResolvedValue([{ id: "asset-1", name: "Logo" }]) }
+    const context = createContext(resources)
+    const root = document.createElement("div")
+    const dispose = panel("resources").mount(root, context)
+
+    await vi.waitFor(() => expect(root.textContent).toContain("Logo"))
+    expect(root.querySelector("[data-testid='empty-resources']")).toBeNull()
+    if (typeof dispose === "function") dispose()
+
+    const emptyRoot = document.createElement("div")
+    panel("resources").mount(emptyRoot, createContext())
+    expect(emptyRoot.querySelector("[data-testid='empty-resources']")).not.toBeNull()
+  })
+
+  it("provides named empty states for utility panels", () => {
+    const context = createContext()
+    for (const id of ["history", "signals", "output", "debugger", "animation", "shader-editor"]) {
+      const root = document.createElement("div")
+      panel(id).mount(root, context)
+      expect(root.querySelector(`[data-testid='empty-${id}']`)).not.toBeNull()
+    }
+  })
+
+  it("returns all first-party panel descriptors with stable ids", () => {
+    expect(createWorkspacePanels().map((descriptor) => descriptor.id)).toEqual([
+      "scene",
+      "resources",
+      "history",
+      "canvas",
+      "inspector",
+      "signals",
+      "output",
+      "debugger",
+      "animation",
+      "shader-editor",
+    ])
+  })
+})
