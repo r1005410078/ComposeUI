@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
 import {
+  createModeRegistry,
   mountEditorWorkspace,
   type DockviewFactory,
   type EditorWorkspaceDockview,
@@ -35,10 +36,11 @@ function createDockviewFake(
   factory: DockviewFactory
   dockview: EditorWorkspaceDockview
   panels: Map<string, FakePanel>
-  mountComponent: (id: string) => HTMLElement | undefined
+  panelOptions: Map<string, { component: string; tabComponent?: string }>
   triggerLayoutChange: () => void
 } {
   const panels = new Map<string, FakePanel>()
+  const panelOptions = new Map<string, { component: string; tabComponent?: string }>()
   let layout = initialLayout
   let layoutListener: (() => void) | undefined
   let componentFactory:
@@ -63,6 +65,21 @@ function createDockviewFake(
     addPanel(options) {
       const panel = { id: options.id, focus: vi.fn() }
       panels.set(options.id, panel)
+      panelOptions.set(options.id, {
+        component: options.component,
+        ...(options.tabComponent === undefined ? {} : { tabComponent: options.tabComponent }),
+      })
+      const renderer = componentFactory?.({ id: options.id, name: options.component })
+      if (renderer !== undefined) {
+        panel.renderer = renderer
+        renderer.init({
+          params: options.params ?? {},
+          title: options.title ?? "",
+          api: {},
+          containerApi: dockview,
+        })
+      }
+      layoutListener?.()
       return panel
     },
     getPanel(id) {
@@ -71,22 +88,38 @@ function createDockviewFake(
     removePanel(panel) {
       panels.get(panel.id)?.renderer?.dispose?.()
       panels.delete(panel.id)
+      panelOptions.delete(panel.id)
+      layoutListener?.()
     },
     clear: vi.fn(() => {
       for (const panel of panels.values()) panel.renderer?.dispose?.()
       panels.clear()
+      panelOptions.clear()
+      layoutListener?.()
     }),
     toJSON() {
-      return layout
+      return {
+        panels: [...panels.keys()].map((id) => ({
+          id,
+          component: panelOptions.get(id)?.component ?? id,
+        })),
+      }
     },
     fromJSON: vi.fn((nextLayout) => {
       layout = nextLayout
       if (restorePanelIds !== undefined) {
+        for (const panel of panels.values()) panel.renderer?.dispose?.()
         panels.clear()
-        for (const id of restorePanelIds) panels.set(id, { id, focus: vi.fn() })
+        panelOptions.clear()
+        for (const id of restorePanelIds) dockview.addPanel({ id, component: id, title: id })
       }
+      layoutListener?.()
     }),
-    dispose: vi.fn(),
+    dispose: vi.fn(() => {
+      for (const panel of panels.values()) panel.renderer?.dispose?.()
+      panels.clear()
+      panelOptions.clear()
+    }),
   }
   const factory: DockviewFactory = (root, options) => {
     root.dataset.testid = "dockview-root"
@@ -97,14 +130,7 @@ function createDockviewFake(
     factory,
     dockview,
     panels,
-    mountComponent(id) {
-      const renderer = componentFactory?.({ id, name: id })
-      if (renderer === undefined) return undefined
-      renderer.init({ params: {}, title: id, api: {}, containerApi: dockview })
-      const panel = panels.get(id)
-      if (panel !== undefined) panel.renderer = renderer
-      return renderer.element
-    },
+    panelOptions,
     triggerLayoutChange() {
       layoutListener?.()
     },
@@ -155,6 +181,48 @@ describe("editor workspace", () => {
     expect(fake.panels.get("resources")?.focus).toHaveBeenCalledTimes(1)
   })
 
+  it("keeps destructured API methods bound to the mounted workspace", () => {
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+    })
+    const { execute, openPanel, closePanel, focusPanel } = mounted.api
+
+    expect(closePanel("resources")).toBe(true)
+    expect(openPanel("resources")).toBe(true)
+    focusPanel("resources")
+    execute({ type: "close-panel", panelId: "resources" })
+    expect(fake.panels.has("resources")).toBe(false)
+    expect(fake.dockview.toJSON()).toEqual({
+      panels: expect.not.arrayContaining([{ id: "resources", component: "resources" }]),
+    })
+  })
+
+  it("enforces descriptor closable and hides Dockview close affordance", () => {
+    const registry: WorkspacePanelRegistry = {
+      all: () => [
+        {
+          id: "history",
+          title: "History",
+          closable: false,
+          defaultPosition: "bottom",
+          mount: () => undefined,
+        },
+      ],
+    }
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      panelRegistry: registry,
+      createDockview: fake.factory,
+    })
+
+    expect(mounted.api.closePanel("history")).toBe(false)
+    expect(fake.panels.has("history")).toBe(true)
+    expect(fake.panelOptions.get("history")?.tabComponent).toBe("workspace-non-closable-tab")
+  })
+
   it("disposes each mounted panel exactly once across close and reopen", () => {
     const dispose = vi.fn()
     const registry: WorkspacePanelRegistry = {
@@ -175,9 +243,8 @@ describe("editor workspace", () => {
       createDockview: fake.factory,
     })
 
-    fake.mountComponent("history")
     expect(mounted.api.closePanel("history")).toBe(true)
-    fake.mountComponent("history")
+    expect(mounted.api.openPanel("history")).toBe(true)
     mounted.dispose()
 
     expect(dispose).toHaveBeenCalledTimes(2)
@@ -210,6 +277,56 @@ describe("editor workspace", () => {
     expect(fake.panels.has("canvas:page-2")).toBe(true)
     expect(fake.panels.size).toBe(10)
     expect(mounted.session).toBeDefined()
+  })
+
+  it("does not restore an async layout after the user changes the layout", async () => {
+    let resolveLoad!: (layout: StoredWorkspaceLayout) => void
+    const layoutStore = {
+      load: vi.fn(
+        () =>
+          new Promise<StoredWorkspaceLayout>((resolve) => {
+            resolveLoad = resolve
+          }),
+      ),
+      save: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    }
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore,
+      createDockview: fake.factory,
+    })
+
+    await vi.waitFor(() => expect(layoutStore.load).toHaveBeenCalled())
+    expect(mounted.api.closePanel("resources")).toBe(true)
+    resolveLoad({
+      version: 1,
+      modeId: "2d",
+      layout: { panels: [{ id: "canvas:page-1", component: "canvas:page-1" }] },
+    })
+    await vi.waitFor(() => expect(layoutStore.save).toHaveBeenCalled())
+    expect(fake.dockview.fromJSON).not.toHaveBeenCalled()
+  })
+
+  it("copies the supplied mode registry and renders a mode bar for multiple modes", () => {
+    const modeRegistry = createModeRegistry()
+    modeRegistry.register({
+      id: "script",
+      title: "Script",
+      createLayout: () => undefined,
+      toolbar: { items: [] },
+    })
+    const root = document.createElement("div")
+
+    mountEditorWorkspace(root, createEditorInstance(), {
+      pageId: "page-1",
+      modeRegistry,
+      createDockview: createDockviewFake().factory,
+    })
+
+    expect(modeRegistry.all().map((mode) => mode.id)).toEqual(["script"])
+    expect(root.querySelector("[data-testid='workspace-mode-bar']")).not.toBeNull()
   })
 
   it("isolates auxiliary failures and blocks the Canvas failure", () => {
@@ -246,8 +363,8 @@ describe("editor workspace", () => {
       onEvent: (event) => events.push(event),
     })
 
-    const historyRoot = fake.mountComponent("history")
-    const canvasRoot = fake.mountComponent("canvas:page-1")
+    const historyRoot = fake.panels.get("history")?.renderer?.element
+    const canvasRoot = fake.panels.get("canvas:page-1")?.renderer?.element
 
     expect(historyRoot?.textContent).toContain("Unable to load History")
     expect(canvasRoot?.textContent).toContain("Canvas unavailable")

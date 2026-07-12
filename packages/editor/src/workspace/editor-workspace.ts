@@ -1,4 +1,9 @@
-import { createDockview, type AddPanelOptions, type IContentRenderer } from "dockview"
+import {
+  createDockview,
+  type AddPanelOptions,
+  type IContentRenderer,
+  type ITabRenderer,
+} from "dockview"
 import type { Editor } from "@composeui/core"
 import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
@@ -34,6 +39,7 @@ export type DockviewFactory = (
   root: HTMLElement,
   options: {
     createComponent(options: { id: string; name: string }): IContentRenderer
+    createTabComponent?(options: { id: string; name: string }): ITabRenderer | undefined
   },
 ) => EditorWorkspaceDockview
 
@@ -65,6 +71,7 @@ export interface EditorWorkspaceApi {
 
 const CANVAS = "canvas"
 const CANVAS_ERROR = "Canvas unavailable."
+const NON_CLOSABLE_TAB = "workspace-non-closable-tab"
 
 function isCanvas(id: string): boolean {
   return id === CANVAS || id.startsWith(`${CANVAS}:`)
@@ -116,6 +123,25 @@ function errorPanel(root: HTMLElement, title: string, message: string): void {
   root.replaceChildren(panel)
 }
 
+function createNonClosableTab(): ITabRenderer {
+  const element = document.createElement("div")
+  element.className = "composeui-editor__non-closable-tab"
+  let disposeClick: (() => void) | undefined
+  return {
+    element,
+    init(params) {
+      element.textContent = params.title
+      const activate = (): void => params.api.setActive()
+      element.addEventListener("click", activate)
+      disposeClick = () => element.removeEventListener("click", activate)
+    },
+    dispose() {
+      disposeClick?.()
+      disposeClick = undefined
+    },
+  }
+}
+
 export function mountEditorWorkspace(
   root: HTMLElement,
   editor: Editor,
@@ -127,7 +153,8 @@ export function mountEditorWorkspace(
   const registry = new Map<string, WorkspacePanelDescriptor>()
   for (const panel of createWorkspacePanels()) registry.set(panel.id, panel)
   for (const panel of options.panelRegistry?.all() ?? []) registry.set(panel.id, panel)
-  const modeRegistry = options.modeRegistry ?? createModeRegistry()
+  const modeRegistry = createModeRegistry()
+  for (const mode of options.modeRegistry?.all() ?? []) modeRegistry.register(mode)
   if (!modeRegistry.has("2d")) {
     modeRegistry.register({
       id: "2d",
@@ -139,6 +166,24 @@ export function mountEditorWorkspace(
 
   const disposers = new Map<string, () => void>()
   let disposed = false
+  let applyingLayout = false
+  let layoutDirty = false
+
+  if (modeRegistry.shouldRenderModeBar()) {
+    const modeBar = document.createElement("nav")
+    modeBar.dataset.testid = "workspace-mode-bar"
+    modeBar.setAttribute("aria-label", "Editor modes")
+    for (const mode of modeRegistry.all()) {
+      const button = document.createElement("button")
+      button.type = "button"
+      button.textContent = mode.title
+      button.dataset.modeId = mode.id
+      button.disabled = true
+      if (mode.id === "2d") button.setAttribute("aria-current", "page")
+      modeBar.append(button)
+    }
+    root.append(modeBar)
+  }
 
   const dockview = (options.createDockview ?? (createDockview as unknown as DockviewFactory))(
     root,
@@ -207,6 +252,9 @@ export function mountEditorWorkspace(
         }
         return renderer
       },
+      createTabComponent({ name }) {
+        return name === NON_CLOSABLE_TAB ? createNonClosableTab() : undefined
+      },
     },
   )
 
@@ -221,6 +269,7 @@ export function mountEditorWorkspace(
       id: actualId,
       component: actualId,
       title: descriptor.title,
+      ...(descriptor.closable ? {} : { tabComponent: NON_CLOSABLE_TAB }),
       inactive: actualId !== "scene" && actualId !== canvasId(pageId),
       ...(descriptor.defaultSize === undefined
         ? {}
@@ -254,21 +303,27 @@ export function mountEditorWorkspace(
   ]
 
   const applyDefaultLayout = (): void => {
-    dockview.clear?.()
-    for (const id of defaultPanelIds) addPanel(id)
+    const wasApplyingLayout = applyingLayout
+    applyingLayout = true
+    try {
+      dockview.clear?.()
+      for (const id of defaultPanelIds) addPanel(id)
+    } finally {
+      applyingLayout = wasApplyingLayout
+    }
   }
 
   const api: EditorWorkspaceApi = {
     execute(command) {
       if (command.type === "open-panel") {
-        this.openPanel(command.panelId)
+        api.openPanel(command.panelId)
         return
       }
       if (command.type === "close-panel") {
-        this.closePanel(command.panelId)
+        api.closePanel(command.panelId)
         return
       }
-      if (command.type === "reset-layout") return this.resetLayout()
+      if (command.type === "reset-layout") return api.resetLayout()
       if (command.type === "undo") {
         editor.undo()
         return
@@ -283,6 +338,7 @@ export function mountEditorWorkspace(
     openPanel(id) {
       const actualId = panelId(id, pageId)
       if (isCanvas(id) || registry.has(id)) {
+        layoutDirty = true
         addPanel(id)
         return dockview.getPanel(actualId) !== undefined
       }
@@ -290,9 +346,11 @@ export function mountEditorWorkspace(
     },
     closePanel(id) {
       const actualId = panelId(id, pageId)
-      if (isCanvas(id)) return false
+      const descriptor = registry.get(isCanvas(id) ? CANVAS : id)
+      if (descriptor === undefined || !descriptor.closable) return false
       const panel = dockview.getPanel(actualId)
       if (panel === undefined) return false
+      layoutDirty = true
       dockview.removePanel(panel)
       return true
     },
@@ -305,6 +363,7 @@ export function mountEditorWorkspace(
       } catch (error) {
         events({ type: "layout-failure", operation: "remove", error })
       }
+      layoutDirty = true
       applyDefaultLayout()
     },
   }
@@ -313,38 +372,48 @@ export function mountEditorWorkspace(
   if (dockview.onDidLayoutChange !== undefined) {
     layoutSubscription = dockview.onDidLayoutChange.subscribe(() => {
       if (options.layoutStore === undefined || disposed) return
-      void options.layoutStore
-        .save({ version: 1, modeId: "2d", layout: dockview.toJSON() })
+      if (applyingLayout) return
+      layoutDirty = true
+      void Promise.resolve()
+        .then(() =>
+          options.layoutStore!.save({ version: 1, modeId: "2d", layout: dockview.toJSON() }),
+        )
         .catch((error) => {
           events({ type: "layout-failure", operation: "save", error })
         })
     })
   }
 
-  void options.layoutStore?.load().then(
-    (stored) => {
-      if (disposed || stored === undefined) return
-      const layout = replaceCanvasIds(stored.layout, pageId)
-      if (!containsPanel(layout, canvasId(pageId))) return
-      try {
-        dockview.fromJSON(layout)
-        if (dockview.getPanel(canvasId(pageId)) === undefined) {
-          events({
-            type: "layout-failure",
-            operation: "load",
-            error: new Error(`Restored layout is missing ${canvasId(pageId)}`),
-          })
+  void Promise.resolve()
+    .then(() => options.layoutStore?.load())
+    .then(
+      (stored) => {
+        if (disposed || stored === undefined || layoutDirty) return
+        const layout = replaceCanvasIds(stored.layout, pageId)
+        if (!containsPanel(layout, canvasId(pageId))) return
+        const wasApplyingLayout = applyingLayout
+        applyingLayout = true
+        try {
+          dockview.fromJSON(layout)
+          if (dockview.getPanel(canvasId(pageId)) === undefined) {
+            events({
+              type: "layout-failure",
+              operation: "load",
+              error: new Error(`Restored layout is missing ${canvasId(pageId)}`),
+            })
+            applyDefaultLayout()
+          }
+        } catch (error) {
+          events({ type: "layout-failure", operation: "load", error })
           applyDefaultLayout()
+        } finally {
+          applyingLayout = wasApplyingLayout
         }
-      } catch (error) {
-        events({ type: "layout-failure", operation: "load", error })
-        applyDefaultLayout()
-      }
-    },
-    (error) => {
-      if (!disposed) events({ type: "layout-failure", operation: "load", error })
-    },
-  )
+      },
+      (error) => {
+        if (!disposed) events({ type: "layout-failure", operation: "load", error })
+      },
+    )
 
   return {
     session,
