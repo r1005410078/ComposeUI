@@ -373,6 +373,39 @@ describe("mountEditor", () => {
     root.remove()
   })
 
+  it("previews and commits all selected sibling nodes in one move command", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", x: 20, y: 30 })
+    addRectangle(editor, { id: "node-b", x: 200, y: 160 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(["node-a", "node-b"])
+    const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
+    const second = root.querySelector<HTMLElement>("[data-node-id='node-b']")!
+
+    first.dispatchEvent(pointerEvent("pointerdown", 100, 50))
+    window.dispatchEvent(pointerEvent("pointermove", 140, 90))
+
+    expect(first.style.transform).toBe("translate(40px, 40px)")
+    expect(second.style.transform).toBe("translate(40px, 40px)")
+    expect(dispatch).not.toHaveBeenCalled()
+
+    window.dispatchEvent(pointerEvent("pointerup", 140, 90))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.move",
+      payload: { ids: ["node-a", "node-b"], delta: { x: 40, y: 40 } },
+    })
+    expect(first.style.transform).toBe("")
+    expect(second.style.transform).toBe("")
+    expect(editor.getRecord("node-a")).toMatchObject({ layout: { x: 60, y: 70 } })
+    expect(editor.getRecord("node-b")).toMatchObject({ layout: { x: 240, y: 200 } })
+    root.remove()
+  })
+
   it.each(["pointercancel", "Escape"])("cancels a move on %s without dispatching", (reason) => {
     const root = document.createElement("div")
     document.body.append(root)

@@ -70,6 +70,36 @@ test("marquee-selects intersecting nodes and renders the SVG overlay", async ({ 
   await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
 })
 
+test("moves all marquee-selected nodes in one drag", async ({ page }) => {
+  await page.goto("/")
+  const red = page.locator("[data-node-id='node-red']")
+  const blue = page.locator("[data-node-id='node-blue']")
+  const redBox = await red.boundingBox()
+  const blueBox = await blue.boundingBox()
+  if (redBox === null || blueBox === null) throw new Error("nodes were not rendered")
+
+  const left = Math.min(redBox.x, blueBox.x) - 12
+  const top = Math.min(redBox.y, blueBox.y) - 12
+  const right = Math.max(redBox.x + redBox.width, blueBox.x + blueBox.width) + 12
+  const bottom = Math.max(redBox.y + redBox.height, blueBox.y + blueBox.height) + 12
+  await page.mouse.move(left, top)
+  await page.mouse.down()
+  await page.mouse.move(right, bottom)
+  await page.mouse.up()
+  await expect(page.getByTestId("selection-node-red")).toBeAttached()
+  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+
+  await page.mouse.move(redBox.x + 20, redBox.y + 20)
+  await page.mouse.down()
+  await page.mouse.move(redBox.x + 50, redBox.y + 45)
+  await page.mouse.up()
+
+  await expect(red).toHaveCSS("left", "110px")
+  await expect(red).toHaveCSS("top", "97px")
+  await expect(blue).toHaveCSS("left", "410px")
+  await expect(blue).toHaveCSS("top", "265px")
+})
+
 test("pans, zooms at the pointer, multi-selects and exports JSON without Session state", async ({
   page,
 }) => {

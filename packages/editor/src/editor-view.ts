@@ -420,6 +420,31 @@ export function mountEditor(
     if (!sessionState.selection.includes(node.id)) session.setSelection([node.id])
     event.preventDefault()
 
+    const moveIds =
+      kind === "move"
+        ? (sessionState.selection.includes(node.id) ? sessionState.selection : [node.id]).filter(
+            (id) => {
+              const selected = currentStore.get(id)
+              return selected?.typeName === "node" && !isTransformLocked(selected)
+            },
+          )
+        : [node.id]
+    const moveIdSet = new Set(moveIds)
+    const previewElements =
+      kind === "move"
+        ? moveIds.flatMap((id) => {
+            const selected = currentStore.get(id)
+            if (selected?.typeName !== "node") return []
+            let parent = currentStore.get(selected.parentId)
+            while (parent?.typeName === "node") {
+              if (moveIdSet.has(parent.id)) return []
+              parent = currentStore.get(parent.parentId)
+            }
+            const selectedElement = canvas.nodeElements.get(id)
+            return selectedElement === undefined ? [] : [selectedElement]
+          })
+        : [element]
+
     const startScreen = { x: event.clientX, y: event.clientY }
     const startLocal =
       kind === "move"
@@ -440,7 +465,9 @@ export function mountEditor(
       nextEvent.pointerId === pointerId
     const restorePreview = (): void => {
       if (kind === "move") {
-        element.style.removeProperty("transform")
+        for (const previewElement of previewElements) {
+          previewElement.style.removeProperty("transform")
+        }
       } else {
         element.style.width = `${node.layout.width}px`
         element.style.height = `${node.layout.height}px`
@@ -474,7 +501,10 @@ export function mountEditor(
         pointerSession.update({ x: nextEvent.clientX, y: nextEvent.clientY })
         const preview = pointerSession.preview()
         if (kind === "move") {
-          element.style.transform = `translate(${preview.x - node.layout.x}px, ${preview.y - node.layout.y}px)`
+          const transform = `translate(${preview.x - node.layout.x}px, ${preview.y - node.layout.y}px)`
+          for (const previewElement of previewElements) {
+            previewElement.style.transform = transform
+          }
         } else {
           element.style.width = `${Math.max(1, preview.x)}px`
           element.style.height = `${Math.max(1, preview.y)}px`
@@ -494,7 +524,7 @@ export function mountEditor(
       cancel()
       if (kind === "move") {
         if (delta.x === 0 && delta.y === 0) return
-        coreEditor.dispatch({ id: "node.move", payload: { ids: [node.id], delta } })
+        coreEditor.dispatch({ id: "node.move", payload: { ids: moveIds, delta } })
         return
       }
       const width = Math.max(1, node.layout.width + delta.x)
