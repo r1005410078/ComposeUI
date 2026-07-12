@@ -630,8 +630,7 @@ export function mountEditor(
     function onPointerMove(nextEvent: PointerEvent): void {
       updatePreview(nextEvent)
     }
-    function onPointerUp(nextEvent: PointerEvent): void {
-      if (!updatePreview(nextEvent)) return
+    const commitPreview = (): void => {
       const delta = pointerSession.commit()
       cancel()
       if (kind === "move") {
@@ -644,11 +643,14 @@ export function mountEditor(
       if (width === node.layout.width && height === node.layout.height) return
       coreEditor.dispatch({ id: "node.resize", payload: { id: node.id, width, height } })
     }
+    function onPointerUp(nextEvent: PointerEvent): void {
+      if (updatePreview(nextEvent)) commitPreview()
+    }
     function onPointerCancel(nextEvent: PointerEvent): void {
       if (matchesPointer(nextEvent)) cancel()
     }
     function onLostPointerCapture(nextEvent: Event): void {
-      if (matchesPointer(nextEvent as PointerEvent)) cancel()
+      if (matchesPointer(nextEvent as PointerEvent)) commitPreview()
     }
     function onWindowBlur(): void {
       cancel()
@@ -763,8 +765,7 @@ export function mountEditor(
     function onPointerMove(nextEvent: PointerEvent): void {
       updatePreview(nextEvent)
     }
-    function onPointerUp(nextEvent: PointerEvent): void {
-      if (!updatePreview(nextEvent)) return
+    const commitPreview = (): void => {
       const resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
       const changed = resized.items.some((item, index) => {
         const initial = initialItems[index]!
@@ -787,11 +788,14 @@ export function mountEditor(
         coreEditor.dispatch({ id: "node.resizeMany", payload: { items: resized.items } })
       }
     }
+    function onPointerUp(nextEvent: PointerEvent): void {
+      if (updatePreview(nextEvent)) commitPreview()
+    }
     function onPointerCancel(nextEvent: PointerEvent): void {
       if (matchesPointer(nextEvent)) cancel()
     }
     function onLostPointerCapture(nextEvent: Event): void {
-      if (matchesPointer(nextEvent as PointerEvent)) cancel()
+      if (matchesPointer(nextEvent as PointerEvent)) commitPreview()
     }
     function onWindowBlur(): void {
       cancel()

@@ -487,7 +487,7 @@ describe("mountEditor", () => {
     root.remove()
   })
 
-  it.each(["lostpointercapture", "blur", "destroy"])(
+  it.each(["blur", "destroy"])(
     "cleans an active move on %s without committing or leaving listeners",
     (reason) => {
       const root = document.createElement("div")
@@ -506,9 +506,7 @@ describe("mountEditor", () => {
       window.dispatchEvent(pointerEvent("pointermove", 30, 40, 7))
       expect(node.style.transform).toBe("translate(20px, 20px)")
 
-      if (reason === "lostpointercapture") {
-        node.dispatchEvent(pointerEvent("lostpointercapture", 30, 40, 7))
-      } else if (reason === "blur") {
+      if (reason === "blur") {
         window.dispatchEvent(new Event("blur"))
       } else {
         mounted.destroy()
@@ -530,6 +528,35 @@ describe("mountEditor", () => {
       root.remove()
     },
   )
+
+  it("commits the last move preview when pointer capture is lost", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1" })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+    node.setPointerCapture = vi.fn()
+    node.releasePointerCapture = vi.fn()
+
+    node.dispatchEvent(pointerEvent("pointerdown", 10, 20, 7))
+    window.dispatchEvent(pointerEvent("pointermove", 30, 40, 7))
+    node.dispatchEvent(pointerEvent("lostpointercapture", 30, 40, 7))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.move",
+      payload: { ids: ["node-1"], delta: { x: 20, y: 20 } },
+    })
+    expect(editor.getRecord("node-1")).toMatchObject({ layout: { x: 40, y: 50 } })
+    expect(node.style.transform).toBe("")
+
+    window.dispatchEvent(pointerEvent("pointerup", 50, 60, 7))
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    mounted.destroy()
+    root.remove()
+  })
 
   it("does not start transforms for locked rectangles", () => {
     const root = document.createElement("div")
@@ -822,6 +849,38 @@ describe("mountEditor", () => {
       root.remove()
     },
   )
+
+  it("commits the last resize preview when pointer capture is lost", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1", x: 20, y: 30, width: 120, height: 80 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(["node-1"])
+    const overlay = root.querySelector<SVGSVGElement>("[data-testid='selection-overlay']")!
+    overlay.setPointerCapture = vi.fn()
+    overlay.releasePointerCapture = vi.fn()
+    const handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
+
+    handle.dispatchEvent(pointerEvent("pointerdown", 140, 110, 15))
+    window.dispatchEvent(pointerEvent("pointermove", 160, 130, 15))
+    overlay.dispatchEvent(pointerEvent("lostpointercapture", 160, 130, 15))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.resize",
+      payload: { id: "node-1", x: 20, y: 30, width: 140, height: 100 },
+    })
+    expect(editor.getRecord("node-1")).toMatchObject({
+      layout: { x: 20, y: 30, width: 140, height: 100 },
+    })
+
+    window.dispatchEvent(pointerEvent("pointerup", 180, 150, 15))
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    mounted.destroy()
+    root.remove()
+  })
 
   it("handles undo and redo only when the shell itself has focus", () => {
     const root = document.createElement("div")
