@@ -138,6 +138,34 @@
   position: relative;
 }
 
+.composeui-editor__component-tree,
+.composeui-editor__workspace {
+  scrollbar-color: var(--composeui-scrollbar-thumb) var(--composeui-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.composeui-editor__component-tree::-webkit-scrollbar,
+.composeui-editor__workspace::-webkit-scrollbar {
+  height: var(--composeui-scrollbar-width);
+  width: var(--composeui-scrollbar-width);
+}
+
+.composeui-editor__component-tree::-webkit-scrollbar-track,
+.composeui-editor__workspace::-webkit-scrollbar-track {
+  background: var(--composeui-scrollbar-track);
+}
+
+.composeui-editor__component-tree::-webkit-scrollbar-thumb,
+.composeui-editor__workspace::-webkit-scrollbar-thumb {
+  background: var(--composeui-scrollbar-thumb);
+  border-radius: var(--composeui-scrollbar-radius);
+}
+
+.composeui-editor__component-tree::-webkit-scrollbar-thumb:hover,
+.composeui-editor__workspace::-webkit-scrollbar-thumb:hover {
+  background: var(--composeui-scrollbar-thumb-hover);
+}
+
 .composeui-editor[data-panning="true"] .composeui-editor__workspace,
 .composeui-editor[data-panning="true"] .composeui-editor__workspace * {
   cursor: grab !important;

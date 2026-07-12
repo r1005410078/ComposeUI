@@ -33,6 +33,11 @@ describe("editor theme contract", () => {
       "--composeui-toolbar-height",
       "--composeui-radius-control",
       "--composeui-radius-panel",
+      "--composeui-scrollbar-track",
+      "--composeui-scrollbar-thumb",
+      "--composeui-scrollbar-thumb-hover",
+      "--composeui-scrollbar-width",
+      "--composeui-scrollbar-radius",
       "--composeui-font-family",
     ]) {
       expect(theme).toContain(`${token}:`)
@@ -158,5 +163,34 @@ describe("editor theme contract", () => {
       expect(styles, token).toContain(`var(${token})`)
     }
     expect(styles.match(/#[0-9a-f]{3,8}|rgb\([^)]*\)/gi) ?? []).toEqual([])
+  })
+
+  it("styles editor scroll containers with themed native scrollbars", () => {
+    const editorCss = readEditorFile("src/editor.css")
+    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+    const scrollbarCss = `${editorCss}\n${workspaceCss}`
+
+    for (const token of [
+      "--composeui-scrollbar-track",
+      "--composeui-scrollbar-thumb",
+      "--composeui-scrollbar-thumb-hover",
+      "--composeui-scrollbar-width",
+      "--composeui-scrollbar-radius",
+    ]) {
+      expect(scrollbarCss, token).toContain(`var(${token})`)
+    }
+    expect(scrollbarCss).toContain("scrollbar-color:")
+    expect(scrollbarCss).toContain("scrollbar-width: thin")
+    for (const selector of [
+      "::-webkit-scrollbar",
+      "::-webkit-scrollbar-track",
+      "::-webkit-scrollbar-thumb",
+      "::-webkit-scrollbar-thumb:hover",
+    ]) {
+      expect(scrollbarCss, selector).toContain(selector)
+    }
+    expect(workspaceCss).toContain(
+      "--dv-scrollbar-background-color: var(--composeui-scrollbar-track)",
+    )
   })
 })

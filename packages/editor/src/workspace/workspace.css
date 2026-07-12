@@ -114,6 +114,45 @@
   min-width: 0;
   overflow-x: auto;
   padding: var(--composeui-space-1) var(--composeui-space-2);
+  scrollbar-color: var(--composeui-scrollbar-thumb) var(--composeui-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.composeui-editor__canvas-panel-body,
+.composeui-editor__workspace-host .dv-dockview,
+.composeui-editor__workspace-host .dv-dockview * {
+  scrollbar-color: var(--composeui-scrollbar-thumb) var(--composeui-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.composeui-editor__toolbar::-webkit-scrollbar,
+.composeui-editor__canvas-panel-body::-webkit-scrollbar,
+.composeui-editor__workspace-host .dv-dockview::-webkit-scrollbar,
+.composeui-editor__workspace-host .dv-dockview *::-webkit-scrollbar {
+  height: var(--composeui-scrollbar-width);
+  width: var(--composeui-scrollbar-width);
+}
+
+.composeui-editor__toolbar::-webkit-scrollbar-track,
+.composeui-editor__canvas-panel-body::-webkit-scrollbar-track,
+.composeui-editor__workspace-host .dv-dockview::-webkit-scrollbar-track,
+.composeui-editor__workspace-host .dv-dockview *::-webkit-scrollbar-track {
+  background: var(--composeui-scrollbar-track);
+}
+
+.composeui-editor__toolbar::-webkit-scrollbar-thumb,
+.composeui-editor__canvas-panel-body::-webkit-scrollbar-thumb,
+.composeui-editor__workspace-host .dv-dockview::-webkit-scrollbar-thumb,
+.composeui-editor__workspace-host .dv-dockview *::-webkit-scrollbar-thumb {
+  background: var(--composeui-scrollbar-thumb);
+  border-radius: var(--composeui-scrollbar-radius);
+}
+
+.composeui-editor__toolbar::-webkit-scrollbar-thumb:hover,
+.composeui-editor__canvas-panel-body::-webkit-scrollbar-thumb:hover,
+.composeui-editor__workspace-host .dv-dockview::-webkit-scrollbar-thumb:hover,
+.composeui-editor__workspace-host .dv-dockview *::-webkit-scrollbar-thumb:hover {
+  background: var(--composeui-scrollbar-thumb-hover);
 }
 
 .composeui-editor__toolbar-group {
@@ -265,6 +304,7 @@
   --dv-tab-divider-color: var(--composeui-border-subtle);
   --dv-paneview-active-outline-color: var(--composeui-focus-ring);
   --dv-separator-border: var(--composeui-border-default);
+  --dv-scrollbar-background-color: var(--composeui-scrollbar-track);
 }
 
 .composeui-editor__workspace-host .dv-tabs-and-actions-container {
