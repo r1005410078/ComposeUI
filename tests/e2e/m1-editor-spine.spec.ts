@@ -196,7 +196,28 @@ test("resizes a multi-selection from the southeast handle and undoes both layout
   await expect(blue).not.toHaveCSS("top", initialBlue.top)
   await expect(blue).not.toHaveCSS("width", initialBlue.width)
   await expect(blue).not.toHaveCSS("height", initialBlue.height)
+  const resizedRed = await red.evaluate((element) => ({
+    left: getComputedStyle(element).left,
+    top: getComputedStyle(element).top,
+    width: getComputedStyle(element).width,
+    height: getComputedStyle(element).height,
+  }))
+  const resizedBlue = await blue.evaluate((element) => ({
+    left: getComputedStyle(element).left,
+    top: getComputedStyle(element).top,
+    width: getComputedStyle(element).width,
+    height: getComputedStyle(element).height,
+  }))
   await page.mouse.up()
+
+  await expect(red).toHaveCSS("left", resizedRed.left)
+  await expect(red).toHaveCSS("top", resizedRed.top)
+  await expect(red).toHaveCSS("width", resizedRed.width)
+  await expect(red).toHaveCSS("height", resizedRed.height)
+  await expect(blue).toHaveCSS("left", resizedBlue.left)
+  await expect(blue).toHaveCSS("top", resizedBlue.top)
+  await expect(blue).toHaveCSS("width", resizedBlue.width)
+  await expect(blue).toHaveCSS("height", resizedBlue.height)
 
   await page.getByTestId("editor-shell").focus()
   await page.keyboard.press("Meta+z")
