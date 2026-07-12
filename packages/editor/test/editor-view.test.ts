@@ -970,6 +970,33 @@ describe("mountEditor", () => {
     expect(selection?.getAttribute("height")).toBe("160")
   })
 
+  it("leaves default page backgrounds to the CSS theme but preserves custom colors", () => {
+    const defaultRoot = document.createElement("div")
+    const defaultEditor = createEditor(
+      createEmptyDocument({ documentId: "default-doc", pageId: "default-page" }),
+    )
+    mountEditor(defaultRoot, defaultEditor, { pageId: "default-page" })
+
+    expect(
+      defaultRoot.querySelector<HTMLElement>("[data-testid='page-board']")?.style.background,
+    ).toBe("")
+
+    const customDocument = createEmptyDocument({
+      documentId: "custom-doc",
+      pageId: "custom-page",
+    })
+    customDocument.records = customDocument.records.map((record) =>
+      record.typeName === "page" ? { ...record, background: "#fef3c7" } : record,
+    )
+    const customRoot = document.createElement("div")
+    const customEditor = createEditor(customDocument)
+    mountEditor(customRoot, customEditor, { pageId: "custom-page" })
+
+    expect(
+      customRoot.querySelector<HTMLElement>("[data-testid='page-board']")?.style.background,
+    ).toBe("rgb(254, 243, 199)")
+  })
+
   it("keeps hidden nodes in the tree but omits them from the board and selection overlay", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

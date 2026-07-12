@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest"
 
 const editorRoot = fileURLToPath(new URL("../", import.meta.url))
 const readEditorFile = (path: string): string => readFileSync(`${editorRoot}${path}`, "utf8")
+const playgroundStyles = fileURLToPath(
+  new URL("../../../apps/playground/src/styles.css", import.meta.url),
+)
 
 describe("editor theme contract", () => {
   it("defines the required semantic token groups in one theme file", () => {
@@ -134,5 +137,26 @@ describe("editor theme contract", () => {
     for (const token of ["--composeui-space-1", "--composeui-space-2"]) {
       expect(editorCss, token).toContain(`var(${token})`)
     }
+  })
+
+  it("keeps playground controls on the editor theme", () => {
+    const styles = readFileSync(playgroundStyles, "utf8")
+
+    for (const token of [
+      "--composeui-surface-control",
+      "--composeui-surface-control-hover",
+      "--composeui-surface-panel",
+      "--composeui-text-primary",
+      "--composeui-border-default",
+      "--composeui-border-strong",
+      "--composeui-space-2",
+      "--composeui-space-3",
+      "--composeui-radius-control",
+      "--composeui-icon-button-size",
+      "--composeui-icon-size",
+    ]) {
+      expect(styles, token).toContain(`var(${token})`)
+    }
+    expect(styles.match(/#[0-9a-f]{3,8}|rgb\([^)]*\)/gi) ?? []).toEqual([])
   })
 })

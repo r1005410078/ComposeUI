@@ -12,6 +12,7 @@ import { EditorSession } from "./session"
 import type { EditorSessionState } from "./session"
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+const DEFAULT_PAGE_BACKGROUND = "#ffffff"
 const SAFE_PAGE_BACKGROUND = "#ffffff"
 const SAFE_NODE_FILL = "#2563eb"
 const GROUP_RESIZE_HANDLES: readonly GroupResizeHandle[] = [
@@ -89,10 +90,14 @@ function applyNodeStyle(element: HTMLElement, node: NodeRecord): void {
 }
 
 function applyPageStyle(board: HTMLElement, page: PageRecord): void {
+  const pageBackground = page.background.trim().toLowerCase()
   Object.assign(board.style, {
     width: `${page.width}px`,
     height: `${page.height}px`,
-    background: safeColor(page.background, SAFE_PAGE_BACKGROUND),
+    background:
+      pageBackground === DEFAULT_PAGE_BACKGROUND
+        ? ""
+        : safeColor(page.background, SAFE_PAGE_BACKGROUND),
     overflow: page.overflow,
   })
 }

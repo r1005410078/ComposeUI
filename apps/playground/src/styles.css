@@ -24,24 +24,24 @@ body {
 
 .playground-command-group {
   display: flex;
-  gap: 8px;
+  gap: var(--composeui-space-2);
   min-width: 0;
 }
 
 .playground-scene-command-group {
-  border-bottom: 1px solid #d4d4d8;
-  padding: 8px;
+  border-bottom: 1px solid var(--composeui-border-default);
+  padding: var(--composeui-space-2);
 }
 
 .playground-command {
-  background: #ffffff;
-  border: 1px solid #a1a1aa;
-  border-radius: 4px;
-  color: #18181b;
+  background: var(--composeui-surface-control);
+  border: 1px solid var(--composeui-border-default);
+  border-radius: var(--composeui-radius-control);
+  color: var(--composeui-text-primary);
   cursor: pointer;
   font: inherit;
-  height: 30px;
-  padding: 0 10px;
+  height: var(--composeui-control-height);
+  padding: 0 var(--composeui-space-2);
 }
 
 .playground-scene-command-group .playground-command {
@@ -52,40 +52,41 @@ body {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--composeui-radius-control);
   color: inherit;
   cursor: pointer;
   display: inline-flex;
-  height: 28px;
+  height: var(--composeui-icon-button-size);
   justify-content: center;
   padding: 0;
-  width: 28px;
+  width: var(--composeui-icon-button-size);
 }
 
 .playground-icon-command:hover,
 .playground-icon-command[aria-pressed="true"] {
-  background: #3f3f46;
+  background: var(--composeui-surface-control-hover);
 }
 
 .playground-icon-command svg {
-  height: 16px;
-  width: 16px;
+  height: var(--composeui-icon-size);
+  width: var(--composeui-icon-size);
 }
 
 .playground-command:hover,
 .playground-command[aria-pressed="true"] {
-  background: #f4f4f5;
-  border-color: #52525b;
+  background: var(--composeui-surface-control-hover);
+  border-color: var(--composeui-border-strong);
 }
 
 .playground-json-output {
-  background: #ffffff;
-  border: 1px solid #a1a1aa;
-  inset: 46px 10px 10px auto;
+  background: var(--composeui-surface-panel);
+  border: 1px solid var(--composeui-border-default);
+  color: var(--composeui-text-primary);
+  inset: var(--composeui-app-bar-height) var(--composeui-space-2) var(--composeui-space-2) auto;
   margin: 0;
   max-width: min(560px, calc(100% - 20px));
   overflow: auto;
-  padding: 12px;
+  padding: var(--composeui-space-3);
   position: fixed;
   width: 560px;
   z-index: 10;

@@ -53,7 +53,7 @@ function mountPlayground(app: HTMLElement): void {
 
   const editorHost = document.createElement("div")
   editorHost.className = "playground-editor-host"
-  app.replaceChildren(editorHost, output)
+  app.replaceChildren(editorHost)
 
   const layoutStore = createPlaygroundLayoutStore(window.localStorage)
   const mounted = mountEditorWorkspace(editorHost, scenario.editor, {
@@ -124,6 +124,7 @@ function mountPlayground(app: HTMLElement): void {
       }
     },
   })
+  editorHost.append(output)
 
   if (import.meta.env.DEV) {
     Object.assign(window, { __composeuiM1: { editor: scenario.editor, mounted } })
