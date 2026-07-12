@@ -27,6 +27,11 @@ type FakePanel = {
     }): void
     dispose?(): void
   }
+  tab?: {
+    element: HTMLElement
+    init(params: { title: string; api: object; containerApi: object; tabLocation: "header" }): void
+    dispose?(): void
+  }
 }
 
 function createDockviewFake(
@@ -37,10 +42,21 @@ function createDockviewFake(
   dockview: EditorWorkspaceDockview
   panels: Map<string, FakePanel>
   panelOptions: Map<string, { component: string; tabComponent?: string }>
+  tabs: Map<string, HTMLElement>
   triggerLayoutChange: () => void
 } {
   const panels = new Map<string, FakePanel>()
   const panelOptions = new Map<string, { component: string; tabComponent?: string }>()
+  const tabs = new Map<string, HTMLElement>()
+  const tabList = document.createElement("div")
+  tabList.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || (event.key !== "Delete" && event.key !== "Backspace")) return
+    const entry = [...tabs.entries()].find(([, element]) => element === event.target)
+    if (entry !== undefined) {
+      const panel = panels.get(entry[0])
+      if (panel !== undefined) dockview.removePanel(panel)
+    }
+  })
   let layout = initialLayout
   let layoutListener: (() => void) | undefined
   let componentFactory:
@@ -51,6 +67,18 @@ function createDockviewFake(
           title: string
           api: object
           containerApi: object
+        }): void
+        dispose?(): void
+      })
+    | undefined
+  let tabFactory:
+    | ((options: { id: string; name: string }) => {
+        element: HTMLElement
+        init(params: {
+          title: string
+          api: object
+          containerApi: object
+          tabLocation: "header"
         }): void
         dispose?(): void
       })
@@ -79,6 +107,20 @@ function createDockviewFake(
           containerApi: dockview,
         })
       }
+      if (options.tabComponent !== undefined) {
+        const tab = tabFactory?.({ id: options.id, name: options.tabComponent })
+        if (tab !== undefined) {
+          panel.tab = tab
+          tabs.set(options.id, tab.element)
+          tabList.append(tab.element)
+          tab.init({
+            title: options.title ?? "",
+            api: {},
+            containerApi: dockview,
+            tabLocation: "header",
+          })
+        }
+      }
       layoutListener?.()
       return panel
     },
@@ -86,15 +128,22 @@ function createDockviewFake(
       return panels.get(id)
     },
     removePanel(panel) {
-      panels.get(panel.id)?.renderer?.dispose?.()
+      const current = panels.get(panel.id)
+      current?.renderer?.dispose?.()
+      current?.tab?.dispose?.()
+      current?.tab?.element.remove()
       panels.delete(panel.id)
       panelOptions.delete(panel.id)
+      tabs.delete(panel.id)
       layoutListener?.()
     },
     clear: vi.fn(() => {
       for (const panel of panels.values()) panel.renderer?.dispose?.()
+      for (const panel of panels.values()) panel.tab?.dispose?.()
       panels.clear()
       panelOptions.clear()
+      tabList.replaceChildren()
+      tabs.clear()
       layoutListener?.()
     }),
     toJSON() {
@@ -109,21 +158,29 @@ function createDockviewFake(
       layout = nextLayout
       if (restorePanelIds !== undefined) {
         for (const panel of panels.values()) panel.renderer?.dispose?.()
+        for (const panel of panels.values()) panel.tab?.dispose?.()
         panels.clear()
         panelOptions.clear()
+        tabList.replaceChildren()
+        tabs.clear()
         for (const id of restorePanelIds) dockview.addPanel({ id, component: id, title: id })
       }
       layoutListener?.()
     }),
     dispose: vi.fn(() => {
       for (const panel of panels.values()) panel.renderer?.dispose?.()
+      for (const panel of panels.values()) panel.tab?.dispose?.()
       panels.clear()
       panelOptions.clear()
+      tabList.replaceChildren()
+      tabs.clear()
     }),
   }
   const factory: DockviewFactory = (root, options) => {
     root.dataset.testid = "dockview-root"
+    root.append(tabList)
     componentFactory = options.createComponent
+    tabFactory = options.createTabComponent
     return dockview
   }
   return {
@@ -131,6 +188,7 @@ function createDockviewFake(
     dockview,
     panels,
     panelOptions,
+    tabs,
     triggerLayoutChange() {
       layoutListener?.()
     },
@@ -221,6 +279,23 @@ describe("editor workspace", () => {
     expect(mounted.api.closePanel("history")).toBe(false)
     expect(fake.panels.has("history")).toBe(true)
     expect(fake.panelOptions.get("history")?.tabComponent).toBe("workspace-non-closable-tab")
+  })
+
+  it("blocks Dockview Delete and Backspace close keys for Scene", () => {
+    const fake = createDockviewFake()
+    mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+    })
+    const sceneTab = fake.tabs.get("scene")
+    if (sceneTab === undefined) throw new Error("Scene tab was not created")
+
+    for (const key of ["Delete", "Backspace"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+      sceneTab.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(fake.panels.has("scene")).toBe(true)
+    }
   })
 
   it("disposes each mounted panel exactly once across close and reopen", () => {

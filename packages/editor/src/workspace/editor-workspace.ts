@@ -127,17 +127,27 @@ function createNonClosableTab(): ITabRenderer {
   const element = document.createElement("div")
   element.className = "composeui-editor__non-closable-tab"
   let disposeClick: (() => void) | undefined
+  let disposeKeydown: (() => void) | undefined
   return {
     element,
     init(params) {
       element.textContent = params.title
       const activate = (): void => params.api.setActive()
+      const preventClose = (event: KeyboardEvent): void => {
+        if (event.key !== "Delete" && event.key !== "Backspace") return
+        event.preventDefault()
+        event.stopPropagation()
+      }
       element.addEventListener("click", activate)
+      element.addEventListener("keydown", preventClose)
       disposeClick = () => element.removeEventListener("click", activate)
+      disposeKeydown = () => element.removeEventListener("keydown", preventClose)
     },
     dispose() {
       disposeClick?.()
       disposeClick = undefined
+      disposeKeydown?.()
+      disposeKeydown = undefined
     },
   }
 }
