@@ -11,6 +11,7 @@ export type {
   RenameNodeCommand,
   ReorderNodeCommand,
   ResizeNodeCommand,
+  SetPageOverflowCommand,
   SetNodeLockedCommand,
   SetNodeVisibleCommand,
 } from "./commands"

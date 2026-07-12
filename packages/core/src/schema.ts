@@ -71,7 +71,7 @@ export function createEmptyDocument(input: { documentId: string; pageId: string 
         width: 1440,
         height: 900,
         background: "#ffffff",
-        overflow: "hidden",
+        overflow: "visible",
         layout: { mode: "free" },
       },
     ],

@@ -153,6 +153,27 @@ test("changes from grab to grabbing for space plus left-button pan", async ({ pa
   await expect(workspace).toHaveCSS("cursor", "default")
 })
 
+test("persists the page overflow toggle and restores it through undo", async ({ page }) => {
+  await page.goto("/")
+  const toggle = page.getByTestId("toggle-page-overflow")
+  const board = page.getByTestId("page-board")
+  const output = page.getByTestId("canonical-json-output")
+
+  await expect(toggle).toHaveAttribute("aria-pressed", "true")
+  await expect(board).toHaveCSS("overflow", "visible")
+  await toggle.click()
+  await expect(toggle).toHaveAttribute("aria-pressed", "false")
+  await expect(board).toHaveCSS("overflow", "hidden")
+
+  await page.getByTestId("export-json").click()
+  await expect(output).toContainText('"overflow": "hidden"')
+
+  await page.getByTestId("editor-shell").focus()
+  await page.keyboard.press("Meta+z")
+  await expect(toggle).toHaveAttribute("aria-pressed", "true")
+  await expect(board).toHaveCSS("overflow", "visible")
+})
+
 test("creates a node and performs tree rename, visibility, lock and reorder", async ({ page }) => {
   await page.goto("/")
   await page.getByTestId("create-node").click()

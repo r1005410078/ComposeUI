@@ -1,7 +1,7 @@
 import type { Diagnostic, Result } from "./diagnostics"
 import { History } from "./history"
 import type { HistoryEntry } from "./history"
-import type { NodeRecord, PageDocument } from "./schema"
+import type { NodeRecord, PageDocument, PageRecord } from "./schema"
 import { RecordStore } from "./store"
 import { transact } from "./transaction"
 import type {
@@ -60,6 +60,11 @@ export interface SetNodeLockedCommand {
   payload: { id: string; locked: boolean }
 }
 
+export interface SetPageOverflowCommand {
+  id: "page.setOverflow"
+  payload: { id: string; overflow: PageRecord["overflow"] }
+}
+
 export type EditorCommand =
   | CreateNodeCommand
   | MoveNodeCommand
@@ -69,6 +74,7 @@ export type EditorCommand =
   | RenameNodeCommand
   | SetNodeVisibleCommand
   | SetNodeLockedCommand
+  | SetPageOverflowCommand
 
 export interface EditorChangeEvent {
   store: RecordStore
@@ -151,6 +157,41 @@ function nodeResult(store: RecordStore, id: string): Result<NodeRecord> {
     }
   }
   return { ok: true, value: record, diagnostics: [] }
+}
+
+function pageResult(store: RecordStore, id: string): Result<PageRecord> {
+  const record = store.get(id)
+  if (record === undefined) {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: "PAGE_NOT_FOUND",
+          severity: "error",
+          message: `Page ${id} does not exist.`,
+          recordId: id,
+        },
+      ],
+    }
+  }
+  if (record.typeName !== "page") {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          code: "PAGE_REQUIRED",
+          severity: "error",
+          message: `Record ${id} is not a page.`,
+          recordId: id,
+        },
+      ],
+    }
+  }
+  return { ok: true, value: record, diagnostics: [] }
+}
+
+function validOverflow(value: unknown): value is PageRecord["overflow"] {
+  return value === "visible" || value === "hidden" || value === "scroll"
 }
 
 function validSize(width: number, height: number): boolean {
@@ -380,6 +421,24 @@ function prepareNodeUpdate(
   return success((draft) => draft.update(id, patch))
 }
 
+function prepareSetPageOverflow(
+  store: RecordStore,
+  command: SetPageOverflowCommand,
+): PreparedCommand {
+  const page = pageResult(store, command.payload.id)
+  if (!page.ok) return page
+  if (!validOverflow(command.payload.overflow)) {
+    return failure(
+      "INVALID_PAGE_OVERFLOW",
+      "Page overflow must be visible, hidden, or scroll.",
+      command.payload.id,
+    )
+  }
+  return success((draft) =>
+    draft.update(command.payload.id, { overflow: command.payload.overflow }),
+  )
+}
+
 function prepareCommand(store: RecordStore, command: EditorCommand): PreparedCommand {
   switch (command.id) {
     case "node.create":
@@ -398,6 +457,8 @@ function prepareCommand(store: RecordStore, command: EditorCommand): PreparedCom
       return prepareNodeUpdate(store, command.payload.id, { visible: command.payload.visible })
     case "node.setLocked":
       return prepareNodeUpdate(store, command.payload.id, { locked: command.payload.locked })
+    case "page.setOverflow":
+      return prepareSetPageOverflow(store, command)
   }
 }
 

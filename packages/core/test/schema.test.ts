@@ -12,7 +12,7 @@ describe("createEmptyDocument", () => {
     expect(document.records[1]).toMatchObject({
       typeName: "page",
       background: "#ffffff",
-      overflow: "hidden",
+      overflow: "visible",
       layout: { mode: "free" },
     })
   })

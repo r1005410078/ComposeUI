@@ -106,6 +106,24 @@ function createDataTransfer(): DataTransfer {
 }
 
 describe("mountEditor", () => {
+  it("updates page clipping from the persisted overflow command", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    addRectangle(editor, { id: "outside", x: 1500, y: 20 })
+    mountEditor(root, editor, { pageId: "page-1" })
+    const board = root.querySelector<HTMLElement>("[data-testid='page-board']")!
+
+    expect(board.style.overflow).toBe("visible")
+    expect(root.querySelector("[data-node-id='outside']")).not.toBeNull()
+    expect(
+      editor.dispatch({
+        id: "page.setOverflow",
+        payload: { id: "page-1", overflow: "hidden" },
+      }),
+    ).toMatchObject({ ok: true })
+    expect(board.style.overflow).toBe("hidden")
+  })
+
   it("zooms at the pointer, pans with the middle button and renders a session grid", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

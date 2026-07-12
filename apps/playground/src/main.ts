@@ -21,6 +21,11 @@ gridButton.dataset.testid = "toggle-grid"
 gridButton.textContent = "Grid"
 gridButton.setAttribute("aria-pressed", "true")
 
+const overflowButton = document.createElement("button")
+overflowButton.type = "button"
+overflowButton.dataset.testid = "toggle-page-overflow"
+overflowButton.textContent = "Show outside canvas"
+
 const exportButton = document.createElement("button")
 exportButton.type = "button"
 exportButton.dataset.testid = "export-json"
@@ -33,10 +38,17 @@ output.hidden = true
 
 const editorHost = document.createElement("div")
 editorHost.className = "playground-editor-host"
-toolbar.append(createButton, gridButton, exportButton)
+toolbar.append(createButton, gridButton, overflowButton, exportButton)
 app.replaceChildren(toolbar, editorHost, output)
 
 const mounted = mountEditor(editorHost, scenario.editor, { pageId: scenario.pageId })
+const syncOverflowButton = () => {
+  const page = scenario.editor.getRecord(scenario.pageId)
+  overflowButton.setAttribute(
+    "aria-pressed",
+    String(page?.typeName === "page" && page.overflow === "visible"),
+  )
+}
 createButton.addEventListener("click", () => scenario.createNode())
 gridButton.addEventListener("click", () => {
   const visible = !mounted.session.getState().gridVisible
@@ -47,6 +59,19 @@ exportButton.addEventListener("click", () => {
   output.textContent = scenario.exportCanonicalJson()
   output.hidden = false
 })
+overflowButton.addEventListener("click", () => {
+  const page = scenario.editor.getRecord(scenario.pageId)
+  if (page?.typeName !== "page") return
+  scenario.editor.dispatch({
+    id: "page.setOverflow",
+    payload: {
+      id: page.id,
+      overflow: page.overflow === "visible" ? "hidden" : "visible",
+    },
+  })
+})
+scenario.editor.subscribe(syncOverflowButton)
+syncOverflowButton()
 
 if (import.meta.env.DEV) {
   Object.assign(window, { __composeuiM1: { editor: scenario.editor, mounted } })
