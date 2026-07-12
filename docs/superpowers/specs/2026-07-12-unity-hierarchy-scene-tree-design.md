@@ -59,7 +59,7 @@ The panel uses two compact regions:
 - toolbar: icon-only undo and redo commands with tooltips, accessible names, disabled states, and stable existing test IDs
 - history list: dense rows with muted sequence numbers and the command label as primary text
 
-The newest history entry receives a restrained highlight. Long command labels truncate with an accessible full label. The list owns vertical scrolling and does not resize the toolbar. Existing undo/redo behavior and future-entry presentation remain intact.
+History is a stable timeline rather than a destructive past/future list. Every entry keeps its original sequence number and remains visible after the user jumps to another point. Clicking an entry moves the editor to the state immediately after that entry, highlights the current entry, and weakens later entries as future history. Undo and redo continue from the current position; a new local edit after a jump starts a new branch and removes only the abandoned future branch. Long command labels truncate with an accessible full label. The list owns vertical scrolling and does not resize the toolbar.
 
 ## Output Panel
 
@@ -94,6 +94,7 @@ Unit tests verify:
 - history and output do not render duplicate inner headings
 - history toolbar commands retain accessible labels, disabled states, and existing test IDs
 - history rows and output empty state use the intended semantic structure
+- clicking any history row changes the document state without removing timeline entries
 
 Playwright verifies the scene tree and bottom/left panels remain visible, compact, non-overlapping, and contained at desktop and narrow viewports. Existing end-to-end tree, history, and layout operations continue to pass.
 

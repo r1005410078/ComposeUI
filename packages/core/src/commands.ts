@@ -104,7 +104,13 @@ export interface Editor {
   redo(): Result<void>
   canUndo(): boolean
   canRedo(): boolean
-  getHistory(): { past: HistoryEntry[]; future: HistoryEntry[] }
+  getHistory(): {
+    past: HistoryEntry[]
+    future: HistoryEntry[]
+    entries: HistoryEntry[]
+    currentIndex: number
+  }
+  jumpToHistory(index: number): Result<void>
   getDiagnostics(): Diagnostic[]
   subscribe(listener: (event: EditorChangeEvent) => void): () => void
 }
@@ -607,6 +613,21 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
     return { ok: true, value: undefined, diagnostics: [] }
   }
 
+  const jumpToHistory = (index: number): Result<void> => {
+    if (index === history.snapshot().currentIndex) {
+      return { ok: true, value: undefined, diagnostics: [] }
+    }
+    const result = history.jumpTo(store, index)
+    if (!result.ok) return result
+    store = result.value.store
+    emit({
+      store,
+      transaction: result.value.entry,
+      origin: result.value.origin,
+    })
+    return { ok: true, value: undefined, diagnostics: [] }
+  }
+
   const dispatch = (command: EditorCommand): Result<void> => {
     const result = runCommand(store, command)
     if (!result.ok) return { ok: false, diagnostics: result.diagnostics }
@@ -634,6 +655,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
     getStore: () => store,
     undo: () => applyHistory("undo"),
     redo: () => applyHistory("redo"),
+    jumpToHistory,
     canUndo: () => history.canUndo(),
     canRedo: () => history.canRedo(),
     getHistory: () => history.snapshot(),

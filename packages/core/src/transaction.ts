@@ -7,6 +7,7 @@ export type TransactionOrigin =
   | { kind: "local-command"; commandId: string }
   | { kind: "history-undo"; transactionId: string }
   | { kind: "history-redo"; transactionId: string }
+  | { kind: "history-jump"; transactionId: string }
   | { kind: "system-init" }
 
 export interface UpdatedRecordPatch {

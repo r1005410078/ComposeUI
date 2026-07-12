@@ -227,6 +227,25 @@ describe("Editor history", () => {
     expect(editor.getHistory().future.map((entry) => entry.label)).toEqual(["node.create"])
   })
 
+  it("jumps to a history point without removing entries from the timeline", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    createNode(editor, "node-1")
+    createNode(editor, "node-2")
+
+    expect(editor.jumpToHistory(1).ok).toBe(true)
+    expect(editor.getRecord("node-1")).toBeDefined()
+    expect(editor.getRecord("node-2")).toBeUndefined()
+    expect(editor.getHistory().entries.map((entry) => entry.transactionId)).toEqual([
+      "transaction-1",
+      "transaction-2",
+    ])
+    expect(editor.getHistory().currentIndex).toBe(1)
+
+    expect(editor.jumpToHistory(2).ok).toBe(true)
+    expect(editor.getRecord("node-2")).toBeDefined()
+    expect(editor.getHistory().entries).toHaveLength(2)
+  })
+
   it("emits changes only for successful commits with typed origins", () => {
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     const events: EditorChangeEvent[] = []

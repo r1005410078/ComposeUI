@@ -128,8 +128,9 @@ describe("workspace panel renderers", () => {
     const redoAfter = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
     expect(undoAfter?.disabled).toBe(true)
     expect(redoAfter?.disabled).toBe(false)
-    expect(root.querySelector("[data-testid='history-future-entry']")?.getAttribute("title")).toBe(
-      "node.create",
+    expect(root.querySelectorAll("[data-testid='history-entry']")).toHaveLength(1)
+    expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("data-future")).toBe(
+      "true",
     )
     redoAfter!.click()
     expect(context.editor.getRecord("node-1")).toBeDefined()
@@ -150,14 +151,49 @@ describe("workspace panel renderers", () => {
 
     root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")!.click()
 
-    const future = root.querySelector<HTMLElement>("[data-testid='history-future-entry']")
-    expect(future?.textContent).toContain("重做: node.create")
+    const future = root.querySelector<HTMLElement>("[data-testid='history-entry']")
+    expect(future?.textContent).toContain("1node.create")
     expect(future?.getAttribute("title")).toBe("node.create")
     expect(future?.getAttribute("data-current")).toBe("false")
-    expect(future?.querySelector(".composeui-editor__history-sequence")?.textContent).toBe("1")
-    expect(future?.querySelector(".composeui-editor__history-label")?.textContent).toBe(
-      "重做: node.create",
-    )
+    expect(future?.getAttribute("data-future")).toBe("true")
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("jumps to a clicked history entry while keeping the full timeline visible", () => {
+    const context = createContext()
+    context.editor.dispatch({
+      id: "node.create",
+      payload: {
+        id: "node-2",
+        parentId: "page-1",
+        name: "Second",
+        x: 40,
+        y: 50,
+        width: 120,
+        height: 80,
+        fill: "#ef4444",
+      },
+    })
+    const root = document.createElement("div")
+    const dispose = panel("history").mount(root, context)
+
+    const entries = root.querySelectorAll<HTMLElement>("[data-testid='history-entry']")
+    expect(entries).toHaveLength(2)
+    expect(entries[0]?.textContent).toContain("2")
+    expect(entries[1]?.textContent).toContain("1")
+
+    entries[1]!.click()
+
+    expect(context.editor.getRecord("node-1")).toBeDefined()
+    expect(context.editor.getRecord("node-2")).toBeUndefined()
+    expect(root.querySelectorAll("[data-testid='history-entry']")).toHaveLength(2)
+    expect(
+      root.querySelector("[data-testid='history-entry'][data-current='true']")?.textContent,
+    ).toContain("1")
+    expect(
+      root.querySelector("[data-testid='history-entry'][data-current='false']")?.textContent,
+    ).toContain("2")
 
     if (typeof dispose === "function") dispose()
   })

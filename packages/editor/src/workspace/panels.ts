@@ -179,38 +179,42 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
       const list = document.createElement("ol")
       list.className = "composeui-editor__history-list"
       list.dataset.testid = "history-list"
-      const entries = history.past.reduceRight<HistoryEntry[]>((reversed, entry) => {
-        reversed.push(entry)
-        return reversed
-      }, [])
-      for (const [index, entry] of entries.entries()) {
+      const entries = history.entries.reduceRight<Array<{ entry: HistoryEntry; index: number }>>(
+        (reversed, entry, index) => {
+          reversed.push({ entry, index })
+          return reversed
+        },
+        [],
+      )
+      for (const { entry, index } of entries) {
         const item = document.createElement("li")
         item.dataset.testid = "history-entry"
-        item.dataset.current = String(index === 0)
+        item.dataset.current = String(index === history.currentIndex - 1)
+        item.dataset.future = String(index >= history.currentIndex)
+        item.setAttribute("role", "button")
+        item.tabIndex = 0
         item.title = entry.label
+        item.setAttribute(
+          "aria-label",
+          entry.label + (index === history.currentIndex - 1 ? "，当前" : "，跳转"),
+        )
+        const jump = (): void => {
+          context.editor.jumpToHistory(index + 1)
+        }
+        item.addEventListener("click", jump)
+        item.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return
+          event.preventDefault()
+          jump()
+        })
         const sequence = document.createElement("span")
         sequence.className = "composeui-editor__history-sequence"
-        sequence.textContent = String(entries.length - index)
+        sequence.textContent = String(index + 1)
         const label = document.createElement("span")
         label.className = "composeui-editor__history-label"
         label.textContent = entry.label
         item.append(sequence, label)
         list.append(item)
-      }
-      if (history.past.length === 0 && history.future.length > 0) {
-        const future = document.createElement("li")
-        future.dataset.testid = "history-future-entry"
-        future.dataset.current = "false"
-        const label = history.future.at(-1)?.label ?? "记录"
-        future.title = label
-        const sequence = document.createElement("span")
-        sequence.className = "composeui-editor__history-sequence"
-        sequence.textContent = "1"
-        const labelElement = document.createElement("span")
-        labelElement.className = "composeui-editor__history-label"
-        labelElement.textContent = `重做: ${label}`
-        future.append(sequence, labelElement)
-        list.append(future)
       }
       panel.replaceChildren(actions, list)
     }
