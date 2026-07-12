@@ -641,6 +641,54 @@ describe("mountEditor", () => {
     root.remove()
   })
 
+  it.each([
+    "one selected node",
+    "same-parent selection containing a locked node",
+    "same-parent selection containing a locked ancestor",
+    "cross-parent selection",
+    "selection containing a page record",
+  ] as const)("does not render group resize controls for %s", (caseName) => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    let selection: string[]
+
+    if (caseName === "one selected node") {
+      addRectangle(editor, { id: "node-a" })
+      addRectangle(editor, { id: "node-b", x: 200 })
+      selection = ["node-a"]
+    } else if (caseName === "same-parent selection containing a locked node") {
+      addRectangle(editor, { id: "node-a", locked: true })
+      addRectangle(editor, { id: "node-b", x: 200 })
+      selection = ["node-a", "node-b"]
+    } else if (caseName === "same-parent selection containing a locked ancestor") {
+      addRectangle(editor, { id: "parent", locked: true })
+      addRectangle(editor, { id: "node-a", parentId: "parent" })
+      addRectangle(editor, { id: "node-b", parentId: "parent", x: 200 })
+      selection = ["node-a", "node-b"]
+    } else if (caseName === "cross-parent selection") {
+      addRectangle(editor, { id: "parent-a" })
+      addRectangle(editor, { id: "parent-b", x: 300 })
+      addRectangle(editor, { id: "node-a", parentId: "parent-a" })
+      addRectangle(editor, { id: "node-b", parentId: "parent-b" })
+      selection = ["node-a", "node-b"]
+    } else {
+      addRectangle(editor, { id: "node-a" })
+      addRectangle(editor, { id: "node-b", x: 200 })
+      // NodeRecord.nodeType is currently the literal "rectangle". A page record is
+      // the closest supported non-node type guard that can be represented in a selection.
+      selection = ["page-1", "node-a", "node-b"]
+    }
+
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(selection)
+
+    expect(root.querySelector("[data-testid='group-selection-frame']")).toBeNull()
+    expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(0)
+    mounted.destroy()
+    root.remove()
+  })
+
   it.each(["pointercancel", "Escape", "blur"] as const)(
     "cancels group resize on %s and restores persisted layouts",
     (reason) => {
