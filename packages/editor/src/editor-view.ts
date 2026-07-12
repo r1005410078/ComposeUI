@@ -117,6 +117,18 @@ function syncResizeHandle(element: HTMLElement, node: NodeRecord, transformLocke
   element.append(handle)
 }
 
+function syncNodeResizeHandleVisibility(
+  nodeElements: ReadonlyMap<string, HTMLElement>,
+  groupSelectionActive: boolean,
+): void {
+  for (const element of nodeElements.values()) {
+    const handle = findResizeHandle(element)
+    if (handle === undefined) continue
+    handle.hidden = groupSelectionActive
+    handle.setAttribute("aria-hidden", String(groupSelectionActive))
+  }
+}
+
 function createNodeElement(node: NodeRecord, transformLocked: boolean): HTMLElement {
   const element = document.createElement("div")
   element.className = "composeui-editor__node"
@@ -347,7 +359,10 @@ function toggleSelection(selection: readonly string[], id: string): string[] {
 
 function workspacePoint(event: MouseEvent, workspace: HTMLElement): { x: number; y: number } {
   const bounds = workspace.getBoundingClientRect()
-  return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+  return {
+    x: event.clientX - bounds.left + workspace.scrollLeft,
+    y: event.clientY - bounds.top + workspace.scrollTop,
+  }
 }
 
 function createCanvasView(
@@ -517,6 +532,10 @@ export function mountEditor(
     grid.hidden = !sessionState.gridVisible
   }
   updateViewport()
+  syncNodeResizeHandleVisibility(
+    canvas.nodeElements,
+    getGroupSelection(currentStore, canvas.visibleNodes, sessionState) !== undefined,
+  )
   renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
 
   let destroyed = false
@@ -847,6 +866,7 @@ export function mountEditor(
     const target = event.target
     if (!(target instanceof Element)) return
     const handle = target.closest<HTMLElement>("[data-resize-node-id]")
+    if (handle?.hidden === true) return
     const nodeElement = target.closest<HTMLElement>("[data-node-id]")
     if (nodeElement === null) return
     const id = handle?.dataset.resizeNodeId ?? nodeElement.dataset.nodeId
@@ -1040,6 +1060,10 @@ export function mountEditor(
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return
     canvas.update(currentStore, page, canvasNeedsRebuild(event.transaction.forward))
+    syncNodeResizeHandleVisibility(
+      canvas.nodeElements,
+      getGroupSelection(currentStore, canvas.visibleNodes, sessionState) !== undefined,
+    )
     if (treeNeedsUpdate(event.transaction.forward)) {
       tree.update(currentStore, options.pageId, sessionState, true)
     }
@@ -1060,6 +1084,12 @@ export function mountEditor(
     else if (selectionChanged) tree.update(currentStore, options.pageId, nextState, false)
     if (viewportChanged || gridChanged) updateViewport()
     if (selectionChanged || viewportChanged) {
+      if (selectionChanged) {
+        syncNodeResizeHandleVisibility(
+          canvas.nodeElements,
+          getGroupSelection(currentStore, canvas.visibleNodes, nextState) !== undefined,
+        )
+      }
       renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, nextState)
     }
   }

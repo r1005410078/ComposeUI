@@ -641,6 +641,37 @@ describe("mountEditor", () => {
     root.remove()
   })
 
+  it("hides node resize handles while a valid multi-selection is active", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a" })
+    addRectangle(editor, { id: "node-b", x: 200 })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+
+    expect(root.querySelectorAll("[data-resize-node-id]")).toHaveLength(2)
+
+    mounted.session.setSelection(["node-a", "node-b"])
+
+    const hiddenHandles = [...root.querySelectorAll<HTMLElement>("[data-resize-node-id]")]
+    expect(hiddenHandles).toHaveLength(2)
+    expect(hiddenHandles.every((handle) => handle.hidden)).toBe(true)
+    expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
+
+    const dispatch = vi.spyOn(editor, "dispatch")
+    hiddenHandles[0]!.dispatchEvent(pointerEvent("pointerdown", 140, 110, 31))
+    window.dispatchEvent(pointerEvent("pointermove", 180, 150, 31))
+    window.dispatchEvent(pointerEvent("pointerup", 180, 150, 31))
+    expect(dispatch).not.toHaveBeenCalled()
+
+    mounted.session.setSelection(["node-a"])
+
+    expect(root.querySelectorAll("[data-resize-node-id]:not([hidden])")).toHaveLength(2)
+    expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(0)
+    mounted.destroy()
+    root.remove()
+  })
+
   it("converts group resize pointers from workspace-local coordinates", () => {
     const root = document.createElement("div")
     document.body.append(root)
@@ -652,10 +683,12 @@ describe("mountEditor", () => {
     const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
     workspace.getBoundingClientRect = () =>
       ({ left: 50, top: 40, right: 1050, bottom: 840, width: 1000, height: 800 }) as DOMRect
+    workspace.scrollLeft = 120
+    workspace.scrollTop = 80
     mounted.session.setViewport({ x: 0, y: 0, zoom: 2 })
     mounted.session.setSelection(["node-a", "node-b"])
 
-    const startClient = { x: 50 + 320 * 2, y: 40 + 240 * 2 }
+    const startClient = { x: 50 + 320 * 2 - 120, y: 40 + 240 * 2 - 80 }
     let handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
     handle.dispatchEvent(pointerEvent("pointerdown", startClient.x, startClient.y, 21))
     window.dispatchEvent(pointerEvent("pointerup", startClient.x, startClient.y, 21))
