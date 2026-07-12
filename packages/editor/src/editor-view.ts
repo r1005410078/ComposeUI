@@ -3,6 +3,8 @@ import type { EditorChangeEvent, TransactionPatch } from "@composeui/core"
 import { safeColor } from "./colors"
 import { worldToScreen } from "./coordinates"
 import { createComponentTree } from "./component-tree"
+import { createPointerMoveSession } from "./interactions"
+import type { PointerMoveSession } from "./interactions"
 import { EditorSession } from "./session"
 import type { EditorSessionState } from "./session"
 
@@ -33,6 +35,10 @@ interface CanvasView {
   visibleNodes: Map<string, VisibleNode>
   nodeElements: Map<string, HTMLElement>
   update(store: RecordStore, page: PageRecord, rebuild: boolean): void
+}
+
+interface ActivePointerInteraction {
+  cancel(): void
 }
 
 function indexChildren(store: RecordStore): Map<string, NodeRecord[]> {
@@ -69,11 +75,35 @@ function applyPageStyle(board: HTMLElement, page: PageRecord): void {
   })
 }
 
-function createNodeElement(node: NodeRecord): HTMLElement {
+function findResizeHandle(element: HTMLElement): HTMLElement | undefined {
+  return [...element.children].find(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.dataset.resizeNodeId !== undefined,
+  )
+}
+
+function syncResizeHandle(element: HTMLElement, node: NodeRecord, transformLocked: boolean): void {
+  const existing = findResizeHandle(element)
+  if (transformLocked) {
+    existing?.remove()
+    return
+  }
+  if (existing !== undefined) return
+
+  const handle = document.createElement("span")
+  handle.className = "composeui-editor__resize-handle composeui-editor__resize-handle--se"
+  handle.dataset.testid = `resize-${node.id}-se`
+  handle.dataset.resizeNodeId = node.id
+  handle.setAttribute("aria-hidden", "true")
+  element.append(handle)
+}
+
+function createNodeElement(node: NodeRecord, transformLocked: boolean): HTMLElement {
   const element = document.createElement("div")
   element.className = "composeui-editor__node"
   element.dataset.nodeId = node.id
   applyNodeStyle(element, node)
+  syncResizeHandle(element, node, transformLocked)
   return element
 }
 
@@ -84,16 +114,26 @@ function renderNode(
   nodeElements: Map<string, HTMLElement>,
   parentWorldX: number,
   parentWorldY: number,
+  parentLocked: boolean,
 ): HTMLElement | undefined {
   if (!node.visible) return undefined
 
-  const element = createNodeElement(node)
+  const transformLocked = parentLocked || node.locked
+  const element = createNodeElement(node, transformLocked)
   nodeElements.set(node.id, element)
   const worldX = parentWorldX + node.layout.x
   const worldY = parentWorldY + node.layout.y
   visibleNodes.set(node.id, { node, worldX, worldY })
   for (const child of children.get(node.id) ?? []) {
-    const childElement = renderNode(child, children, visibleNodes, nodeElements, worldX, worldY)
+    const childElement = renderNode(
+      child,
+      children,
+      visibleNodes,
+      nodeElements,
+      worldX,
+      worldY,
+      transformLocked,
+    )
     if (childElement !== undefined) element.append(childElement)
   }
   return element
@@ -106,15 +146,28 @@ function collectVisibleNodes(
   nodeElements: ReadonlyMap<string, HTMLElement>,
   parentWorldX: number,
   parentWorldY: number,
+  parentLocked: boolean,
 ): void {
   if (!node.visible) return
+  const transformLocked = parentLocked || node.locked
   const worldX = parentWorldX + node.layout.x
   const worldY = parentWorldY + node.layout.y
   visibleNodes.set(node.id, { node, worldX, worldY })
   const element = nodeElements.get(node.id)
-  if (element !== undefined) applyNodeStyle(element, node)
+  if (element !== undefined) {
+    applyNodeStyle(element, node)
+    syncResizeHandle(element, node, transformLocked)
+  }
   for (const child of children.get(node.id) ?? []) {
-    collectVisibleNodes(child, children, visibleNodes, nodeElements, worldX, worldY)
+    collectVisibleNodes(
+      child,
+      children,
+      visibleNodes,
+      nodeElements,
+      worldX,
+      worldY,
+      transformLocked,
+    )
   }
 }
 
@@ -175,6 +228,7 @@ function createCanvasView(
             canvas.nodeElements,
             0,
             0,
+            false,
           )
           if (element !== undefined) fragment.append(element)
         }
@@ -184,7 +238,15 @@ function createCanvasView(
 
       canvas.visibleNodes.clear()
       for (const node of canvas.children.get(nextPage.id) ?? []) {
-        collectVisibleNodes(node, canvas.children, canvas.visibleNodes, canvas.nodeElements, 0, 0)
+        collectVisibleNodes(
+          node,
+          canvas.children,
+          canvas.visibleNodes,
+          canvas.nodeElements,
+          0,
+          0,
+          false,
+        )
       }
     },
   }
@@ -199,6 +261,7 @@ function createCanvasView(
       canvas.nodeElements,
       0,
       0,
+      false,
     )
     if (element !== undefined) fragment.append(element)
   }
@@ -255,6 +318,8 @@ export function mountEditor(
   const shell = document.createElement("section")
   shell.className = "composeui-editor"
   shell.dataset.testid = "editor-shell"
+  shell.dataset.mode = "stage-edit"
+  shell.tabIndex = 0
   const aside = document.createElement("aside")
   aside.className = "composeui-editor__component-tree"
   aside.setAttribute("aria-label", "Component tree")
@@ -290,8 +355,140 @@ export function mountEditor(
   renderSelectionOverlay(overlay, canvas.visibleNodes, sessionState)
 
   let destroyed = false
+  let activeInteraction: ActivePointerInteraction | undefined
+
+  const isTransformLocked = (node: NodeRecord): boolean => {
+    let current: NodeRecord | undefined = node
+    while (current !== undefined) {
+      if (current.locked) return true
+      const parent = currentStore.get(current.parentId)
+      current = parent?.typeName === "node" ? parent : undefined
+    }
+    return false
+  }
+
+  const startPointerInteraction = (
+    event: PointerEvent,
+    node: NodeRecord,
+    element: HTMLElement,
+    kind: "move" | "resize",
+  ): void => {
+    if (event.button !== 0 || shell.dataset.mode !== "stage-edit" || isTransformLocked(node)) return
+
+    activeInteraction?.cancel()
+    shell.focus()
+    session.setSelection([node.id])
+    event.preventDefault()
+
+    const startScreen = { x: event.clientX, y: event.clientY }
+    const startLocal =
+      kind === "move"
+        ? { x: node.layout.x, y: node.layout.y }
+        : { x: node.layout.width, y: node.layout.height }
+    let pointerSession: PointerMoveSession
+    try {
+      pointerSession = createPointerMoveSession(startScreen, startLocal, sessionState.viewport.zoom)
+    } catch {
+      return
+    }
+
+    const pointerId = event.pointerId
+    const matchesPointer = (nextEvent: PointerEvent): boolean =>
+      pointerId === undefined ||
+      nextEvent.pointerId === undefined ||
+      nextEvent.pointerId === pointerId
+    const restorePreview = (): void => {
+      if (kind === "move") {
+        element.style.removeProperty("transform")
+      } else {
+        element.style.width = `${node.layout.width}px`
+        element.style.height = `${node.layout.height}px`
+      }
+    }
+    const removeListeners = (): void => {
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerCancel)
+      window.removeEventListener("keydown", onInteractionKeyDown)
+    }
+    const cancel = (): void => {
+      removeListeners()
+      restorePreview()
+      if (activeInteraction?.cancel === cancel) activeInteraction = undefined
+    }
+    const updatePreview = (nextEvent: PointerEvent): boolean => {
+      if (!matchesPointer(nextEvent)) return false
+      try {
+        pointerSession.update({ x: nextEvent.clientX, y: nextEvent.clientY })
+        const preview = pointerSession.preview()
+        if (kind === "move") {
+          element.style.transform = `translate(${preview.x - node.layout.x}px, ${preview.y - node.layout.y}px)`
+        } else {
+          element.style.width = `${Math.max(1, preview.x)}px`
+          element.style.height = `${Math.max(1, preview.y)}px`
+        }
+        return true
+      } catch {
+        cancel()
+        return false
+      }
+    }
+    function onPointerMove(nextEvent: PointerEvent): void {
+      updatePreview(nextEvent)
+    }
+    function onPointerUp(nextEvent: PointerEvent): void {
+      if (!updatePreview(nextEvent)) return
+      const delta = pointerSession.commit()
+      cancel()
+      if (kind === "move") {
+        if (delta.x === 0 && delta.y === 0) return
+        coreEditor.dispatch({ id: "node.move", payload: { ids: [node.id], delta } })
+        return
+      }
+      const width = Math.max(1, node.layout.width + delta.x)
+      const height = Math.max(1, node.layout.height + delta.y)
+      if (width === node.layout.width && height === node.layout.height) return
+      coreEditor.dispatch({ id: "node.resize", payload: { id: node.id, width, height } })
+    }
+    function onPointerCancel(nextEvent: PointerEvent): void {
+      if (matchesPointer(nextEvent)) cancel()
+    }
+    function onInteractionKeyDown(keyEvent: KeyboardEvent): void {
+      if (keyEvent.key === "Escape") cancel()
+    }
+
+    activeInteraction = { cancel }
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerCancel)
+    window.addEventListener("keydown", onInteractionKeyDown)
+  }
+
+  const onBoardPointerDown = (event: PointerEvent): void => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const handle = target.closest<HTMLElement>("[data-resize-node-id]")
+    const nodeElement = target.closest<HTMLElement>("[data-node-id]")
+    if (nodeElement === null) return
+    const id = handle?.dataset.resizeNodeId ?? nodeElement.dataset.nodeId
+    if (id === undefined) return
+    const record = currentStore.get(id)
+    if (record?.typeName !== "node" || record.nodeType !== "rectangle") return
+    startPointerInteraction(event, record, nodeElement, handle === null ? "move" : "resize")
+  }
+  const onShellKeyDown = (event: KeyboardEvent): void => {
+    if (document.activeElement !== shell || event.key.toLowerCase() !== "z") return
+    if (!event.metaKey && !event.ctrlKey) return
+    event.preventDefault()
+    if (event.shiftKey) coreEditor.redo()
+    else coreEditor.undo()
+  }
+  board.addEventListener("pointerdown", onBoardPointerDown)
+  shell.addEventListener("keydown", onShellKeyDown)
+
   const onCoreChange = (event: EditorChangeEvent): void => {
     if (destroyed) return
+    activeInteraction?.cancel()
     currentStore = event.store
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return
@@ -326,6 +523,9 @@ export function mountEditor(
     destroy() {
       if (destroyed) return
       destroyed = true
+      activeInteraction?.cancel()
+      board.removeEventListener("pointerdown", onBoardPointerDown)
+      shell.removeEventListener("keydown", onShellKeyDown)
       unsubscribeCore()
       unsubscribeSession()
       shell.remove()

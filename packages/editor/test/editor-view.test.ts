@@ -35,6 +35,7 @@ function addRectangle(
     width?: number
     height?: number
     fill?: string
+    locked?: boolean
   },
 ): void {
   const result = editor.dispatch({
@@ -51,9 +52,142 @@ function addRectangle(
     },
   })
   expect(result.ok).toBe(true)
+  if (input.locked === true) {
+    expect(
+      editor.dispatch({ id: "node.setLocked", payload: { id: input.id, locked: true } }).ok,
+    ).toBe(true)
+  }
+}
+
+function pointerEvent(type: string, x: number, y: number): MouseEvent {
+  return new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y })
 }
 
 describe("mountEditor", () => {
+  it("selects and previews an unlocked rectangle before dispatching one parent-local move", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1", x: 20, y: 30 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setViewport({ x: 0, y: 0, zoom: 2 })
+    const shell = root.querySelector<HTMLElement>("[data-testid='editor-shell']")!
+    const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+
+    node.dispatchEvent(pointerEvent("pointerdown", 100, 50))
+    window.dispatchEvent(pointerEvent("pointermove", 140, 90))
+
+    expect(document.activeElement).toBe(shell)
+    expect(mounted.session.getState().selection).toEqual(["node-1"])
+    expect(node.style.transform).toBe("translate(20px, 20px)")
+    expect(dispatch).not.toHaveBeenCalled()
+
+    window.dispatchEvent(pointerEvent("pointerup", 140, 90))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.move",
+      payload: { ids: ["node-1"], delta: { x: 20, y: 20 } },
+    })
+    expect(node.style.transform).toBe("")
+    expect(editor.getRecord("node-1")).toMatchObject({ layout: { x: 40, y: 50 } })
+    root.remove()
+  })
+
+  it.each(["pointercancel", "Escape"])("cancels a move on %s without dispatching", (reason) => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1" })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    mountEditor(root, editor, { pageId: "page-1" })
+    const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+
+    node.dispatchEvent(pointerEvent("pointerdown", 10, 20))
+    window.dispatchEvent(pointerEvent("pointermove", 30, 40))
+    expect(node.style.transform).toBe("translate(20px, 20px)")
+    if (reason === "pointercancel") window.dispatchEvent(pointerEvent("pointercancel", 30, 40))
+    else window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(node.style.transform).toBe("")
+    expect(editor.getRecord("node-1")).toMatchObject({ layout: { x: 20, y: 30 } })
+    root.remove()
+  })
+
+  it("does not start transforms for locked rectangles", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1", locked: true })
+    addRectangle(editor, { id: "node-2" })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    mountEditor(root, editor, { pageId: "page-1" })
+    const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+
+    expect(root.querySelector("[data-testid='resize-node-1-se']")).toBeNull()
+    expect(root.querySelector("[data-testid='resize-node-2-se']")).not.toBeNull()
+    node.dispatchEvent(pointerEvent("pointerdown", 10, 20))
+    window.dispatchEvent(pointerEvent("pointermove", 30, 40))
+    window.dispatchEvent(pointerEvent("pointerup", 30, 40))
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(node.style.transform).toBe("")
+  })
+
+  it("previews resize ephemerally and dispatches one resize clamped to one pixel", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1", width: 120, height: 80 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    mountEditor(root, editor, { pageId: "page-1" })
+    const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+    const handle = root.querySelector<HTMLElement>("[data-testid='resize-node-1-se']")!
+
+    handle.dispatchEvent(pointerEvent("pointerdown", 120, 80))
+    window.dispatchEvent(pointerEvent("pointermove", -20, -40))
+
+    expect(node.style.width).toBe("1px")
+    expect(node.style.height).toBe("1px")
+    expect(dispatch).not.toHaveBeenCalled()
+
+    window.dispatchEvent(pointerEvent("pointerup", -20, -40))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.resize",
+      payload: { id: "node-1", width: 1, height: 1 },
+    })
+    expect(editor.getRecord("node-1")).toMatchObject({ layout: { width: 1, height: 1 } })
+  })
+
+  it("handles undo and redo only when the shell itself has focus", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1" })
+    editor.dispatch({ id: "node.move", payload: { ids: ["node-1"], delta: { x: 5, y: 0 } } })
+    const undo = vi.spyOn(editor, "undo")
+    const redo = vi.spyOn(editor, "redo")
+    mountEditor(root, editor, { pageId: "page-1" })
+    const shell = root.querySelector<HTMLElement>("[data-testid='editor-shell']")!
+    const treeRow = root.querySelector<HTMLButtonElement>("[data-testid='tree-node-1']")!
+
+    expect(shell.tabIndex).toBe(0)
+    treeRow.focus()
+    treeRow.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }))
+    expect(undo).not.toHaveBeenCalled()
+
+    shell.focus()
+    shell.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }))
+    expect(undo).toHaveBeenCalledTimes(1)
+    shell.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "z", metaKey: true, shiftKey: true, bubbles: true }),
+    )
+    expect(redo).toHaveBeenCalledTimes(1)
+    root.remove()
+  })
+
   it("renders persistent page styles, a Free rectangle, the tree and a screen-space selection", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

@@ -105,6 +105,21 @@
   position: absolute;
 }
 
+.composeui-editor__resize-handle {
+  background: #ffffff;
+  border: 1px solid var(--composeui-selection);
+  height: 9px;
+  position: absolute;
+  width: 9px;
+  z-index: 1;
+}
+
+.composeui-editor__resize-handle--se {
+  bottom: -5px;
+  cursor: nwse-resize;
+  right: -5px;
+}
+
 .composeui-editor__selection-overlay {
   height: 100%;
   inset: 0;
