@@ -235,6 +235,28 @@ describe("mountEditor", () => {
     expect(JSON.stringify(canonicalizeDocument(editor.getStore()))).toBe(before)
   })
 
+  it("selects intersecting nodes when the marquee is dragged from bottom-right to top-left", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "inside", x: 20, y: 30, width: 40, height: 40 })
+    addRectangle(editor, { id: "outside", x: 300, y: 300, width: 40, height: 40 })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
+
+    workspace.dispatchEvent(modifiedPointerEvent("pointerdown", 100, 100))
+    window.dispatchEvent(modifiedPointerEvent("pointermove", 0, 0))
+
+    const marquee = root.querySelector<SVGRectElement>("[data-testid='marquee-selection']")!
+    expect(marquee.getAttribute("x")).toBe("0")
+    expect(marquee.getAttribute("y")).toBe("0")
+    expect(marquee.getAttribute("width")).toBe("100")
+    expect(marquee.getAttribute("height")).toBe("100")
+
+    window.dispatchEvent(modifiedPointerEvent("pointerup", 0, 0))
+
+    expect(mounted.session.getState().selection).toEqual(["inside"])
+  })
+
   it("routes tree rename, visibility, lock and sibling reorder through commands", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

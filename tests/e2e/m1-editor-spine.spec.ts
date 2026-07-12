@@ -70,6 +70,22 @@ test("marquee-selects intersecting nodes and renders the SVG overlay", async ({ 
   await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
 })
 
+test("marquee-selects nodes when dragged from bottom-right to top-left", async ({ page }) => {
+  await page.goto("/")
+  const red = page.locator("[data-node-id='node-red']")
+  const box = await red.boundingBox()
+  if (box === null) throw new Error("node-red was not rendered")
+
+  await page.mouse.move(box.x + box.width + 12, box.y + box.height + 12)
+  await page.mouse.down()
+  await page.mouse.move(box.x - 12, box.y - 12)
+  await expect(page.getByTestId("marquee-selection")).toHaveAttribute("width", /.+/)
+  await page.mouse.up()
+
+  await expect(page.getByTestId("selection-node-red")).toBeAttached()
+  await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
+})
+
 test("moves all marquee-selected nodes in one drag", async ({ page }) => {
   await page.goto("/")
   const red = page.locator("[data-node-id='node-red']")
