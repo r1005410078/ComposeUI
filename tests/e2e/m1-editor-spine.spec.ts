@@ -77,11 +77,11 @@ async function focusWorkspace(page: Page) {
 }
 
 async function openCanvas(page: Page) {
-  await page.getByRole("tab", { name: "Canvas" }).click()
+  await page.getByRole("tab", { name: "画布" }).click()
 }
 
 async function openScene(page: Page) {
-  await page.getByRole("tab", { name: "Scene" }).click()
+  await page.getByRole("tab", { name: "场景" }).click()
 }
 
 test.describe("Dockview canvas gesture coverage", () => {
@@ -549,20 +549,23 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   await expect(page.getByTestId("workspace-project-title")).toHaveText("新建游戏项目")
   await expect(page.getByTestId("workspace-run")).toBeVisible()
   await expect(page.getByTestId("workspace-save")).toBeVisible()
-  for (const title of ["Scene", "Canvas", "Inspector"]) {
+  for (const title of ["场景", "画布", "检查器"]) {
     await expect(page.getByRole("tab", { name: title })).toBeVisible()
   }
-  await expect(page.getByRole("navigation", { name: "Editor modes" })).toHaveCount(0)
-  await expect(page.getByRole("complementary", { name: "Component tree" })).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "编辑器模式" })).toHaveCount(0)
+  for (const title of ["Debugger", "Animation", "Shader Editor"]) {
+    await expect(page.getByRole("tab", { name: title })).toHaveCount(0)
+  }
+  await expect(page.getByRole("complementary", { name: "节点树" })).toBeVisible()
   await openCanvas(page)
-  await expect(page.getByRole("region", { name: "Page board" })).toBeVisible()
-  const workspaceBox = await page.getByTestId("workspace").boundingBox()
-  if (workspaceBox === null) throw new Error("canvas workspace was not rendered")
-  expect(workspaceBox.width).toBeGreaterThan(600)
-  expect(workspaceBox.height).toBeGreaterThan(450)
+  await expect(page.getByRole("region", { name: "页面画布" })).toBeVisible()
+  const dockviewBox = await page.locator(".composeui-editor__dockview-host").boundingBox()
+  if (dockviewBox === null) throw new Error("workspace dockview was not rendered")
+  expect(dockviewBox.width).toBeGreaterThan(600)
+  expect(dockviewBox.height).toBeGreaterThan(450)
   const toolbarBox = await page.locator(".composeui-editor__toolbar").boundingBox()
-  const canvasBox = await page.getByRole("region", { name: "Canvas" }).boundingBox()
-  const sceneBox = await page.getByRole("region", { name: "Scene" }).boundingBox()
+  const canvasBox = await page.getByRole("region", { name: "画布", exact: true }).boundingBox()
+  const sceneBox = await page.getByRole("region", { name: "场景", exact: true }).boundingBox()
   if (toolbarBox === null || canvasBox === null || sceneBox === null) {
     throw new Error("workspace panel chrome was not rendered")
   }
@@ -584,7 +587,7 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   }))
   expect(treeOverflow.scrollLeft).toBe(0)
   expect(treeOverflow.scrollWidth).toBeLessThanOrEqual(treeOverflow.clientWidth + 1)
-  await expect(page.locator(".composeui-editor__toolbar")).not.toContainText("Create rectangle")
+  await expect(page.locator(".composeui-editor__toolbar")).not.toContainText("创建矩形")
   for (const testId of ["toggle-page-overflow", "export-json", "reset-layout"]) {
     const button = page.getByTestId(testId)
     await expect(button.locator("svg")).toHaveCount(1)
@@ -598,7 +601,7 @@ test("selects a Scene node, edits its Inspector name, and undoes and redoes the 
   await page.goto("/")
   await openScene(page)
   await page.getByTestId("tree-node-red").click()
-  await page.getByRole("tab", { name: "Inspector" }).click()
+  await page.getByRole("tab", { name: "检查器" }).click()
   const inspectorName = page.getByTestId("inspector-name")
   await expect(inspectorName).toHaveValue("Red rectangle")
   await expect(page.getByTestId("inspector-type")).toHaveText("node")
@@ -620,25 +623,25 @@ test("closes the Inspector from the visible Dockview tab without showing a panel
   page,
 }) => {
   await page.goto("/")
-  const tab = page.getByRole("tab", { name: "Inspector" })
+  const tab = page.getByRole("tab", { name: "检查器" })
   await expect(tab).toBeVisible()
   await expect(page.getByTestId("workspace-panel-menu")).toHaveCount(0)
   await tab.press("Delete")
-  await expect(page.getByRole("tab", { name: "Inspector" })).toHaveCount(0)
+  await expect(page.getByRole("tab", { name: "检查器" })).toHaveCount(0)
 })
 
 test("persists a closed History panel across reload", async ({ page }) => {
   await page.goto("/")
-  const historyTab = page.getByRole("tab", { name: "History" })
+  const historyTab = page.getByRole("tab", { name: "历史" })
   await expect(historyTab).toBeVisible()
   await historyTab.press("Delete")
-  await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0)
+  await expect(page.getByRole("tab", { name: "历史" })).toHaveCount(0)
   await expect(
     page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v2")),
   ).resolves.not.toContain('"component":"history"')
   await page.reload()
-  await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0)
-  await expect(page.getByRole("tab", { name: "Canvas" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "历史" })).toHaveCount(0)
+  await expect(page.getByRole("tab", { name: "画布" })).toBeVisible()
 })
 
 test("falls back to the canonical workspace when persisted layout JSON is corrupted", async ({
@@ -649,10 +652,10 @@ test("falls back to the canonical workspace when persisted layout JSON is corrup
   })
   await page.goto("/")
 
-  await expect(page.getByRole("tab", { name: "Scene" })).toBeVisible()
-  await expect(page.getByRole("tab", { name: "Canvas" })).toBeVisible()
-  await expect(page.getByRole("tab", { name: "Inspector" })).toBeVisible()
-  await expect(page.getByRole("region", { name: "Canvas" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "场景" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "画布" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "检查器" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "画布", exact: true })).toBeVisible()
 })
 
 test("resets the Dockview layout without changing canonical document JSON", async ({ page }) => {
@@ -661,10 +664,10 @@ test("resets the Dockview layout without changing canonical document JSON", asyn
   const output = page.getByTestId("canonical-json-output")
   const before = await output.textContent()
 
-  const inspectorTab = page.getByRole("tab", { name: "Inspector" })
+  const inspectorTab = page.getByRole("tab", { name: "检查器" })
   await inspectorTab.press("Delete")
   await page.getByTestId("reset-layout").click()
-  await expect(page.getByRole("tab", { name: "Inspector" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "检查器" })).toBeVisible()
   await page.getByTestId("export-json").click()
   await expect(output).toHaveText(before ?? "")
 })
@@ -703,7 +706,7 @@ async function assertViewportLayout(page: Page) {
 
   const toolbar = await page.locator(".composeui-editor__toolbar").boundingBox()
   const dockview = await page.locator(".composeui-editor__dockview-host").boundingBox()
-  const canvas = await page.getByRole("region", { name: "Canvas" }).boundingBox()
+  const canvas = await page.getByRole("region", { name: "画布", exact: true }).boundingBox()
   if (toolbar === null || dockview === null || canvas === null) {
     throw new Error("workspace layout was not rendered")
   }

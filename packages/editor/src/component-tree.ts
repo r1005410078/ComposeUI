@@ -534,7 +534,7 @@ export function mountComponentTree(
 ): MountedComponentTree {
   const aside = document.createElement("aside")
   aside.className = "composeui-editor__component-tree"
-  aside.setAttribute("aria-label", "Component tree")
+  aside.setAttribute("aria-label", "节点树")
   root.replaceChildren(aside)
   const mounted = mountComponentTreeView(aside, editor, options)
   return {

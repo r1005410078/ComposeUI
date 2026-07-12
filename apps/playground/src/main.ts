@@ -65,9 +65,7 @@ function mountPlayground(app: HTMLElement): void {
       if (treePanel === null) throw new Error("PLAYGROUND_SCENE_TREE_MISSING")
       const commands = document.createElement("div")
       commands.className = "playground-scene-command-group"
-      commands.append(
-        createCommandButton("create-node", "Create rectangle", () => scenario.createNode()),
-      )
+      commands.append(createCommandButton("create-node", "创建矩形", () => scenario.createNode()))
       treePanel.prepend(commands)
       return () => commands.remove()
     },
@@ -85,7 +83,7 @@ function mountPlayground(app: HTMLElement): void {
       commands.className = "playground-command-group"
       const overflowButton = createIconCommandButton(
         "toggle-page-overflow",
-        "Show outside canvas",
+        "显示画布外内容",
         Eye,
         () => {
           const page = scenario.editor.getRecord(scenario.pageId)
@@ -109,11 +107,11 @@ function mountPlayground(app: HTMLElement): void {
       overflowButton.setAttribute("aria-pressed", "true")
       commands.append(
         overflowButton,
-        createIconCommandButton("export-json", "Export JSON", FileJson, () => {
+        createIconCommandButton("export-json", "导出 JSON", FileJson, () => {
           output.textContent = scenario.exportCanonicalJson()
           output.hidden = false
         }),
-        createIconCommandButton("reset-layout", "Reset layout", RefreshCcw, () => {
+        createIconCommandButton("reset-layout", "重置布局", RefreshCcw, () => {
           void mounted.api.resetLayout()
         }),
       )

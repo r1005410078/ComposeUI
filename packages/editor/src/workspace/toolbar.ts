@@ -50,21 +50,21 @@ export function mountWorkspaceToolbar(
   options: WorkspaceToolbarOptions,
 ): () => void {
   root.className = "composeui-editor__toolbar"
-  root.setAttribute("aria-label", "Workspace tools")
+  root.setAttribute("aria-label", "工作区工具")
 
   const tools = document.createElement("div")
   tools.className = "composeui-editor__toolbar-group"
-  const select = iconButton("select", "Select tool", MousePointer2)
-  const pan = iconButton("pan", "Pan tool", Hand)
-  const grid = iconButton("grid", "Toggle grid", Grid3X3)
-  const undo = iconButton("undo", "Undo", Undo2)
-  const redo = iconButton("redo", "Redo", Redo2)
-  const move = iconButton("move", "Move tool", Move)
-  const rotate = iconButton("rotate", "Rotate tool", RotateCw)
-  const scale = iconButton("scale", "Scale tool", Scale)
-  const snap = iconButton("snap", "Snap to grid", Magnet)
-  const lock = iconButton("lock", "Lock selection", Lock)
-  const view = iconButton("view", "View options", Eye)
+  const select = iconButton("select", "选择工具", MousePointer2)
+  const pan = iconButton("pan", "平移工具", Hand)
+  const grid = iconButton("grid", "切换网格", Grid3X3)
+  const undo = iconButton("undo", "撤销", Undo2)
+  const redo = iconButton("redo", "重做", Redo2)
+  const move = iconButton("move", "移动工具", Move)
+  const rotate = iconButton("rotate", "旋转工具", RotateCw)
+  const scale = iconButton("scale", "缩放工具", Scale)
+  const snap = iconButton("snap", "吸附到网格", Magnet)
+  const lock = iconButton("lock", "锁定选中项", Lock)
+  const view = iconButton("view", "视图选项", Eye)
   for (const button of [move, rotate, scale, snap, lock, view]) button.disabled = true
   tools.append(select, pan, move, rotate, scale, snap, lock, view, grid, undo, redo)
 

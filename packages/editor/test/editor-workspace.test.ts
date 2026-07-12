@@ -222,7 +222,7 @@ function createEditorInstance() {
 }
 
 describe("editor workspace", () => {
-  it("creates the deterministic ten-panel 2D shell and protects Canvas", () => {
+  it("creates the deterministic seven-panel 2D shell and protects 画布", () => {
     const fake = createDockviewFake()
     const root = document.createElement("div")
 
@@ -245,9 +245,6 @@ describe("editor workspace", () => {
       "inspector",
       "signals",
       "output",
-      "debugger",
-      "animation",
-      "shader-editor",
     ])
     expect(fake.panelOptions.get("scene")).toMatchObject({
       position: { direction: "left", referencePanel: "canvas:page-1" },
@@ -268,7 +265,7 @@ describe("editor workspace", () => {
       initialHeight: 220,
     })
     for (const id of ["debugger", "animation", "shader-editor"]) {
-      expect(fake.panelOptions.get(id)?.position).toEqual({ referencePanel: "output" })
+      expect(fake.panels.has(id)).toBe(false)
     }
     expect(mounted.api.closePanel("canvas:page-1")).toBe(false)
     expect(root.querySelector("[data-testid='workspace-mode-bar']")).toBeNull()
@@ -327,7 +324,7 @@ describe("editor workspace", () => {
       all: () => [
         {
           id: "history",
-          title: "History",
+          title: "历史",
           closable: false,
           defaultPosition: "bottom",
           mount: () => undefined,
@@ -363,7 +360,7 @@ describe("editor workspace", () => {
       all: () => [
         {
           id: "history",
-          title: "History",
+          title: "历史",
           closable: true,
           defaultPosition: "bottom",
           mount: () => dispose,
@@ -391,7 +388,7 @@ describe("editor workspace", () => {
       all: () => [
         {
           id: "history",
-          title: "History",
+          title: "历史",
           closable: true,
           defaultPosition: "bottom",
           mount,
@@ -443,7 +440,7 @@ describe("editor workspace", () => {
       panels: [{ id: "canvas:page-2", component: "canvas:page-2" }],
     })
     expect(fake.panels.has("canvas:page-2")).toBe(true)
-    expect(fake.panels.size).toBe(10)
+    expect(fake.panels.size).toBe(7)
     expect(mounted.session).toBeDefined()
   })
 
@@ -504,7 +501,7 @@ describe("editor workspace", () => {
         [
           {
             id: "canvas",
-            title: "Canvas",
+            title: "画布",
             closable: false,
             defaultPosition: "center",
             mount: () => {
@@ -513,7 +510,7 @@ describe("editor workspace", () => {
           },
           {
             id: "history",
-            title: "History",
+            title: "历史",
             closable: true,
             defaultPosition: "bottom",
             mount: () => {
@@ -534,8 +531,8 @@ describe("editor workspace", () => {
     const historyRoot = fake.panels.get("history")?.renderer?.element
     const canvasRoot = fake.panels.get("canvas:page-1")?.renderer?.element
 
-    expect(historyRoot?.textContent).toContain("Unable to load History")
-    expect(canvasRoot?.textContent).toContain("Canvas unavailable")
+    expect(historyRoot?.textContent).toContain("无法加载历史")
+    expect(canvasRoot?.textContent).toContain("画布不可用")
     expect(events).toHaveLength(2)
     expect(mounted.session).toBeDefined()
   })

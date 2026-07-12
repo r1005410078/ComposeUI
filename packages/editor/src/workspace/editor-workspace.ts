@@ -79,7 +79,7 @@ export interface EditorWorkspaceApi {
 }
 
 const CANVAS = "canvas"
-const CANVAS_ERROR = "Canvas unavailable."
+const CANVAS_ERROR = "画布不可用。"
 const NON_CLOSABLE_TAB = "workspace-non-closable-tab"
 
 function isCanvas(id: string): boolean {
@@ -226,14 +226,14 @@ export function mountEditorWorkspace(
   const title = document.createElement("div")
   title.className = "composeui-editor__project-title"
   title.dataset.testid = "workspace-project-title"
-  title.textContent = options.projectTitle ?? "Untitled project"
+  title.textContent = options.projectTitle ?? "未命名项目"
   const modeSlot = document.createElement("div")
   modeSlot.className = "composeui-editor__mode-slot"
   const actions = document.createElement("div")
   actions.className = "composeui-editor__app-actions"
-  const run = appBarButton("run", "Run project", Play)
+  const run = appBarButton("run", "运行项目", Play)
   run.addEventListener("click", () => options.onRun?.())
-  const save = appBarButton("save", "Save project", Save)
+  const save = appBarButton("save", "保存项目", Save)
   save.addEventListener("click", () => options.onSave?.())
   actions.append(run, save)
   const dockviewHost = document.createElement("div")
@@ -246,7 +246,7 @@ export function mountEditorWorkspace(
     const modeBar = document.createElement("nav")
     modeBar.className = "composeui-editor__mode-bar"
     modeBar.dataset.testid = "workspace-mode-bar"
-    modeBar.setAttribute("aria-label", "Editor modes")
+    modeBar.setAttribute("aria-label", "编辑器模式")
     for (const mode of modeRegistry.all()) {
       const button = document.createElement("button")
       button.type = "button"
@@ -278,7 +278,7 @@ export function mountEditorWorkspace(
             const containerElement = renderer.element
             containerElement.className = "composeui-editor__dockview-panel"
             if (descriptor === undefined) {
-              errorPanel(containerElement, "Panel unavailable", `Unable to load ${name}.`)
+              errorPanel(containerElement, "面板不可用", `无法加载 ${name}。`)
               events({
                 type: "panel-failure",
                 panelId: name,
@@ -352,14 +352,8 @@ export function mountEditorWorkspace(
               }
               if (panelDisposer !== undefined) disposers.set(name, release)
             } catch (error) {
-              if (descriptor.id === CANVAS)
-                errorPanel(containerElement, "Canvas unavailable", CANVAS_ERROR)
-              else
-                errorPanel(
-                  containerElement,
-                  descriptor.title,
-                  `Unable to load ${descriptor.title}.`,
-                )
+              if (descriptor.id === CANVAS) errorPanel(containerElement, "画布不可用", CANVAS_ERROR)
+              else errorPanel(containerElement, descriptor.title, `无法加载${descriptor.title}。`)
               events({ type: "panel-failure", panelId: descriptor.id, error })
             }
           },
@@ -427,10 +421,6 @@ export function mountEditorWorkspace(
       optionsForPanel.initialHeight = 220
       optionsForPanel.minimumHeight = 120
       optionsForPanel.maximumHeight = 360
-    } else if (["debugger", "animation", "shader-editor"].includes(actualId)) {
-      optionsForPanel.position = { referencePanel: "output" }
-      optionsForPanel.minimumHeight = 120
-      optionsForPanel.maximumHeight = 360
     } else if (descriptor.defaultPosition === "bottom") {
       optionsForPanel.position = { direction: "below", referencePanel: canvasId(pageId) }
     } else if (descriptor.defaultPosition === "right") {
@@ -449,9 +439,6 @@ export function mountEditorWorkspace(
     "inspector",
     "signals",
     "output",
-    "debugger",
-    "animation",
-    "shader-editor",
   ]
 
   const applyDefaultLayout = (): void => {

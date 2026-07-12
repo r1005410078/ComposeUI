@@ -38,14 +38,14 @@ describe("workspace toolbar", () => {
     const root = document.createElement("div")
     mountWorkspaceToolbar(root, {
       ...context,
-      panels: [{ id: "resources", title: "Resources", closable: true }],
+      panels: [{ id: "resources", title: "资源", closable: true }],
     })
 
     const grid = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-grid']")!
     const select = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-select']")!
     const pan = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!
-    expect(grid.getAttribute("aria-label")).toBe("Toggle grid")
-    expect(grid.title).toBe("Toggle grid")
+    expect(grid.getAttribute("aria-label")).toBe("切换网格")
+    expect(grid.title).toBe("切换网格")
     expect(grid.querySelector("svg")).not.toBeNull()
     expect(select.getAttribute("aria-pressed")).toBe("true")
     for (const id of ["move", "rotate", "scale", "snap", "lock", "view"]) {
@@ -71,7 +71,7 @@ describe("workspace toolbar", () => {
     const root = document.createElement("div")
     mountWorkspaceToolbar(root, {
       ...context,
-      panels: [{ id: "resources", title: "Resources", closable: true }],
+      panels: [{ id: "resources", title: "资源", closable: true }],
     })
 
     const undo = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-undo']")!

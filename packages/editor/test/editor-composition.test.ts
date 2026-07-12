@@ -36,7 +36,7 @@ describe("editor view composition", () => {
     const mounted = mountEditor(root, editor, { pageId: "page-1", view: "canvas" })
 
     expect(root.querySelector("[data-testid='page-board']")).not.toBeNull()
-    expect(root.querySelector("[aria-label='Component tree']")).toBeNull()
+    expect(root.querySelector("[aria-label='节点树']")).toBeNull()
     mounted.destroy()
   })
 
@@ -49,7 +49,7 @@ describe("editor view composition", () => {
 
     const canvas = mountEditor(canvasRoot, editor, { pageId: "page-1", view: "canvas", session })
     const tree = mountComponentTree(treeRoot, editor, { pageId: "page-1", session })
-    const treeAside = treeRoot.querySelector<HTMLElement>("[aria-label='Component tree']")!
+    const treeAside = treeRoot.querySelector<HTMLElement>("[aria-label='节点树']")!
 
     expect(treeAside.classList).toContain("composeui-editor__component-tree")
 

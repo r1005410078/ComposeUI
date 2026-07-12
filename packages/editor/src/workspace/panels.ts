@@ -11,9 +11,6 @@ export type PanelId =
   | "inspector"
   | "signals"
   | "output"
-  | "debugger"
-  | "animation"
-  | "shader-editor"
 
 export type FirstPartyPanelDescriptor = Omit<WorkspacePanelDescriptor, "id"> & { id: PanelId }
 
@@ -21,16 +18,13 @@ const PANEL_META: Record<
   PanelId,
   Pick<WorkspacePanelDescriptor, "title" | "closable" | "defaultPosition">
 > = {
-  scene: { title: "Scene", closable: true, defaultPosition: "left" },
-  resources: { title: "Resources", closable: true, defaultPosition: "left" },
-  history: { title: "History", closable: true, defaultPosition: "left" },
-  canvas: { title: "Canvas", closable: false, defaultPosition: "center" },
-  inspector: { title: "Inspector", closable: true, defaultPosition: "right" },
-  signals: { title: "Signals", closable: true, defaultPosition: "right" },
-  output: { title: "Output", closable: true, defaultPosition: "bottom" },
-  debugger: { title: "Debugger", closable: true, defaultPosition: "bottom" },
-  animation: { title: "Animation", closable: true, defaultPosition: "bottom" },
-  "shader-editor": { title: "Shader Editor", closable: true, defaultPosition: "bottom" },
+  scene: { title: "场景", closable: true, defaultPosition: "left" },
+  resources: { title: "资源", closable: true, defaultPosition: "left" },
+  history: { title: "历史", closable: true, defaultPosition: "left" },
+  canvas: { title: "画布", closable: false, defaultPosition: "center" },
+  inspector: { title: "检查器", closable: true, defaultPosition: "right" },
+  signals: { title: "信号", closable: true, defaultPosition: "right" },
+  output: { title: "输出", closable: true, defaultPosition: "bottom" },
 }
 
 function descriptor(id: PanelId, mount: WorkspacePanelMount): FirstPartyPanelDescriptor {
@@ -39,11 +33,7 @@ function descriptor(id: PanelId, mount: WorkspacePanelMount): FirstPartyPanelDes
   return { id, ...meta, mount }
 }
 
-function emptyPanel(
-  id: string,
-  title: string,
-  message = `No ${title.toLowerCase()} available.`,
-): WorkspacePanelMount {
+function emptyPanel(id: string, title: string, message = `暂无${title}。`): WorkspacePanelMount {
   return (root) => {
     const panel = document.createElement("section")
     panel.className = "composeui-editor__empty-panel"
@@ -86,7 +76,7 @@ export function createCanvasPanel(): FirstPartyPanelDescriptor {
 }
 
 function recordLabel(record: EditorRecord | undefined): { name: string; type: string } {
-  if (record === undefined) return { name: "Nothing selected", type: "None" }
+  if (record === undefined) return { name: "未选择", type: "无" }
   return {
     name: "name" in record ? record.name : record.id,
     type: record.typeName,
@@ -97,7 +87,7 @@ export function createInspectorPanel(): FirstPartyPanelDescriptor {
   return descriptor("inspector", (root, context) => {
     const panel = document.createElement("section")
     panel.className = "composeui-editor__inspector"
-    panel.setAttribute("aria-label", "Inspector")
+    panel.setAttribute("aria-label", "检查器")
     root.replaceChildren(panel)
 
     const render = (): void => {
@@ -106,11 +96,11 @@ export function createInspectorPanel(): FirstPartyPanelDescriptor {
       const label = recordLabel(selected)
       panel.replaceChildren()
       const heading = document.createElement("h2")
-      heading.textContent = "Inspector"
+      heading.textContent = "检查器"
       const name = document.createElement("input")
       name.type = "text"
       name.dataset.testid = "inspector-name"
-      name.setAttribute("aria-label", "Node name")
+      name.setAttribute("aria-label", "节点名称")
       name.value = label.name
       name.disabled = selected === undefined || selected.typeName !== "node"
       const commitName = (): void => {
@@ -152,27 +142,27 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
   return descriptor("history", (root, context) => {
     const panel = document.createElement("section")
     panel.className = "composeui-editor__history"
-    panel.setAttribute("aria-label", "History")
+    panel.setAttribute("aria-label", "历史")
     root.replaceChildren(panel)
 
     const render = (): void => {
       const history = context.editor.getHistory()
       const heading = document.createElement("h2")
-      heading.textContent = "History"
+      heading.textContent = "历史"
       const actions = document.createElement("div")
       actions.className = "composeui-editor__history-actions"
       const undo = document.createElement("button")
       undo.type = "button"
       undo.dataset.testid = "history-undo"
-      undo.setAttribute("aria-label", "Undo history entry")
-      undo.textContent = "Undo"
+      undo.setAttribute("aria-label", "撤销历史记录")
+      undo.textContent = "撤销"
       undo.disabled = history.past.length === 0
       undo.addEventListener("click", () => context.editor.undo())
       const redo = document.createElement("button")
       redo.type = "button"
       redo.dataset.testid = "history-redo"
-      redo.setAttribute("aria-label", "Redo history entry")
-      redo.textContent = "Redo"
+      redo.setAttribute("aria-label", "重做历史记录")
+      redo.textContent = "重做"
       redo.disabled = history.future.length === 0
       redo.addEventListener("click", () => context.editor.redo())
       actions.append(undo, redo)
@@ -192,7 +182,7 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
       if (history.past.length === 0 && history.future.length > 0) {
         const future = document.createElement("li")
         future.dataset.testid = "history-future-entry"
-        future.textContent = `Redo: ${history.future.at(-1)?.label ?? "entry"}`
+        future.textContent = `重做: ${history.future.at(-1)?.label ?? "记录"}`
         list.append(future)
       }
       panel.replaceChildren(heading, actions, list)
@@ -210,9 +200,9 @@ export function createResourcesPanel(): FirstPartyPanelDescriptor {
   return descriptor("resources", (root, context) => {
     const panel = document.createElement("section")
     panel.className = "composeui-editor__resources"
-    panel.setAttribute("aria-label", "Resources")
+    panel.setAttribute("aria-label", "资源")
     const heading = document.createElement("h2")
-    heading.textContent = "Resources"
+    heading.textContent = "资源"
     panel.append(heading)
     root.replaceChildren(panel)
     let disposed = false
@@ -225,7 +215,7 @@ export function createResourcesPanel(): FirstPartyPanelDescriptor {
       if (items.length === 0) {
         const empty = document.createElement("p")
         empty.dataset.testid = "empty-resources"
-        empty.textContent = "No resources available."
+        empty.textContent = "暂无资源。"
         panel.append(empty)
         return
       }
@@ -235,7 +225,7 @@ export function createResourcesPanel(): FirstPartyPanelDescriptor {
         const entry = document.createElement("li")
         if (typeof item === "object" && item !== null) {
           const value = item as { name?: unknown; id?: unknown }
-          entry.textContent = String(value.name ?? value.id ?? "Resource")
+          entry.textContent = String(value.name ?? value.id ?? "资源")
         } else {
           entry.textContent = String(item)
         }
@@ -253,7 +243,7 @@ export function createResourcesPanel(): FirstPartyPanelDescriptor {
         ?.remove()
       const error = document.createElement("p")
       error.dataset.testid = "resource-error"
-      error.textContent = "Unable to load resources."
+      error.textContent = "无法加载资源。"
       panel.append(error)
     }
 
@@ -297,9 +287,6 @@ export function createWorkspacePanels(): FirstPartyPanelDescriptor[] {
     createInspectorPanel(),
     createUtilityPanel("signals"),
     createUtilityPanel("output"),
-    createUtilityPanel("debugger"),
-    createUtilityPanel("animation"),
-    createUtilityPanel("shader-editor"),
   ]
 }
 

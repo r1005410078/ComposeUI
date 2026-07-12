@@ -2,14 +2,14 @@ import { expect, test } from "@playwright/test"
 
 test("renders the M1 editor workspace", async ({ page }) => {
   await page.goto("/")
-  await page.getByRole("tab", { name: "Canvas" }).click()
+  await page.getByRole("tab", { name: "画布" }).click()
 
-  await expect(page.getByRole("region", { name: "Canvas" })).toBeVisible()
-  await expect(page.getByRole("tab", { name: "Canvas" })).toBeVisible()
-  await page.getByRole("tab", { name: "Scene" }).click()
-  await expect(page.getByRole("complementary", { name: "Component tree" })).toBeVisible()
-  await page.getByRole("tab", { name: "Canvas" }).click()
-  await expect(page.getByRole("region", { name: "Page board" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "画布", exact: true })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "画布" })).toBeVisible()
+  await page.getByRole("tab", { name: "场景" }).click()
+  await expect(page.getByRole("complementary", { name: "节点树" })).toBeVisible()
+  await page.getByRole("tab", { name: "画布" }).click()
+  await expect(page.getByRole("region", { name: "页面画布" })).toBeVisible()
   await expect(page.getByTestId("tree-node-red")).toHaveText("Red rectangle")
   await expect(page.getByTestId("tree-node-blue")).toHaveText("Blue rectangle")
   await expect(page.locator("[data-node-id='node-red']")).toHaveCSS(

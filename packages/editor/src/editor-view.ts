@@ -439,7 +439,7 @@ export function mountEditor(
   shell.tabIndex = 0
   const aside = document.createElement("aside")
   aside.className = "composeui-editor__component-tree"
-  aside.setAttribute("aria-label", "Component tree")
+  aside.setAttribute("aria-label", "节点树")
   const workspace = document.createElement("main")
   workspace.className = "composeui-editor__workspace"
   workspace.dataset.testid = "workspace"
@@ -450,7 +450,7 @@ export function mountEditor(
   const board = document.createElement("section")
   board.className = "composeui-editor__page-board"
   board.dataset.testid = "page-board"
-  board.setAttribute("aria-label", "Page board")
+  board.setAttribute("aria-label", "页面画布")
   const overlay = document.createElementNS(SVG_NAMESPACE, "svg")
   overlay.classList.add("composeui-editor__selection-overlay")
   overlay.dataset.testid = "selection-overlay"
