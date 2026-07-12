@@ -158,6 +158,13 @@
   opacity: var(--composeui-tree-action-opacity);
 }
 
+.composeui-editor__tree-row:hover .composeui-editor__tree-action:disabled,
+.composeui-editor__tree-row:focus-within .composeui-editor__tree-action:disabled,
+.composeui-editor__tree-item[aria-selected="true"] .composeui-editor__tree-action:disabled {
+  color: var(--composeui-text-muted);
+  opacity: var(--composeui-tree-action-opacity);
+}
+
 .composeui-editor__tree-rename {
   flex: 1 1 auto;
   min-width: 0;

@@ -62,6 +62,19 @@ describe("editor theme contract", () => {
     }
   })
 
+  it("keeps disabled hierarchy actions low contrast in active row states", () => {
+    const editorCss = readEditorFile("src/editor.css")
+
+    for (const selector of [
+      ".composeui-editor__tree-row:hover .composeui-editor__tree-action:disabled",
+      ".composeui-editor__tree-row:focus-within .composeui-editor__tree-action:disabled",
+      '.composeui-editor__tree-item[aria-selected="true"] .composeui-editor__tree-action:disabled',
+    ]) {
+      expect(editorCss).toContain(selector)
+    }
+    expect(editorCss).toContain("opacity: var(--composeui-tree-action-opacity);")
+  })
+
   it("loads Dockview first, then theme tokens, then structural styles", () => {
     const entry = readEditorFile("src/index.ts")
     const importIndices = [
