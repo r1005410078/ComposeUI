@@ -103,9 +103,18 @@
 
 .composeui-editor__workspace {
   background: var(--composeui-editor-bg);
+  cursor: default;
   min-width: 0;
   overflow: auto;
   position: relative;
+}
+
+.composeui-editor[data-panning="true"] .composeui-editor__workspace {
+  cursor: grab;
+}
+
+.composeui-editor__workspace[data-pan-active="true"] {
+  cursor: grabbing;
 }
 
 .composeui-editor__workspace-grid {

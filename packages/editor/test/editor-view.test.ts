@@ -162,11 +162,13 @@ describe("mountEditor", () => {
     workspace.dispatchEvent(
       new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 40, clientY: 50 }),
     )
+    expect(workspace.dataset.panActive).toBe("true")
     window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 90, clientY: 80 }))
     window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 90, clientY: 80 }))
 
     expect(mounted.session.getState().viewport).toMatchObject({ x: 50, y: 30, zoom: 1 })
     expect(root.querySelector("[data-testid='marquee-selection']")).toBeNull()
+    expect(workspace.dataset.panActive).toBeUndefined()
     window.dispatchEvent(new KeyboardEvent("keyup", { key: " ", code: "Space" }))
     expect(shell.dataset.panning).toBeUndefined()
   })
