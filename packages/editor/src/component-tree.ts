@@ -1,6 +1,15 @@
 import { getChildren, getTreeItems } from "@composeui/core"
-import type { Diagnostic, Editor, RecordStore, Result, TreeItem } from "@composeui/core"
-import type { EditorSession, EditorSessionState } from "./session"
+import type {
+  Diagnostic,
+  Editor,
+  EditorChangeEvent,
+  RecordStore,
+  Result,
+  TransactionPatch,
+  TreeItem,
+} from "@composeui/core"
+import { EditorSession } from "./session"
+import type { EditorSessionState } from "./session"
 
 interface FocusTarget {
   testId: string
@@ -11,6 +20,17 @@ const TREE_DRAG_TYPE = "application/x-composeui-tree-node"
 export interface ComponentTreeView {
   element: HTMLElement
   update(store: RecordStore, pageId: string, state: EditorSessionState, rebuild: boolean): void
+}
+
+export interface MountComponentTreeOptions {
+  pageId: string
+  session?: EditorSession
+}
+
+export interface MountedComponentTree {
+  session: EditorSession
+  update(store: RecordStore, pageId: string, state: EditorSessionState, rebuild: boolean): void
+  destroy(): void
 }
 
 function treeButtons(tree: HTMLElement): HTMLButtonElement[] {
@@ -388,6 +408,28 @@ function buildTree(
   tree.replaceChildren(fragment)
 }
 
+export function treeNeedsUpdate(patch: TransactionPatch): boolean {
+  if (patch.created.length > 0 || patch.removed.length > 0) return true
+  return patch.updated.some(({ before, after }) => {
+    if (before.typeName !== after.typeName) return true
+    if (before.typeName === "page" && after.typeName === "page") {
+      return before.name !== after.name
+    }
+    if (before.typeName !== "node" || after.typeName !== "node") return false
+    return (
+      before.name !== after.name ||
+      before.parentId !== after.parentId ||
+      before.index !== after.index ||
+      before.visible !== after.visible ||
+      before.locked !== after.locked
+    )
+  })
+}
+
+function sameArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
 export function createComponentTree(
   store: RecordStore,
   pageId: string,
@@ -420,6 +462,75 @@ export function createComponentTree(
         if (button !== null)
           treeItem.setAttribute("aria-selected", String(selected.has(button.dataset.treeId ?? "")))
       }
+    },
+  }
+}
+
+export function mountComponentTreeView(
+  root: HTMLElement,
+  editor: Editor,
+  options: MountComponentTreeOptions,
+  subscribe = true,
+): MountedComponentTree {
+  const page = editor.getRecord(options.pageId)
+  if (page?.typeName !== "page") throw new Error("PAGE_NOT_FOUND")
+
+  const session = options.session ?? new EditorSession()
+  if (!session.getState().expanded.includes(options.pageId)) {
+    session.toggleExpanded(options.pageId)
+  }
+  let state = session.getState()
+  const tree = createComponentTree(editor.getStore(), options.pageId, state, session, editor)
+  root.replaceChildren(tree.element)
+  let store = editor.getStore()
+  let destroyed = false
+
+  const onCoreChange = (event: EditorChangeEvent): void => {
+    if (destroyed) return
+    store = event.store
+    if (treeNeedsUpdate(event.transaction.forward)) tree.update(store, options.pageId, state, true)
+  }
+  const onSessionChange = (nextState: EditorSessionState): void => {
+    if (destroyed) return
+    const expandedChanged = !sameArray(state.expanded, nextState.expanded)
+    const selectionChanged = !sameArray(state.selection, nextState.selection)
+    state = nextState
+    if (expandedChanged) tree.update(store, options.pageId, nextState, true)
+    else if (selectionChanged) tree.update(store, options.pageId, nextState, false)
+  }
+
+  const unsubscribeCore = subscribe ? editor.subscribe(onCoreChange) : () => {}
+  const unsubscribeSession = subscribe ? session.subscribe(onSessionChange) : () => {}
+
+  return {
+    session,
+    update: tree.update,
+    destroy() {
+      if (destroyed) return
+      destroyed = true
+      unsubscribeCore()
+      unsubscribeSession()
+      root.replaceChildren()
+    },
+  }
+}
+
+export function mountComponentTree(
+  root: HTMLElement,
+  editor: Editor,
+  options: MountComponentTreeOptions,
+): MountedComponentTree {
+  const aside = document.createElement("aside")
+  aside.className = "composeui-editor__component-tree"
+  aside.setAttribute("aria-label", "Component tree")
+  root.replaceChildren(aside)
+  const mounted = mountComponentTreeView(aside, editor, options)
+  return {
+    session: mounted.session,
+    update: mounted.update,
+    destroy() {
+      mounted.destroy()
+      aside.remove()
     },
   }
 }

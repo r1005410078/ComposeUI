@@ -2,7 +2,8 @@ import type { Editor, NodeRecord, PageRecord, RecordStore } from "@composeui/cor
 import type { EditorChangeEvent, TransactionPatch } from "@composeui/core"
 import { safeColor } from "./colors"
 import { screenToWorld, worldToScreen, zoomAt } from "./coordinates"
-import { createComponentTree } from "./component-tree"
+import { mountComponentTreeView, treeNeedsUpdate } from "./component-tree"
+import type { MountedComponentTree } from "./component-tree"
 import { resizeGroup, selectionBounds } from "./group-resize"
 import type { GroupResizeHandle, GroupResizeItem } from "./group-resize"
 import { createPointerMoveSession } from "./interactions"
@@ -27,6 +28,7 @@ const GROUP_RESIZE_HANDLES: readonly GroupResizeHandle[] = [
 export interface MountEditorOptions {
   pageId: string
   session?: EditorSession
+  view?: "combined" | "canvas"
 }
 
 export interface MountedEditor {
@@ -399,24 +401,6 @@ function createCanvasView(
   return canvas
 }
 
-function treeNeedsUpdate(patch: TransactionPatch): boolean {
-  if (patch.created.length > 0 || patch.removed.length > 0) return true
-  return patch.updated.some(({ before, after }) => {
-    if (before.typeName !== after.typeName) return true
-    if (before.typeName === "page" && after.typeName === "page") {
-      return before.name !== after.name
-    }
-    if (before.typeName !== "node" || after.typeName !== "node") return false
-    return (
-      before.name !== after.name ||
-      before.parentId !== after.parentId ||
-      before.index !== after.index ||
-      before.visible !== after.visible ||
-      before.locked !== after.locked
-    )
-  })
-}
-
 function canvasNeedsRebuild(patch: TransactionPatch): boolean {
   if (patch.created.length > 0 || patch.removed.length > 0) return true
   return patch.updated.some(({ before, after }) => {
@@ -475,18 +459,24 @@ export function mountEditor(
   grid.dataset.testid = "workspace-grid"
   grid.setAttribute("aria-hidden", "true")
 
-  const tree = createComponentTree(
-    coreEditor.getStore(),
-    options.pageId,
-    sessionState,
-    session,
-    coreEditor,
-  )
-  aside.append(tree.element)
   world.append(board)
   workspace.append(grid, world, overlay)
-  shell.append(aside, workspace)
+  if (options.view !== "canvas") shell.append(aside)
+  shell.append(workspace)
   root.replaceChildren(shell)
+
+  const treeMounted: MountedComponentTree | undefined =
+    options.view === "canvas"
+      ? undefined
+      : mountComponentTreeView(
+          aside,
+          coreEditor,
+          {
+            pageId: options.pageId,
+            session,
+          },
+          false,
+        )
 
   let currentStore = coreEditor.getStore()
   const canvas = createCanvasView(currentStore, initialPage, world, board, overlay)
@@ -1033,8 +1023,8 @@ export function mountEditor(
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return
     canvas.update(currentStore, page, canvasNeedsRebuild(event.transaction.forward))
-    if (treeNeedsUpdate(event.transaction.forward)) {
-      tree.update(currentStore, options.pageId, sessionState, true)
+    if (treeMounted !== undefined && treeNeedsUpdate(event.transaction.forward)) {
+      treeMounted.update(currentStore, options.pageId, sessionState, true)
     }
     renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
   }
@@ -1045,12 +1035,14 @@ export function mountEditor(
       sessionState.viewport.x !== nextState.viewport.x ||
       sessionState.viewport.y !== nextState.viewport.y ||
       sessionState.viewport.zoom !== nextState.viewport.zoom
-    const expandedChanged = !sameArray(sessionState.expanded, nextState.expanded)
     const gridChanged = sessionState.gridVisible !== nextState.gridVisible
+    const expandedChanged = !sameArray(sessionState.expanded, nextState.expanded)
     if (groupResizeActive && (selectionChanged || viewportChanged)) activeInteraction?.cancel()
     sessionState = nextState
-    if (expandedChanged) tree.update(currentStore, options.pageId, nextState, true)
-    else if (selectionChanged) tree.update(currentStore, options.pageId, nextState, false)
+    if (treeMounted !== undefined) {
+      if (expandedChanged) treeMounted.update(currentStore, options.pageId, nextState, true)
+      else if (selectionChanged) treeMounted.update(currentStore, options.pageId, nextState, false)
+    }
     if (viewportChanged || gridChanged) updateViewport()
     if (selectionChanged || viewportChanged) {
       renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, nextState)
@@ -1074,6 +1066,7 @@ export function mountEditor(
       window.removeEventListener("keydown", onWindowKeyDown)
       window.removeEventListener("keyup", onWindowKeyUp)
       window.removeEventListener("blur", onWindowBlur)
+      treeMounted?.destroy()
       unsubscribeCore()
       unsubscribeSession()
       shell.remove()
