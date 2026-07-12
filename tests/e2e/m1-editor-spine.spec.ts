@@ -594,8 +594,17 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   await expect(page.getByRole("complementary", { name: "节点树" })).toBeVisible()
   const pageRow = page.getByTestId("tree-row-page-1")
   const redRow = page.getByTestId("tree-row-node-red")
-  await expect(pageRow.locator("svg")).toHaveCount(2)
-  await expect(redRow.locator("svg")).toHaveCount(5)
+  await expect(page.getByTestId("tree-toggle-page-1")).toBeVisible()
+  await expect(page.getByTestId("tree-icon-page-1")).toBeVisible()
+  await expect(page.getByTestId("tree-icon-node-red")).toBeVisible()
+  for (const action of ["visibility", "lock", "move-up", "move-down"]) {
+    await expect(page.getByTestId(`tree-${action}-node-red`)).toBeVisible()
+  }
+  await expect(page.getByTestId("tree-visibility-node-red")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  await expect(page.getByTestId("tree-lock-node-red")).toHaveAttribute("aria-pressed", "false")
   const pageBox = await pageRow.boundingBox()
   const redBox = await redRow.boundingBox()
   expect(pageBox?.height).toBeLessThanOrEqual(30)
