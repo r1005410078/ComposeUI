@@ -1,4 +1,36 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
+
+async function marqueeSelectRedAndBlue(page: Page) {
+  const workspace = page.getByTestId("workspace")
+  const red = page.locator("[data-node-id='node-red']")
+  const blue = page.locator("[data-node-id='node-blue']")
+  const workspaceBox = await workspace.boundingBox()
+  const redBox = await red.boundingBox()
+  const blueBox = await blue.boundingBox()
+  if (workspaceBox === null || redBox === null || blueBox === null) {
+    throw new Error("workspace or nodes were not rendered")
+  }
+
+  const left = Math.min(redBox.x, blueBox.x) - 12
+  const top = Math.min(redBox.y, blueBox.y) - 12
+  const right = Math.max(redBox.x + redBox.width, blueBox.x + blueBox.width) + 12
+  const bottom = Math.max(redBox.y + redBox.height, blueBox.y + blueBox.height) + 12
+  await page.mouse.move(Math.max(workspaceBox.x, left), Math.max(workspaceBox.y, top))
+  await page.mouse.down()
+  await page.mouse.move(right, bottom)
+  await page.mouse.up()
+  await expect(page.getByTestId("selection-node-red")).toBeAttached()
+  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+}
+
+async function readSvgRect(page: Page, testId: string) {
+  return page.getByTestId(testId).evaluate((element) => ({
+    x: Number(element.getAttribute("x")),
+    y: Number(element.getAttribute("y")),
+    width: Number(element.getAttribute("width")),
+    height: Number(element.getAttribute("height")),
+  }))
+}
 
 test("synchronizes selection, free-layout drag, undo and redo", async ({ page }) => {
   await page.goto("/")
@@ -124,6 +156,86 @@ test("moves all marquee-selected nodes in one drag", async ({ page }) => {
   await expect(blue).toHaveCSS("top", "265px")
   await expect(page.getByTestId("selection-node-red")).not.toHaveAttribute("transform", /.+/)
   await expect(page.getByTestId("selection-node-blue")).not.toHaveAttribute("transform", /.+/)
+})
+
+test("resizes a multi-selection from the southeast handle and undoes both layouts", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await marqueeSelectRedAndBlue(page)
+
+  const handles = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
+  for (const handle of handles) {
+    await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
+  }
+
+  const red = page.locator("[data-node-id='node-red']")
+  const blue = page.locator("[data-node-id='node-blue']")
+  const initialRed = await red.evaluate((element) => ({
+    left: getComputedStyle(element).left,
+    top: getComputedStyle(element).top,
+    width: getComputedStyle(element).width,
+    height: getComputedStyle(element).height,
+  }))
+  const initialBlue = await blue.evaluate((element) => ({
+    left: getComputedStyle(element).left,
+    top: getComputedStyle(element).top,
+    width: getComputedStyle(element).width,
+    height: getComputedStyle(element).height,
+  }))
+  const handleBox = await page.getByTestId("group-resize-se").boundingBox()
+  if (handleBox === null) throw new Error("southeast group handle was not rendered")
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + 100, handleBox.y + 80)
+
+  await expect(red).not.toHaveCSS("width", initialRed.width)
+  await expect(red).not.toHaveCSS("height", initialRed.height)
+  await expect(blue).not.toHaveCSS("left", initialBlue.left)
+  await expect(blue).not.toHaveCSS("top", initialBlue.top)
+  await expect(blue).not.toHaveCSS("width", initialBlue.width)
+  await expect(blue).not.toHaveCSS("height", initialBlue.height)
+  await page.mouse.up()
+
+  await page.getByTestId("editor-shell").focus()
+  await page.keyboard.press("Meta+z")
+  await expect(red).toHaveCSS("left", initialRed.left)
+  await expect(red).toHaveCSS("top", initialRed.top)
+  await expect(red).toHaveCSS("width", initialRed.width)
+  await expect(red).toHaveCSS("height", initialRed.height)
+  await expect(blue).toHaveCSS("left", initialBlue.left)
+  await expect(blue).toHaveCSS("top", initialBlue.top)
+  await expect(blue).toHaveCSS("width", initialBlue.width)
+  await expect(blue).toHaveCSS("height", initialBlue.height)
+})
+
+test("keeps the southeast group corner fixed during northwest resize", async ({ page }) => {
+  await page.goto("/")
+  await marqueeSelectRedAndBlue(page)
+
+  const frame = page.getByTestId("group-selection-frame")
+  const initial = await readSvgRect(page, "group-selection-frame")
+  const initialRight = initial.x + initial.width
+  const initialBottom = initial.y + initial.height
+  const handleBox = await page.getByTestId("group-resize-nw").boundingBox()
+  if (handleBox === null) throw new Error("northwest group handle was not rendered")
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x - 50, handleBox.y - 40)
+
+  await expect
+    .poll(async () => {
+      const current = await readSvgRect(page, "group-selection-frame")
+      return (
+        Math.abs(current.x + current.width - initialRight) < 0.01 &&
+        Math.abs(current.y + current.height - initialBottom) < 0.01
+      )
+    })
+    .toBe(true)
+  await expect(frame).toBeAttached()
+  await page.mouse.up()
 })
 
 test("pans, zooms at the pointer, multi-selects and exports JSON without Session state", async ({
