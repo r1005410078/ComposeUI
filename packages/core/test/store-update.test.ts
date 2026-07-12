@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { createEmptyDocument, RecordStore } from "../src/index"
-import type { NodeRecord } from "../src/index"
+import { createEmptyDocument, RecordStore } from "@composeui/core"
+import type { NodeRecord } from "@composeui/core"
 
 const rectangle: NodeRecord = {
   id: "node-1",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "../src/coordinates"
+import { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "@composeui/editor"
 
 describe("Workspace coordinates", () => {
   it("round-trips world and screen coordinates", () => {
@@ -32,5 +32,23 @@ describe("Workspace coordinates", () => {
       screenToWorld({ x: 0, y: 0 }, { x: 0, y: 0, zoom: Number.POSITIVE_INFINITY }),
     ).toThrow("INVALID_ZOOM")
     expect(() => zoomAt({ x: 0, y: 0, zoom: 1 }, { x: 0, y: 0 }, -1)).toThrow("INVALID_ZOOM")
+  })
+
+  it("rejects non-finite viewport and point coordinates", () => {
+    expect(() => worldToScreen({ x: Number.NaN, y: 0 }, { x: 0, y: 0, zoom: 1 })).toThrow(
+      "INVALID_COORDINATE",
+    )
+    expect(() =>
+      screenToWorld({ x: 0, y: Number.POSITIVE_INFINITY }, { x: 0, y: 0, zoom: 1 }),
+    ).toThrow("INVALID_COORDINATE")
+    expect(() =>
+      worldToScreen({ x: 0, y: 0 }, { x: Number.NEGATIVE_INFINITY, y: 0, zoom: 1 }),
+    ).toThrow("INVALID_COORDINATE")
+    expect(() => worldToParentLocal({ x: 0, y: 0 }, { x: 0, y: Number.NaN })).toThrow(
+      "INVALID_COORDINATE",
+    )
+    expect(() => zoomAt({ x: 0, y: 0, zoom: 1 }, { x: Number.POSITIVE_INFINITY, y: 0 }, 2)).toThrow(
+      "INVALID_COORDINATE",
+    )
   })
 })

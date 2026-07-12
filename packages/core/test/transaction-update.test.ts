@@ -6,8 +6,8 @@ import {
   createEditor,
   RecordStore,
   transact,
-} from "../src/index"
-import type { DocumentRecord, NodeRecord, PageRecord } from "../src/index"
+} from "@composeui/core"
+import type { DocumentRecord, NodeRecord, PageRecord } from "@composeui/core"
 
 const rectangle = (id: string, parentId = "page-1", index = "a0"): NodeRecord => ({
   id,

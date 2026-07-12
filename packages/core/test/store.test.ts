@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { createEmptyDocument, RecordStore } from "../src/index"
-import type { NodeRecord, PageDocument, PageRecord, PersistentRecord } from "../src/index"
+import { createEmptyDocument, RecordStore } from "@composeui/core"
+import type { NodeRecord, PageDocument, PageRecord, PersistentRecord } from "@composeui/core"
 
 const node = (id: string, parentId: string, index: string): NodeRecord => ({
   id,

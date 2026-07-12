@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { createEmptyDocument, getChildren, getTreeItems, RecordStore } from "../src/index"
-import type { NodeRecord } from "../src/index"
+import { createEmptyDocument, getChildren, getTreeItems, RecordStore } from "@composeui/core"
+import type { NodeRecord } from "@composeui/core"
 
 const node = (id: string, parentId: string, index: string): NodeRecord => ({
   id,
@@ -44,12 +44,20 @@ describe("tree projections", () => {
         node("node-a-child", "node-a", "a0"),
       ],
     })
+    const all = store.all.bind(store)
+    let allCalls = 0
+    store.all = () => {
+      allCalls++
+      return all()
+    }
 
     expect(getTreeItems(store, "page-1", new Set(["page-1"]))).toEqual([
       expect.objectContaining({ id: "page-1", depth: 0, hasChildren: true }),
       expect.objectContaining({ id: "node-a", depth: 1, hasChildren: true }),
       expect.objectContaining({ id: "node-b", depth: 1, hasChildren: false }),
     ])
+    expect(allCalls).toBe(1)
+    allCalls = 0
     expect(
       getTreeItems(store, "page-1", new Set(["page-1", "node-a"])).map(({ id, depth }) => ({
         id,
@@ -61,6 +69,7 @@ describe("tree projections", () => {
       { id: "node-a-child", depth: 2 },
       { id: "node-b", depth: 1 },
     ])
+    expect(allCalls).toBe(1)
   })
 
   it("returns an empty projection for a missing or non-page root", () => {

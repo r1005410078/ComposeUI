@@ -15,6 +15,13 @@ function assertValidZoom(zoom: number): void {
   if (!Number.isFinite(zoom) || zoom <= 0) throw new Error("INVALID_ZOOM")
 }
 
+function assertValidViewport(viewport: Viewport): void {
+  if (!Number.isFinite(viewport.x) || !Number.isFinite(viewport.y)) {
+    throw new Error("INVALID_COORDINATE")
+  }
+  assertValidZoom(viewport.zoom)
+}
+
 export class EditorSession {
   #state: EditorSessionState = {
     viewport: { x: 0, y: 0, zoom: 1 },
@@ -24,13 +31,15 @@ export class EditorSession {
   }
 
   readonly #listeners = new Set<(state: EditorSessionState) => void>()
+  readonly #pendingStates: EditorSessionState[] = []
+  #notifying = false
 
   getState(): EditorSessionState {
     return structuredClone(this.#state)
   }
 
   setViewport(viewport: Viewport): void {
-    assertValidZoom(viewport.zoom)
+    assertValidViewport(viewport)
     this.#state = { ...this.#state, viewport: structuredClone(viewport) }
     this.#emit()
   }
@@ -59,7 +68,24 @@ export class EditorSession {
   }
 
   #emit(): void {
-    const state = this.getState()
-    for (const listener of this.#listeners) listener(state)
+    this.#pendingStates.push(this.getState())
+    if (this.#notifying) return
+
+    this.#notifying = true
+    try {
+      while (this.#pendingStates.length > 0) {
+        const state = this.#pendingStates.shift()!
+        const listeners = [...this.#listeners]
+        for (const listener of listeners) {
+          try {
+            listener(structuredClone(state))
+          } catch {
+            // Listener failures must not interrupt the session notification queue.
+          }
+        }
+      }
+    } finally {
+      this.#notifying = false
+    }
   }
 }

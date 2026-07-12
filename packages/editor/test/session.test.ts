@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest"
-import { EditorSession } from "../src/session"
+import { EditorSession } from "@composeui/editor"
 
 describe("EditorSession", () => {
   it("returns immutable state snapshots and deduplicates selection", () => {
@@ -49,6 +50,37 @@ describe("EditorSession", () => {
 
     expect(() => session.setViewport({ x: 0, y: 0, zoom: 0 })).toThrow("INVALID_ZOOM")
     expect(() => session.setViewport({ x: 0, y: 0, zoom: Number.NaN })).toThrow("INVALID_ZOOM")
+    expect(() => session.setViewport({ x: Number.NaN, y: 0, zoom: 1 })).toThrow(
+      "INVALID_COORDINATE",
+    )
+    expect(() => session.setViewport({ x: 0, y: Number.POSITIVE_INFINITY, zoom: 1 })).toThrow(
+      "INVALID_COORDINATE",
+    )
     expect(session.getState().viewport).toEqual({ x: 0, y: 0, zoom: 1 })
+  })
+
+  it("isolates listener failures and preserves queued notification order", () => {
+    const session = new EditorSession()
+    const events: string[] = []
+    let reentered = false
+
+    session.subscribe((state) => {
+      events.push(`first:${state.hoveredId ?? state.selection[0] ?? "empty"}`)
+      state.selection.push("mutated-by-first")
+      if (!reentered) {
+        reentered = true
+        session.setHoveredId("node-2")
+      }
+    })
+    session.subscribe(() => {
+      throw new Error("listener failure")
+    })
+    session.subscribe((state) => {
+      events.push(`last:${state.hoveredId ?? state.selection[0] ?? "empty"}`)
+      expect(state.selection).toEqual(["node-1"])
+    })
+
+    expect(() => session.setSelection(["node-1"])).not.toThrow()
+    expect(events).toEqual(["first:node-1", "last:node-1", "first:node-2", "last:node-2"])
   })
 })

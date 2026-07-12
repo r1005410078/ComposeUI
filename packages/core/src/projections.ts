@@ -12,26 +12,33 @@ export interface TreeItem {
   hasChildren: boolean
 }
 
-export function getChildren(store: RecordStore, parentId: string): NodeRecord[] {
-  const children = store
-    .all()
-    .filter(
-      (record): record is NodeRecord => record.typeName === "node" && record.parentId === parentId,
-    )
-  // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted; children is new.
-  return children.sort((left, right) => left.index.localeCompare(right.index))
+function buildChildrenIndex(store: RecordStore): Map<string, NodeRecord[]> {
+  const childrenByParent = new Map<string, NodeRecord[]>()
+  for (const record of store.all()) {
+    if (record.typeName !== "node") continue
+    const children = childrenByParent.get(record.parentId)
+    if (children === undefined) childrenByParent.set(record.parentId, [record])
+    else children.push(record)
+  }
+
+  for (const children of childrenByParent.values()) {
+    // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted; children is new.
+    children.sort((left, right) => left.index.localeCompare(right.index))
+  }
+  return childrenByParent
 }
 
-export function getTreeItems(
-  store: RecordStore,
-  pageId: string,
+export function getChildren(store: RecordStore, parentId: string): NodeRecord[] {
+  return buildChildrenIndex(store).get(parentId) ?? []
+}
+
+function treeItemsFromIndex(
+  page: PageRecord,
+  childrenByParent: ReadonlyMap<string, readonly NodeRecord[]>,
   expanded: ReadonlySet<string>,
 ): TreeItem[] {
-  const page = store.get(pageId)
-  if (page?.typeName !== "page") return []
-
   const walk = (parent: PageRecord | NodeRecord, depth: number): TreeItem[] => {
-    const children = getChildren(store, parent.id)
+    const children = childrenByParent.get(parent.id) ?? []
     const item: TreeItem = {
       id: parent.id,
       depth,
@@ -48,4 +55,14 @@ export function getTreeItems(
   }
 
   return walk(page, 0)
+}
+
+export function getTreeItems(
+  store: RecordStore,
+  pageId: string,
+  expanded: ReadonlySet<string>,
+): TreeItem[] {
+  const page = store.get(pageId)
+  if (page?.typeName !== "page") return []
+  return treeItemsFromIndex(page, buildChildrenIndex(store), expanded)
 }

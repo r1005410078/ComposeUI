@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
-import { canonicalizeDocument, createEditor, createEmptyDocument } from "../src/index"
+import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
 
 describe("basic document golden", () => {
   it("matches the reviewed canonical JSON", async () => {

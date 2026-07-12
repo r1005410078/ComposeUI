@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createEditor, createEmptyDocument } from "../src/index"
+import { createEditor, createEmptyDocument } from "@composeui/core"
 
 describe("node.create", () => {
   it("creates a rectangle under an existing page", () => {

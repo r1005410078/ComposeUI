@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createEmptyDocument } from "../src/index"
+import { createEmptyDocument } from "@composeui/core"
 
 describe("createEmptyDocument", () => {
   it("creates one page board with stable ids", () => {

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { applyPatch, createEditor, createEmptyDocument, History, RecordStore } from "../src/index"
-import type { EditorChangeEvent, HistoryEntry, NodeRecord } from "../src/index"
+import {
+  applyPatch,
+  createEditor,
+  createEmptyDocument,
+  History,
+  RecordStore,
+} from "@composeui/core"
+import type { EditorChangeEvent, HistoryEntry, NodeRecord } from "@composeui/core"
 
 const createNode = (editor: ReturnType<typeof createEditor>, id: string) =>
   editor.dispatch({

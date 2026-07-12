@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createEmptyDocument, RecordStore, transact } from "../src/index"
+import { createEmptyDocument, RecordStore, transact } from "@composeui/core"
 
 const rectangle = {
   id: "node-1",

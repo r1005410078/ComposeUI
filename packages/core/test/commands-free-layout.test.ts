@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { canonicalizeDocument, createEditor, createEmptyDocument } from "../src/index"
-import type { NodeRecord } from "../src/index"
+import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
+import type { NodeRecord } from "@composeui/core"
 
 const createRectangle = (
   editor: ReturnType<typeof createEditor>,

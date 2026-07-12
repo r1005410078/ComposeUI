@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { canonicalizeDocument, createEditor, createEmptyDocument } from "../../core/src/index"
-import { EditorSession } from "../src/index"
+import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
+import { EditorSession } from "@composeui/editor"
 
 describe("Document and Session scopes", () => {
   it("does not serialize viewport or selection", () => {
