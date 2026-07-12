@@ -228,7 +228,7 @@ describe("editor workspace", () => {
 
     const mounted = mountEditorWorkspace(root, createEditorInstance(), {
       pageId: "page-1",
-      projectTitle: "新建游戏项目",
+      projectTitle: "BMS",
       mountSceneExtras(sceneRoot) {
         const button = document.createElement("button")
         button.dataset.testid = "scene-extra"
@@ -270,7 +270,7 @@ describe("editor workspace", () => {
     expect(mounted.api.closePanel("canvas:page-1")).toBe(false)
     expect(root.querySelector("[data-testid='workspace-mode-bar']")).toBeNull()
     expect(root.querySelector("[data-testid='workspace-project-title']")?.textContent).toBe(
-      "新建游戏项目",
+      "BMS",
     )
     expect(root.querySelector("[data-testid='workspace-run']")).not.toBeNull()
     expect(root.querySelector("[data-testid='workspace-save']")).not.toBeNull()

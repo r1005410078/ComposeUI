@@ -581,7 +581,7 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
 }) => {
   await page.goto("/")
 
-  await expect(page.getByTestId("workspace-project-title")).toHaveText("新建游戏项目")
+  await expect(page.getByTestId("workspace-project-title")).toHaveText("BMS")
   await expect(page.getByTestId("workspace-run")).toBeVisible()
   await expect(page.getByTestId("workspace-save")).toBeVisible()
   for (const title of ["场景", "画布", "检查器"]) {

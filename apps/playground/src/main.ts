@@ -58,7 +58,7 @@ function mountPlayground(app: HTMLElement): void {
   const layoutStore = createPlaygroundLayoutStore(window.localStorage)
   const mounted = mountEditorWorkspace(editorHost, scenario.editor, {
     pageId: scenario.pageId,
-    projectTitle: "新建游戏项目",
+    projectTitle: "BMS",
     layoutStore,
     mountSceneExtras(sceneRoot) {
       const treePanel = sceneRoot.querySelector<HTMLElement>(".composeui-editor__component-tree")

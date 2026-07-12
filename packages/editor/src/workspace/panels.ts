@@ -19,13 +19,13 @@ const PANEL_META: Record<
   PanelId,
   Pick<WorkspacePanelDescriptor, "title" | "closable" | "defaultPosition">
 > = {
-  scene: { title: "场景", closable: true, defaultPosition: "left" },
-  resources: { title: "资源", closable: true, defaultPosition: "left" },
-  history: { title: "历史", closable: true, defaultPosition: "left" },
+  scene: { title: "场景", closable: false, defaultPosition: "left" },
+  resources: { title: "资源", closable: false, defaultPosition: "left" },
+  history: { title: "历史", closable: false, defaultPosition: "left" },
   canvas: { title: "画布", closable: false, defaultPosition: "center" },
-  inspector: { title: "检查器", closable: true, defaultPosition: "right" },
-  signals: { title: "信号", closable: true, defaultPosition: "right" },
-  output: { title: "输出", closable: true, defaultPosition: "bottom" },
+  inspector: { title: "检查器", closable: false, defaultPosition: "right" },
+  signals: { title: "信号", closable: false, defaultPosition: "right" },
+  output: { title: "输出", closable: false, defaultPosition: "bottom" },
 }
 
 function descriptor(id: PanelId, mount: WorkspacePanelMount): FirstPartyPanelDescriptor {
