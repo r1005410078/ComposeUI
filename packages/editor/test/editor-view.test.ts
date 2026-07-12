@@ -157,7 +157,7 @@ describe("mountEditor", () => {
     const shell = root.querySelector<HTMLElement>("[data-testid='editor-shell']")!
     const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
 
-    shell.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: " ", code: "Space" }))
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: " ", code: "Space" }))
     expect(shell.dataset.panning).toBe("true")
     workspace.dispatchEvent(
       new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 40, clientY: 50 }),

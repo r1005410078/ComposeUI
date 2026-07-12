@@ -665,13 +665,21 @@ export function mountEditor(
     const nextZoom = Math.min(4, Math.max(0.1, sessionState.viewport.zoom * factor))
     session.setViewport(zoomAt(sessionState.viewport, point, nextZoom))
   }
-  const onShellKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === " " || event.code === "Space") {
-      event.preventDefault()
-      spacePressed = true
-      shell.dataset.panning = "true"
+  const onWindowKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== " " && event.code !== "Space") return
+    const target = event.target
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    ) {
       return
     }
+    event.preventDefault()
+    spacePressed = true
+    shell.dataset.panning = "true"
+  }
+  const onShellKeyDown = (event: KeyboardEvent): void => {
     const target = event.target
     if (event.key === "Delete" && target instanceof Element) {
       const treeControl = target.closest<HTMLElement>("[data-tree-control='select']")
@@ -710,6 +718,7 @@ export function mountEditor(
   workspace.addEventListener("pointerdown", onWorkspacePointerDown)
   workspace.addEventListener("wheel", onWorkspaceWheel, { passive: false })
   shell.addEventListener("keydown", onShellKeyDown)
+  window.addEventListener("keydown", onWindowKeyDown)
   window.addEventListener("keyup", onWindowKeyUp)
   window.addEventListener("blur", onWindowBlur)
 
@@ -756,6 +765,7 @@ export function mountEditor(
       workspace.removeEventListener("pointerdown", onWorkspacePointerDown)
       workspace.removeEventListener("wheel", onWorkspaceWheel)
       shell.removeEventListener("keydown", onShellKeyDown)
+      window.removeEventListener("keydown", onWindowKeyDown)
       window.removeEventListener("keyup", onWindowKeyUp)
       window.removeEventListener("blur", onWindowBlur)
       unsubscribeCore()
