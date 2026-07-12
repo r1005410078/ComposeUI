@@ -26,6 +26,7 @@ const GROUP_RESIZE_HANDLES: readonly GroupResizeHandle[] = [
 
 export interface MountEditorOptions {
   pageId: string
+  session?: EditorSession
 }
 
 export interface MountedEditor {
@@ -440,8 +441,10 @@ export function mountEditor(
   const initialPage = coreEditor.getRecord(options.pageId)
   if (initialPage?.typeName !== "page") throw new Error("PAGE_NOT_FOUND")
 
-  const session = new EditorSession()
-  session.toggleExpanded(options.pageId)
+  const session = options.session ?? new EditorSession()
+  if (!session.getState().expanded.includes(options.pageId)) {
+    session.toggleExpanded(options.pageId)
+  }
   let sessionState = session.getState()
 
   const shell = document.createElement("section")

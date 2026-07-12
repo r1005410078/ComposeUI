@@ -106,6 +106,18 @@ function createDataTransfer(): DataTransfer {
 }
 
 describe("mountEditor", () => {
+  it("uses an injected session for rendering selection changes", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1" })
+    const session = new EditorSession()
+    const mounted = mountEditor(root, editor, { pageId: "page-1", session })
+
+    expect(mounted.session).toBe(session)
+    session.setSelection(["node-1"])
+    expect(root.querySelector("[data-testid='selection-node-1']")).not.toBeNull()
+  })
+
   it("updates page clipping from the persisted overflow command", () => {
     const root = document.createElement("div")
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
