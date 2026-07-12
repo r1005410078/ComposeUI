@@ -55,8 +55,11 @@
 .composeui-editor__component-tree {
   background: var(--composeui-panel-bg);
   border-right: 1px solid var(--composeui-border);
-  overflow: auto;
-  width: var(--composeui-tree-width);
+  display: block;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 100%;
 }
 
 .composeui-editor__tree {

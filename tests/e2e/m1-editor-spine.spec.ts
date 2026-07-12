@@ -570,9 +570,20 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   expect(toolbarBox.x).toBeGreaterThanOrEqual(canvasBox.x - 1)
   expect(toolbarBox.x + toolbarBox.width).toBeLessThanOrEqual(canvasBox.x + canvasBox.width + 1)
   const createNodeBox = await page.getByTestId("create-node").boundingBox()
+  const treeRowBox = await page.getByTestId("tree-row-node-blue").boundingBox()
   if (createNodeBox === null) throw new Error("create node command was not rendered")
+  if (treeRowBox === null) throw new Error("tree row was not rendered")
   expect(createNodeBox.x).toBeGreaterThanOrEqual(sceneBox.x - 1)
   expect(createNodeBox.x + createNodeBox.width).toBeLessThanOrEqual(sceneBox.x + sceneBox.width + 1)
+  expect(treeRowBox.x).toBeLessThanOrEqual(sceneBox.x + 16)
+  expect(treeRowBox.x + treeRowBox.width).toBeLessThanOrEqual(sceneBox.x + sceneBox.width + 1)
+  const treeOverflow = await page.locator(".composeui-editor__component-tree").evaluate((tree) => ({
+    clientWidth: tree.clientWidth,
+    scrollLeft: tree.scrollLeft,
+    scrollWidth: tree.scrollWidth,
+  }))
+  expect(treeOverflow.scrollLeft).toBe(0)
+  expect(treeOverflow.scrollWidth).toBeLessThanOrEqual(treeOverflow.clientWidth + 1)
   await expect(page.locator(".composeui-editor__toolbar")).not.toContainText("Create rectangle")
   for (const testId of ["toggle-page-overflow", "export-json", "reset-layout"]) {
     const button = page.getByTestId(testId)
