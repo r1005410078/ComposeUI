@@ -17,3 +17,18 @@ test("renders the M1 editor workspace", async ({ page }) => {
     "rgb(37, 99, 235)",
   )
 })
+
+test("supports keyboard navigation and selection in the component tree", async ({ page }) => {
+  await page.goto("/")
+
+  const red = page.getByTestId("tree-node-red")
+  await red.focus()
+  await red.press("ArrowDown")
+  await expect(page.getByTestId("tree-node-blue")).toBeFocused()
+  await page.getByTestId("tree-node-blue").press("Enter")
+  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+  await page.getByTestId("tree-node-blue").press("Home")
+  await expect(page.getByTestId("tree-page-1")).toBeFocused()
+  await page.getByTestId("tree-page-1").press("End")
+  await expect(page.getByTestId("tree-node-blue")).toBeFocused()
+})
