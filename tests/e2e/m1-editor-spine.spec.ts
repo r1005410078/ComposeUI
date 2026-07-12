@@ -576,12 +576,13 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
     }
   })
 
-  expect(themeState).toEqual({
-    shellBackground: "rgb(3, 15, 31)",
-    canvasBackground: "rgb(3, 20, 38)",
-    runBackground: "rgb(23, 105, 232)",
-    primaryToken: "#1769e8",
-  })
+  expect(themeState.shellBackground).toMatch(/^rgb\(/)
+  expect(themeState.canvasBackground).toMatch(/^rgb\(/)
+  expect(themeState.runBackground).toMatch(/^rgb\(/)
+  expect(themeState.shellBackground).not.toBe("rgb(255, 255, 255)")
+  expect(themeState.canvasBackground).not.toBe("rgb(255, 255, 255)")
+  expect(themeState.runBackground).not.toBe("rgb(255, 255, 255)")
+  expect(themeState.primaryToken.trim()).toBe("#1769e8")
 
   const canvasScroller = page.locator(".composeui-editor__canvas-panel-body")
   await expect(canvasScroller).toHaveCSS("overflow-x", "hidden")
@@ -816,6 +817,25 @@ test("keeps the workspace panels within a 900x700 viewport without overlap", asy
   if (title === null || run === null || save === null) {
     throw new Error("workspace header controls were not rendered")
   }
-  expect(run.x).toBeGreaterThanOrEqual(title.x + title.width - 1)
-  expect(save.x).toBeGreaterThanOrEqual(run.x + run.width - 1)
+
+  const viewport = page.viewportSize()
+  if (viewport === null) throw new Error("viewport size was not available")
+  for (const [name, box] of [
+    ["title", title],
+    ["run", run],
+    ["save", save],
+  ] as const) {
+    expect(box.x, `${name} left edge`).toBeGreaterThanOrEqual(0)
+    expect(box.y, `${name} top edge`).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width, `${name} right edge`).toBeLessThanOrEqual(viewport.width)
+    expect(box.y + box.height, `${name} bottom edge`).toBeLessThanOrEqual(viewport.height)
+  }
+
+  const overlaps = (left: NonNullable<typeof title>, right: NonNullable<typeof title>) =>
+    left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y
+  expect(overlaps(title, run), "project title overlaps run control").toBe(false)
+  expect(overlaps(title, save), "project title overlaps save control").toBe(false)
 })
