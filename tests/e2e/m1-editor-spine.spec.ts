@@ -67,6 +67,27 @@ test("synchronizes selection, free-layout drag, undo and redo", async ({ page })
   await expect(node).toHaveCSS("top", "102px")
 })
 
+test("shows eight resize handles for a single selected rectangle", async ({ page }) => {
+  await page.goto("/")
+  const red = page.locator("[data-node-id='node-red']")
+  await red.click()
+
+  for (const handle of ["n", "ne", "e", "se", "s", "sw", "w", "nw"]) {
+    await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
+  }
+  await expect(page.getByTestId("resize-node-red-se")).toBeHidden()
+
+  const handle = await page.getByTestId("group-resize-se").boundingBox()
+  if (handle === null) throw new Error("southeast resize handle was not rendered")
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handle.x + handle.width / 2 + 30, handle.y + handle.height / 2 + 20)
+  await page.mouse.up()
+
+  await expect(red).toHaveCSS("width", "270px")
+  await expect(red).toHaveCSS("height", "180px")
+})
+
 test("deletes the selected tree node through a command and restores it with undo", async ({
   page,
 }) => {

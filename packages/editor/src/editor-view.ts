@@ -217,7 +217,7 @@ function getGroupSelection(
   visibleNodes: ReadonlyMap<string, VisibleNode>,
   state: EditorSessionState,
 ): { items: GroupResizeItem[]; parentWorldX: number; parentWorldY: number } | undefined {
-  if (state.selection.length < 2) return undefined
+  if (state.selection.length < 1) return undefined
   const selected = state.selection.map((id) => visibleNodes.get(id))
   if (selected.some((item) => item === undefined)) return undefined
   const visible = selected as VisibleNode[]
@@ -819,7 +819,16 @@ export function mountEditor(
         )
       })
       cancel()
-      if (changed) coreEditor.dispatch({ id: "node.resizeMany", payload: { items: resized.items } })
+      if (!changed) return
+      if (resized.items.length === 1) {
+        const item = resized.items[0]!
+        coreEditor.dispatch({
+          id: "node.resize",
+          payload: { id: item.id, x: item.x, y: item.y, width: item.width, height: item.height },
+        })
+      } else {
+        coreEditor.dispatch({ id: "node.resizeMany", payload: { items: resized.items } })
+      }
     }
     function onPointerCancel(nextEvent: PointerEvent): void {
       if (matchesPointer(nextEvent)) cancel()

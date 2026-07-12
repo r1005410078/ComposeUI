@@ -670,8 +670,36 @@ describe("mountEditor", () => {
 
     mounted.session.setSelection(["node-a"])
 
-    expect(root.querySelectorAll("[data-resize-node-id]:not([hidden])")).toHaveLength(2)
-    expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(0)
+    expect(root.querySelectorAll("[data-resize-node-id]:not([hidden])")).toHaveLength(0)
+    expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
+    mounted.destroy()
+    root.remove()
+  })
+
+  it("renders eight resize handles for a single selected rectangle", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1", x: 20, y: 30, width: 100, height: 80 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSelection(["node-1"])
+
+    expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
+    expect(root.querySelector("[data-testid='resize-node-1-se']")).toHaveProperty("hidden", true)
+
+    const northwest = root.querySelector<SVGRectElement>("[data-testid='group-resize-nw']")!
+    northwest.dispatchEvent(pointerEvent("pointerdown", 21, 30, 14))
+    window.dispatchEvent(pointerEvent("pointermove", 0, 20, 14))
+    window.dispatchEvent(pointerEvent("pointerup", 0, 20, 14))
+
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.resize",
+      payload: { id: "node-1", x: 0, y: 20, width: 120, height: 90 },
+    })
+    expect(editor.getRecord("node-1")).toMatchObject({
+      layout: { x: 0, y: 20, width: 120, height: 90 },
+    })
     mounted.destroy()
     root.remove()
   })
@@ -723,7 +751,6 @@ describe("mountEditor", () => {
   })
 
   it.each([
-    "one selected node",
     "same-parent selection containing a locked node",
     "same-parent selection containing a locked ancestor",
     "cross-parent selection",
@@ -734,11 +761,7 @@ describe("mountEditor", () => {
     const editor = createEditor(createDocumentWithPage())
     let selection: string[]
 
-    if (caseName === "one selected node") {
-      addRectangle(editor, { id: "node-a" })
-      addRectangle(editor, { id: "node-b", x: 200 })
-      selection = ["node-a"]
-    } else if (caseName === "same-parent selection containing a locked node") {
+    if (caseName === "same-parent selection containing a locked node") {
       addRectangle(editor, { id: "node-a", locked: true })
       addRectangle(editor, { id: "node-b", x: 200 })
       selection = ["node-a", "node-b"]

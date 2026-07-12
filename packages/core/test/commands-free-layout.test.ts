@@ -137,6 +137,21 @@ describe("Free Layout commands", () => {
     expect(editor.getRecord("free")).toMatchObject({ locked: false, layout: { x: 5, y: 10 } })
   })
 
+  it("resizes a node while updating its position for north and west handles", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    createRectangle(editor, { id: "free", x: 20, y: 30 })
+
+    expect(
+      editor.dispatch({
+        id: "node.resize",
+        payload: { id: "free", x: 1, y: 2, width: 124, height: 98 },
+      }).ok,
+    ).toBe(true)
+    expect(editor.getRecord("free")).toMatchObject({
+      layout: { x: 1, y: 2, width: 124, height: 98 },
+    })
+  })
+
   it("rejects direct transforms beneath a locked ancestor", () => {
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     createRectangle(editor, { id: "parent" })

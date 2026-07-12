@@ -32,7 +32,7 @@ export interface MoveNodeCommand {
 
 export interface ResizeNodeCommand {
   id: "node.resize"
-  payload: { id: string; width: number; height: number }
+  payload: { id: string; x?: number; y?: number; width: number; height: number }
 }
 
 export interface ResizeManyNodeCommand {
@@ -322,10 +322,21 @@ function prepareResize(store: RecordStore, command: ResizeNodeCommand): Prepared
       command.payload.id,
     )
   }
+  const x = command.payload.x ?? result.value.layout.x
+  const y = command.payload.y ?? result.value.layout.y
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return failure(
+      "INVALID_FREE_LAYOUT_POSITION",
+      "Free Layout positions must be finite numbers.",
+      command.payload.id,
+    )
+  }
   return success((draft) =>
     draft.update(command.payload.id, {
       layout: {
         ...result.value.layout,
+        x,
+        y,
         width: command.payload.width,
         height: command.payload.height,
       },
