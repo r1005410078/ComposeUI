@@ -56,10 +56,12 @@ export function screenToWorld(point: Point, viewport: Viewport): Point {
 export function worldToParentLocal(point: Point, parentWorldOrigin: Point): Point {
   assertValidPoint(point)
   assertValidPoint(parentWorldOrigin)
-  return {
+  const result = {
     x: point.x - parentWorldOrigin.x,
     y: point.y - parentWorldOrigin.y,
   }
+  assertFiniteResult(result)
+  return result
 }
 
 export function zoomAt(viewport: Viewport, screenPoint: Point, nextZoom: number): Viewport {

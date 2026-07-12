@@ -62,5 +62,8 @@ describe("Workspace coordinates", () => {
     expect(() => zoomAt({ x: 0, y: 0, zoom: 1 }, { x: Number.MAX_VALUE, y: 0 }, 2)).toThrow(
       RangeError,
     )
+    expect(() =>
+      worldToParentLocal({ x: Number.MAX_VALUE, y: 0 }, { x: -Number.MAX_VALUE, y: 0 }),
+    ).toThrow(RangeError)
   })
 })
