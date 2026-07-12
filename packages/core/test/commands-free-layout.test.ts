@@ -246,6 +246,180 @@ describe("Free Layout commands", () => {
     expect(editor.canUndo()).toBe(false)
   })
 
+  it("resizes same-parent nodes atomically and undoes the batch in one step", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    createRectangle(editor, { id: "first", x: 10, y: 20 })
+    createRectangle(editor, { id: "second", x: 110, y: 60 })
+    const before = canonicalizeDocument(editor.store)
+    let eventCount = 0
+    const labels: string[] = []
+    editor.subscribe((event) => {
+      eventCount += 1
+      labels.push(event.transaction.label)
+    })
+
+    expect(
+      editor.dispatch({
+        id: "node.resizeMany",
+        payload: {
+          items: [
+            { id: "first", x: 10, y: 20, width: 200, height: 160 },
+            { id: "second", x: 210, y: 100, width: 200, height: 160 },
+          ],
+        },
+      }).ok,
+    ).toBe(true)
+    expect(editor.getRecord("first")).toMatchObject({
+      layout: { x: 10, y: 20, width: 200, height: 160 },
+    })
+    expect(editor.getRecord("second")).toMatchObject({
+      layout: { x: 210, y: 100, width: 200, height: 160 },
+    })
+    expect(eventCount).toBe(1)
+    expect(labels).toEqual(["node.resizeMany"])
+
+    expect(editor.undo().ok).toBe(true)
+    expect(canonicalizeDocument(editor.store)).toEqual(before)
+    expect(editor.canRedo()).toBe(true)
+    expect(editor.redo().ok).toBe(true)
+    expect(editor.getRecord("first")).toMatchObject({
+      layout: { x: 10, y: 20, width: 200, height: 160 },
+    })
+  })
+
+  it("rejects invalid multi-resize payloads atomically", () => {
+    const cases = [
+      {
+        name: "fewer than two items",
+        setup: () => createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })),
+        items: [{ id: "missing", x: 0, y: 0, width: 10, height: 10 }],
+      },
+      {
+        name: "missing node",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "first" })
+          return editor
+        },
+        items: [
+          { id: "first", x: 0, y: 0, width: 10, height: 10 },
+          { id: "missing", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+      {
+        name: "duplicate ids",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "first" })
+          return editor
+        },
+        items: [
+          { id: "first", x: 0, y: 0, width: 10, height: 10 },
+          { id: "first", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+      {
+        name: "cross-parent nodes",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "first" })
+          createRectangle(editor, { id: "parent" })
+          createRectangle(editor, { id: "second", parentId: "parent" })
+          return editor
+        },
+        items: [
+          { id: "first", x: 0, y: 0, width: 10, height: 10 },
+          { id: "second", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+      {
+        name: "locked node",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "first" })
+          createRectangle(editor, { id: "second" })
+          editor.dispatch({ id: "node.setLocked", payload: { id: "second", locked: true } })
+          return editor
+        },
+        items: [
+          { id: "first", x: 0, y: 0, width: 10, height: 10 },
+          { id: "second", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+      {
+        name: "locked ancestor",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "parent" })
+          createRectangle(editor, { id: "first", parentId: "parent" })
+          createRectangle(editor, { id: "second", parentId: "parent" })
+          editor.dispatch({ id: "node.setLocked", payload: { id: "parent", locked: true } })
+          return editor
+        },
+        items: [
+          { id: "first", x: 0, y: 0, width: 10, height: 10 },
+          { id: "second", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+      {
+        name: "non-finite position",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "first" })
+          createRectangle(editor, { id: "second" })
+          return editor
+        },
+        items: [
+          { id: "first", x: Number.NaN, y: 0, width: 10, height: 10 },
+          { id: "second", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+      {
+        name: "invalid dimensions",
+        setup: () => {
+          const editor = createEditor(
+            createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
+          )
+          createRectangle(editor, { id: "first" })
+          createRectangle(editor, { id: "second" })
+          return editor
+        },
+        items: [
+          { id: "first", x: 0, y: 0, width: 0, height: 10 },
+          { id: "second", x: 20, y: 20, width: 20, height: 20 },
+        ],
+      },
+    ] as const
+
+    for (const testCase of cases) {
+      const editor = testCase.setup()
+      const before = canonicalizeDocument(editor.store)
+      let eventCount = 0
+      editor.subscribe(() => eventCount++)
+
+      const result = editor.dispatch({
+        id: "node.resizeMany",
+        payload: { items: testCase.items },
+      })
+
+      expect(result.ok, testCase.name).toBe(false)
+      expect(canonicalizeDocument(editor.store), testCase.name).toEqual(before)
+      expect(eventCount, testCase.name).toBe(0)
+    }
+  })
+
   it("deletes an initialized subtree and restores it with one undo step", () => {
     const editor = createEditor(initializedTree())
     const before = canonicalizeDocument(editor.store)

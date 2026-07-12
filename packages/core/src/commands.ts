@@ -35,6 +35,13 @@ export interface ResizeNodeCommand {
   payload: { id: string; width: number; height: number }
 }
 
+export interface ResizeManyNodeCommand {
+  id: "node.resizeMany"
+  payload: {
+    items: Array<{ id: string; x: number; y: number; width: number; height: number }>
+  }
+}
+
 export interface DeleteNodeCommand {
   id: "node.delete"
   payload: { ids: string[] }
@@ -69,6 +76,7 @@ export type EditorCommand =
   | CreateNodeCommand
   | MoveNodeCommand
   | ResizeNodeCommand
+  | ResizeManyNodeCommand
   | DeleteNodeCommand
   | ReorderNodeCommand
   | RenameNodeCommand
@@ -325,6 +333,71 @@ function prepareResize(store: RecordStore, command: ResizeNodeCommand): Prepared
   )
 }
 
+function prepareResizeMany(store: RecordStore, command: ResizeManyNodeCommand): PreparedCommand {
+  if (command.payload.items.length < 2) {
+    return failure(
+      "INVALID_RESIZE_MANY_ITEMS",
+      "Multi-resize requires at least two unique nodes.",
+    )
+  }
+
+  const ids = new Set<string>()
+  const nodes = new Map<string, NodeRecord>()
+  let parentId: string | undefined
+  for (const item of command.payload.items) {
+    if (ids.has(item.id)) {
+      return failure("DUPLICATE_RESIZE_MANY_NODE", `Node ${item.id} appears more than once.`, item.id)
+    }
+    ids.add(item.id)
+
+    const result = nodeResult(store, item.id)
+    if (!result.ok) return result
+    const locked = lockedTransformBarrier(store, result.value)
+    if (locked !== undefined) {
+      return failure("NODE_LOCKED", `Node ${locked.id} is locked.`, locked.id)
+    }
+    if (!Number.isFinite(item.x) || !Number.isFinite(item.y)) {
+      return failure(
+        "INVALID_FREE_LAYOUT_POSITION",
+        "Free Layout positions must be finite numbers.",
+        item.id,
+      )
+    }
+    if (!validSize(item.width, item.height)) {
+      return failure(
+        "INVALID_FREE_LAYOUT_SIZE",
+        "Free Layout dimensions must be finite numbers greater than or equal to 1.",
+        item.id,
+      )
+    }
+    if (parentId === undefined) {
+      parentId = result.value.parentId
+    } else if (result.value.parentId !== parentId) {
+      return failure(
+        "RESIZE_MANY_PARENT_MISMATCH",
+        "Multi-resize nodes must share the same parent.",
+        item.id,
+      )
+    }
+    nodes.set(item.id, result.value)
+  }
+
+  return success((draft) => {
+    for (const item of command.payload.items) {
+      const node = nodes.get(item.id)!
+      draft.update(item.id, {
+        layout: {
+          ...node.layout,
+          x: item.x,
+          y: item.y,
+          width: item.width,
+          height: item.height,
+        },
+      })
+    }
+  })
+}
+
 function prepareDelete(store: RecordStore, command: DeleteNodeCommand): PreparedCommand {
   const records = new Map(store.all().map((record) => [record.id, record]))
   const childrenByParent = new Map<string, string[]>()
@@ -447,6 +520,8 @@ function prepareCommand(store: RecordStore, command: EditorCommand): PreparedCom
       return prepareMove(store, command)
     case "node.resize":
       return prepareResize(store, command)
+    case "node.resizeMany":
+      return prepareResizeMany(store, command)
     case "node.delete":
       return prepareDelete(store, command)
     case "node.reorder":
