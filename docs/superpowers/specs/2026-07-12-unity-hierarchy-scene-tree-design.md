@@ -2,11 +2,11 @@
 
 ## Goal
 
-Refine the ComposeUI scene tree into a compact Unity Hierarchy-style editor surface while preserving its existing selection, keyboard, rename, visibility, lock, reorder, delete, and drag behavior.
+Refine the ComposeUI scene tree, history panel, and output panel into compact Unity-inspired editor surfaces while preserving existing editor behavior.
 
 ## Scope
 
-This change affects the scene tree presentation and its icon rendering. It does not change the document schema, editor commands, panel layout, selection model, or public tree API.
+This change affects scene tree icon rendering and the presentation of the history and output panels. It does not change the document schema, editor command semantics, Dockview layout, selection model, or public tree API.
 
 ## Visual Structure
 
@@ -50,11 +50,33 @@ The implementation preserves:
 
 Buttons retain accessible names and tooltips. Icon-only controls do not expose raw glyph text.
 
+## History Panel
+
+The Dockview tab already identifies the panel, so the duplicate in-panel `历史` heading is removed.
+
+The panel uses two compact regions:
+
+- toolbar: icon-only undo and redo commands with tooltips, accessible names, disabled states, and stable existing test IDs
+- history list: dense rows with muted sequence numbers and the command label as primary text
+
+The newest history entry receives a restrained highlight. Long command labels truncate with an accessible full label. The list owns vertical scrolling and does not resize the toolbar. Existing undo/redo behavior and future-entry presentation remain intact.
+
+## Output Panel
+
+The duplicate in-panel `输出` heading is removed. The panel follows a Unity Console-style content structure:
+
+- independently scrolling message region
+- centered muted empty state when no messages exist
+
+Phase one renders the message region and current empty state only. It does not render placeholder controls or introduce a new logging service or command API. A compact clear/filter/log-level toolbar can be added when those commands exist. Future normal, warning, and error messages will use themed status icons and existing semantic state colors.
+
 ## Architecture
 
 `component-tree.ts` owns semantic DOM and icon state. It creates Lucide icon elements for disclosure, record type, and actions, and exposes state through existing ARIA/data attributes.
 
-`editor.css` owns scene tree layout and interaction styling. It consumes only semantic theme variables for colors, dimensions, opacity, and spacing.
+`workspace/panels.ts` owns history and output panel structure. It continues using the existing editor and history APIs and does not add cross-panel state.
+
+`editor.css` owns scene tree layout and interaction styling. `workspace/workspace.css` owns history and output panel layout. Both consume only semantic theme variables for colors, dimensions, opacity, and spacing.
 
 `theme.css` owns the default Unity-inspired token values. Consumers can change tree density and emphasis without changing component code.
 
@@ -69,8 +91,11 @@ Unit tests verify:
 - visibility and lock states select the correct icons and state attributes
 - existing keyboard, rename, selection, and reorder behavior remains unchanged
 - structural CSS consumes the new tree theme tokens
+- history and output do not render duplicate inner headings
+- history toolbar commands retain accessible labels, disabled states, and existing test IDs
+- history rows and output empty state use the intended semantic structure
 
-Playwright verifies the scene tree remains visible, compact, non-overlapping, and horizontally contained at desktop and narrow viewports. Existing end-to-end tree operations continue to pass.
+Playwright verifies the scene tree and bottom/left panels remain visible, compact, non-overlapping, and contained at desktop and narrow viewports. Existing end-to-end tree, history, and layout operations continue to pass.
 
 ## Non-Goals
 
@@ -79,5 +104,6 @@ Playwright verifies the scene tree remains visible, compact, non-overlapping, an
 - introducing context menus
 - adding drag reparenting
 - hiding actions completely until hover
+- introducing a logging backend
+- adding working output filters before messages exist
 - reproducing Unity branding or proprietary assets
-
