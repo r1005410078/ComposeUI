@@ -1,5 +1,40 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
 
+type Rect = { x: number; y: number; width: number; height: number }
+
+function collectThemeState() {
+  const hostStyle = getComputedStyle(
+    document.querySelector<HTMLElement>(".composeui-editor__workspace-host")!,
+  )
+  return {
+    shellBackground: getComputedStyle(
+      document.querySelector<HTMLElement>(".composeui-editor__workspace-shell")!,
+    ).backgroundColor,
+    headerBackground: getComputedStyle(
+      document.querySelector<HTMLElement>(".composeui-editor__workspace-header")!,
+    ).backgroundColor,
+    canvasBackground: getComputedStyle(
+      document.querySelector<HTMLElement>(".composeui-editor__workspace")!,
+    ).backgroundColor,
+    runBackground: getComputedStyle(
+      document.querySelector<HTMLElement>("[data-testid='workspace-run']")!,
+    ).backgroundColor,
+    surfaceApp: hostStyle.getPropertyValue("--composeui-surface-app").trim(),
+    surfaceToolbar: hostStyle.getPropertyValue("--composeui-surface-toolbar").trim(),
+    surfaceCanvas: hostStyle.getPropertyValue("--composeui-surface-canvas").trim(),
+    primaryToken: hostStyle.getPropertyValue("--composeui-accent-primary").trim(),
+  }
+}
+
+function rectanglesOverlap(left: Rect, right: Rect) {
+  return (
+    left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y
+  )
+}
+
 async function marqueeSelectRedAndBlue(page: Page) {
   const workspace = page.getByTestId("workspace")
   const red = page.locator("[data-node-id='node-red']")
@@ -563,21 +598,7 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   await expect(page.locator(".composeui-editor__page-board")).toBeVisible()
   await expect(page.locator(".composeui-editor__toolbar")).toBeVisible()
 
-  const themeState = await page.evaluate(() => {
-    const style = (selector: string) =>
-      getComputedStyle(document.querySelector<HTMLElement>(selector)!)
-    const hostStyle = style(".composeui-editor__workspace-host")
-    return {
-      shellBackground: style(".composeui-editor__workspace-shell").backgroundColor,
-      headerBackground: style(".composeui-editor__workspace-header").backgroundColor,
-      canvasBackground: style(".composeui-editor__workspace").backgroundColor,
-      runBackground: style("[data-testid='workspace-run']").backgroundColor,
-      surfaceApp: hostStyle.getPropertyValue("--composeui-surface-app").trim(),
-      surfaceToolbar: hostStyle.getPropertyValue("--composeui-surface-toolbar").trim(),
-      surfaceCanvas: hostStyle.getPropertyValue("--composeui-surface-canvas").trim(),
-      primaryToken: hostStyle.getPropertyValue("--composeui-accent-primary").trim(),
-    }
-  })
+  const themeState = await page.evaluate(collectThemeState)
 
   expect(themeState).toEqual({
     shellBackground: "rgb(3, 15, 31)",
@@ -837,12 +858,7 @@ test("keeps the workspace panels within a 900x700 viewport without overlap", asy
     expect(box.y + box.height, `${name} bottom edge`).toBeLessThanOrEqual(viewport.height)
   }
 
-  const overlaps = (left: NonNullable<typeof title>, right: NonNullable<typeof title>) =>
-    left.x < right.x + right.width &&
-    left.x + left.width > right.x &&
-    left.y < right.y + right.height &&
-    left.y + left.height > right.y
-  expect(overlaps(title, run), "project title overlaps run control").toBe(false)
-  expect(overlaps(title, save), "project title overlaps save control").toBe(false)
+  expect(rectanglesOverlap(title, run), "project title overlaps run control").toBe(false)
+  expect(rectanglesOverlap(title, save), "project title overlaps save control").toBe(false)
   expect(save.x, "save control overlaps run control").toBeGreaterThanOrEqual(run.x + run.width - 1)
 })
