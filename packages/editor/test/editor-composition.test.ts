@@ -33,10 +33,11 @@ describe("editor view composition", () => {
     const editor = createEditor(createDocumentWithNode())
     addNode(editor)
 
-    mountEditor(root, editor, { pageId: "page-1", view: "canvas" })
+    const mounted = mountEditor(root, editor, { pageId: "page-1", view: "canvas" })
 
     expect(root.querySelector("[data-testid='page-board']")).not.toBeNull()
     expect(root.querySelector("[aria-label='Component tree']")).toBeNull()
+    mounted.destroy()
   })
 
   it("mounts a standalone tree that shares selection with the canvas", () => {
@@ -46,13 +47,22 @@ describe("editor view composition", () => {
     const session = new EditorSession()
     addNode(editor)
 
-    mountEditor(canvasRoot, editor, { pageId: "page-1", view: "canvas", session })
-    mountComponentTree(treeRoot, editor, { pageId: "page-1", session })
+    const canvas = mountEditor(canvasRoot, editor, { pageId: "page-1", view: "canvas", session })
+    const tree = mountComponentTree(treeRoot, editor, { pageId: "page-1", session })
+    const treeAside = treeRoot.querySelector<HTMLElement>("[aria-label='Component tree']")!
+
+    expect(treeAside.classList).toContain("composeui-editor__component-tree")
 
     treeRoot.querySelector<HTMLElement>("[data-testid='tree-node-1']")!.click()
 
     expect(session.getState().selection).toEqual(["node-1"])
     expect(canvasRoot.querySelector("[data-testid='selection-node-1']")).not.toBeNull()
+    expect(
+      editor.dispatch({ id: "node.rename", payload: { id: "node-1", name: "Renamed" } }).ok,
+    ).toBe(true)
+    expect(treeRoot.querySelector("[data-testid='tree-node-1']")?.textContent).toBe("Renamed")
+    canvas.destroy()
+    tree.destroy()
   })
 
   it("unsubscribes each mounted view exactly once when destroyed", () => {

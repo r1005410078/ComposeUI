@@ -1,4 +1,5 @@
-.composeui-editor {
+.composeui-editor,
+.composeui-editor__component-tree {
   --composeui-editor-bg: #e5e7eb;
   --composeui-panel-bg: #ffffff;
   --composeui-border: #d4d4d8;
@@ -18,7 +19,10 @@
 
 .composeui-editor *,
 .composeui-editor *::before,
-.composeui-editor *::after {
+.composeui-editor *::after,
+.composeui-editor__component-tree *,
+.composeui-editor__component-tree *::before,
+.composeui-editor__component-tree *::after {
   box-sizing: border-box;
 }
 
