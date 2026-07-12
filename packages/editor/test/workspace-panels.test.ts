@@ -72,13 +72,21 @@ describe("workspace panel renderers", () => {
     const dispose = panel("inspector").mount(root, context)
 
     context.session.setSelection(["node-1"])
-    expect(root.querySelector("[data-testid='inspector-name']")?.textContent).toBe("Rectangle")
+    const nameInput = root.querySelector<HTMLInputElement>("[data-testid='inspector-name']")
+    expect(nameInput?.value).toBe("Rectangle")
     expect(root.querySelector("[data-testid='inspector-type']")?.textContent).toBe("node")
 
-    expect(
-      context.editor.dispatch({ id: "node.rename", payload: { id: "node-1", name: "Renamed" } }).ok,
-    ).toBe(true)
-    expect(root.querySelector("[data-testid='inspector-name']")?.textContent).toBe("Renamed")
+    nameInput!.value = "Renamed"
+    nameInput!.dispatchEvent(new Event("change", { bubbles: true }))
+    expect(context.editor.getRecord("node-1")).toMatchObject({ name: "Renamed" })
+    expect(root.querySelector<HTMLInputElement>("[data-testid='inspector-name']")?.value).toBe(
+      "Renamed",
+    )
+
+    context.editor.undo()
+    expect(root.querySelector<HTMLInputElement>("[data-testid='inspector-name']")?.value).toBe(
+      "Rectangle",
+    )
 
     if (typeof dispose === "function") {
       dispose()

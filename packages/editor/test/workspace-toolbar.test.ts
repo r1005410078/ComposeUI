@@ -1,0 +1,79 @@
+// @vitest-environment jsdom
+
+import { describe, expect, it, vi } from "vitest"
+import { createEditor, createEmptyDocument } from "@composeui/core"
+import { EditorSession } from "../src/index"
+import { mountWorkspaceToolbar } from "../src/workspace/toolbar"
+
+function createToolbarContext() {
+  const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+  editor.dispatch({
+    id: "node.create",
+    payload: {
+      id: "node-1",
+      parentId: "page-1",
+      name: "Rectangle",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 80,
+      fill: "#2563eb",
+    },
+  })
+  const session = new EditorSession()
+  const api = {
+    execute: vi.fn(),
+    undo: vi.fn(() => editor.undo()),
+    redo: vi.fn(() => editor.redo()),
+    openPanel: vi.fn(() => true),
+    closePanel: vi.fn(() => true),
+    resetLayout: vi.fn(),
+  }
+  return { editor, session, api }
+}
+
+describe("workspace toolbar", () => {
+  it("renders accessible Lucide controls and toggles the 2D tool state", () => {
+    const context = createToolbarContext()
+    const root = document.createElement("div")
+    mountWorkspaceToolbar(root, {
+      ...context,
+      panels: [{ id: "resources", title: "Resources", closable: true }],
+    })
+
+    const grid = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-grid']")!
+    const select = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-select']")!
+    const pan = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!
+    expect(grid.getAttribute("aria-label")).toBe("Toggle grid")
+    expect(grid.title).toBe("Toggle grid")
+    expect(grid.querySelector("svg")).not.toBeNull()
+    expect(select.getAttribute("aria-pressed")).toBe("true")
+
+    pan.click()
+    expect(pan.getAttribute("aria-pressed")).toBe("true")
+    expect(select.getAttribute("aria-pressed")).toBe("false")
+    grid.click()
+    expect(context.session.getState().gridVisible).toBe(false)
+    expect(grid.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("enables history controls from editor history and opens panels from the menu", () => {
+    const context = createToolbarContext()
+    const root = document.createElement("div")
+    mountWorkspaceToolbar(root, {
+      ...context,
+      panels: [{ id: "resources", title: "Resources", closable: true }],
+    })
+
+    const undo = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-undo']")!
+    const redo = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-redo']")!
+    expect(undo.disabled).toBe(false)
+    expect(redo.disabled).toBe(true)
+    undo.click()
+    expect(redo.disabled).toBe(false)
+
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-panel-menu']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-panel-id='resources']")!.click()
+    expect(context.api.openPanel).toHaveBeenCalledWith("resources")
+  })
+})

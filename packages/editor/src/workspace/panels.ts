@@ -107,9 +107,27 @@ export function createInspectorPanel(): FirstPartyPanelDescriptor {
       panel.replaceChildren()
       const heading = document.createElement("h2")
       heading.textContent = "Inspector"
-      const name = document.createElement("p")
+      const name = document.createElement("input")
+      name.type = "text"
       name.dataset.testid = "inspector-name"
-      name.textContent = label.name
+      name.setAttribute("aria-label", "Node name")
+      name.value = label.name
+      name.disabled = selected === undefined || selected.typeName !== "node"
+      const commitName = (): void => {
+        const value = name.value.trim()
+        if (selected?.typeName !== "node" || value.length === 0 || value === label.name) {
+          name.value = label.name
+          return
+        }
+        context.editor.dispatch({ id: "node.rename", payload: { id: selected.id, name: value } })
+      }
+      name.addEventListener("change", commitName)
+      name.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return
+        event.preventDefault()
+        commitName()
+      })
+      name.addEventListener("blur", commitName)
       const type = document.createElement("p")
       type.dataset.testid = "inspector-type"
       type.textContent = label.type

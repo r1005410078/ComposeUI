@@ -1,0 +1,148 @@
+.composeui-editor__workspace-shell {
+  --composeui-workspace-bg: #18181b;
+  --composeui-workspace-border: #27272a;
+  --composeui-workspace-muted: #a1a1aa;
+  --composeui-workspace-min-width: 480px;
+  --composeui-workspace-min-height: 320px;
+  background: var(--composeui-workspace-bg);
+  color: #f4f4f5;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: var(--composeui-workspace-min-height);
+  min-width: var(--composeui-workspace-min-width);
+  overflow: hidden;
+  width: 100%;
+}
+
+.composeui-editor__workspace-header {
+  align-items: center;
+  background: #202023;
+  border-bottom: 1px solid var(--composeui-workspace-border);
+  display: flex;
+  min-height: 36px;
+  overflow-x: auto;
+}
+
+.composeui-editor__workspace-header:has(.composeui-editor__mode-bar) {
+  min-height: 68px;
+}
+
+.composeui-editor__mode-bar {
+  align-items: center;
+  border-right: 1px solid var(--composeui-workspace-border);
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+.composeui-editor__mode-bar button,
+.composeui-editor__toolbar-button,
+.composeui-editor__panel-menu-item {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.composeui-editor__mode-bar button {
+  color: var(--composeui-workspace-muted);
+  padding: 4px 8px;
+}
+
+.composeui-editor__mode-bar button[aria-current="page"] {
+  background: #3f3f46;
+  color: #fff;
+}
+
+.composeui-editor__toolbar {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.composeui-editor__toolbar-group {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+}
+
+.composeui-editor__toolbar-button {
+  align-items: center;
+  border-radius: 4px;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.composeui-editor__toolbar-button:hover,
+.composeui-editor__toolbar-button[aria-pressed="true"] {
+  background: #3f3f46;
+}
+
+.composeui-editor__toolbar-button:disabled {
+  color: #52525b;
+  cursor: default;
+}
+
+.composeui-editor__toolbar-button svg {
+  height: 16px;
+  width: 16px;
+}
+
+.composeui-editor__toolbar-panels {
+  position: relative;
+}
+
+.composeui-editor__panel-menu {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 30%);
+  min-width: 150px;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: 32px;
+  z-index: 20;
+}
+
+.composeui-editor__panel-menu-item {
+  display: block;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.composeui-editor__panel-menu-item:hover {
+  background: #3f3f46;
+}
+
+.composeui-editor__dockview-host {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .composeui-editor__workspace-shell {
+    --composeui-workspace-min-width: 320px;
+  }
+
+  .composeui-editor__workspace-header:has(.composeui-editor__mode-bar) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .composeui-editor__mode-bar {
+    border-bottom: 1px solid var(--composeui-workspace-border);
+    border-right: 0;
+  }
+}

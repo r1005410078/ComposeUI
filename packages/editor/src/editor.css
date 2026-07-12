@@ -1,5 +1,6 @@
 .composeui-editor,
-.composeui-editor__component-tree {
+.composeui-editor__component-tree,
+.composeui-editor__workspace-host {
   --composeui-editor-bg: #e5e7eb;
   --composeui-panel-bg: #ffffff;
   --composeui-border: #d4d4d8;
@@ -17,12 +18,27 @@
   width: 100%;
 }
 
+.composeui-editor__workspace-host {
+  --composeui-workspace-min-width: 480px;
+  --composeui-workspace-min-height: 320px;
+  height: 100%;
+  min-height: var(--composeui-workspace-min-height);
+  min-width: var(--composeui-workspace-min-width);
+  overflow: hidden;
+}
+
 .composeui-editor *,
 .composeui-editor *::before,
 .composeui-editor *::after,
 .composeui-editor__component-tree *,
 .composeui-editor__component-tree *::before,
 .composeui-editor__component-tree *::after {
+  box-sizing: border-box;
+}
+
+.composeui-editor__workspace-host *,
+.composeui-editor__workspace-host *::before,
+.composeui-editor__workspace-host *::after {
   box-sizing: border-box;
 }
 

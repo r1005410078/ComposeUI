@@ -1,4 +1,6 @@
 import "./editor.css"
+import "./workspace/workspace.css"
+import "dockview/dist/styles/dockview.css"
 
 export { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "./coordinates"
 export type { Point } from "./coordinates"
@@ -31,6 +33,8 @@ export {
   type MountEditorWorkspaceOptions,
   type MountedEditorWorkspace,
 } from "./workspace/editor-workspace"
+export { mountWorkspaceToolbar } from "./workspace/toolbar"
+export type { WorkspaceToolbarOptions } from "./workspace/toolbar"
 export type {
   MountedWorkspace,
   StoredWorkspaceLayout,

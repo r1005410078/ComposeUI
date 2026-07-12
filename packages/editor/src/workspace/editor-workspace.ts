@@ -9,6 +9,7 @@ import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
 import { createWorkspacePanels } from "./panels"
+import { mountWorkspaceToolbar } from "./toolbar"
 import type {
   WorkspaceCommand,
   WorkspaceCommandApi,
@@ -123,6 +124,12 @@ function errorPanel(root: HTMLElement, title: string, message: string): void {
   root.replaceChildren(panel)
 }
 
+function preventNonClosableTabDelete(event: KeyboardEvent): void {
+  if (event.key !== "Delete" && event.key !== "Backspace") return
+  event.preventDefault()
+  event.stopPropagation()
+}
+
 function createNonClosableTab(): ITabRenderer {
   const element = document.createElement("div")
   element.className = "composeui-editor__non-closable-tab"
@@ -133,15 +140,10 @@ function createNonClosableTab(): ITabRenderer {
     init(params) {
       element.textContent = params.title
       const activate = (): void => params.api.setActive()
-      const preventClose = (event: KeyboardEvent): void => {
-        if (event.key !== "Delete" && event.key !== "Backspace") return
-        event.preventDefault()
-        event.stopPropagation()
-      }
       element.addEventListener("click", activate)
-      element.addEventListener("keydown", preventClose)
+      element.addEventListener("keydown", preventNonClosableTabDelete)
       disposeClick = () => element.removeEventListener("click", activate)
-      disposeKeydown = () => element.removeEventListener("keydown", preventClose)
+      disposeKeydown = () => element.removeEventListener("keydown", preventNonClosableTabDelete)
     },
     dispose() {
       disposeClick?.()
@@ -179,8 +181,21 @@ export function mountEditorWorkspace(
   let applyingLayout = false
   let layoutDirty = false
 
+  root.classList.add("composeui-editor__workspace-host")
+  root.style.setProperty("--composeui-workspace-min-width", "480px")
+  root.style.setProperty("--composeui-workspace-min-height", "320px")
+  const shell = document.createElement("div")
+  shell.className = "composeui-editor__workspace-shell"
+  const header = document.createElement("header")
+  header.className = "composeui-editor__workspace-header"
+  const dockviewHost = document.createElement("div")
+  dockviewHost.className = "composeui-editor__dockview-host"
+  shell.append(header, dockviewHost)
+  root.replaceChildren(shell)
+
   if (modeRegistry.shouldRenderModeBar()) {
     const modeBar = document.createElement("nav")
+    modeBar.className = "composeui-editor__mode-bar"
     modeBar.dataset.testid = "workspace-mode-bar"
     modeBar.setAttribute("aria-label", "Editor modes")
     for (const mode of modeRegistry.all()) {
@@ -192,11 +207,26 @@ export function mountEditorWorkspace(
       if (mode.id === "2d") button.setAttribute("aria-current", "page")
       modeBar.append(button)
     }
-    root.append(modeBar)
+    header.append(modeBar)
   }
 
+  const toolbarRoot = document.createElement("nav")
+  header.append(toolbarRoot)
+  const toolbarDispose = mountWorkspaceToolbar(toolbarRoot, {
+    editor,
+    session,
+    api: {
+      undo: () => editor.undo(),
+      redo: () => editor.redo(),
+      openPanel: (id) => {
+        return api.openPanel(id)
+      },
+    },
+    panels: [...registry.values()],
+  })
+
   const dockview = (options.createDockview ?? (createDockview as unknown as DockviewFactory))(
-    root,
+    dockviewHost,
     {
       createComponent({ name }) {
         const descriptor = registry.get(name === canvasId(pageId) ? CANVAS : name)
@@ -432,6 +462,7 @@ export function mountEditorWorkspace(
       if (disposed) return
       disposed = true
       layoutSubscription?.dispose()
+      toolbarDispose()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()
       dockview.dispose()

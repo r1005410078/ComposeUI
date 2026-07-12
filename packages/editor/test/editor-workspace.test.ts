@@ -57,7 +57,6 @@ function createDockviewFake(
       if (panel !== undefined) dockview.removePanel(panel)
     }
   })
-  let layout = initialLayout
   let layoutListener: (() => void) | undefined
   let componentFactory:
     | ((options: { id: string; name: string }) => {
@@ -154,8 +153,7 @@ function createDockviewFake(
         })),
       }
     },
-    fromJSON: vi.fn((nextLayout) => {
-      layout = nextLayout
+    fromJSON: vi.fn((_nextLayout) => {
       if (restorePanelIds !== undefined) {
         for (const panel of panels.values()) panel.renderer?.dispose?.()
         for (const panel of panels.values()) panel.tab?.dispose?.()
