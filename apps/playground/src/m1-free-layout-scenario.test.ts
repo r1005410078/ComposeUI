@@ -61,6 +61,10 @@ describe("M1 Playground scenario", () => {
           replacement: expect.stringContaining("packages/editor/src/editor.css"),
         }),
         expect.objectContaining({
+          find: "@composeui/editor/theme.css",
+          replacement: expect.stringContaining("packages/editor/src/theme.css"),
+        }),
+        expect.objectContaining({
           find: "@composeui/editor",
           replacement: expect.stringContaining("packages/editor/src/index.ts"),
         }),

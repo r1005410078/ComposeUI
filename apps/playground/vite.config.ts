@@ -11,6 +11,10 @@ export default defineConfig({
         replacement: fromRoot("../../packages/editor/src/editor.css"),
       },
       {
+        find: "@composeui/editor/theme.css",
+        replacement: fromRoot("../../packages/editor/src/theme.css"),
+      },
+      {
         find: "@composeui/editor",
         replacement: fromRoot("../../packages/editor/src/index.ts"),
       },

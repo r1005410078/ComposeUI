@@ -1,0 +1,52 @@
+.composeui-editor,
+.composeui-editor__component-tree,
+.composeui-editor__workspace-host {
+  --composeui-surface-app: #030f1f;
+  --composeui-surface-panel: #061426;
+  --composeui-surface-panel-raised: #0a1b31;
+  --composeui-surface-toolbar: #07172a;
+  --composeui-surface-control: #0d2038;
+  --composeui-surface-control-hover: #132d4d;
+  --composeui-surface-canvas: #031426;
+  --composeui-text-primary: #f4f8ff;
+  --composeui-text-secondary: #c2ccda;
+  --composeui-text-muted: #718098;
+  --composeui-text-disabled: #435169;
+  --composeui-text-inverse: #ffffff;
+  --composeui-border-subtle: #0d233b;
+  --composeui-border-default: #17324f;
+  --composeui-border-strong: #244d75;
+  --composeui-focus-ring: #2788ff;
+  --composeui-accent-primary: #1769e8;
+  --composeui-accent-hover: #267cf2;
+  --composeui-accent-active: #0e58c9;
+  --composeui-selection-fill: rgb(39 136 255 / 18%);
+  --composeui-state-danger: #ef4f62;
+  --composeui-state-warning: #f2bd4b;
+  --composeui-state-success: #28b978;
+  --composeui-canvas-grid-minor: rgb(40 94 145 / 24%);
+  --composeui-canvas-grid-major: rgb(62 128 190 / 28%);
+  --composeui-canvas-board-outline: #315675;
+  --composeui-canvas-selection: #3a91ff;
+  --composeui-canvas-handle-fill: #f7fbff;
+  --composeui-font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --composeui-font-size: 14px;
+  --composeui-font-size-compact: 12px;
+  --composeui-font-size-heading: 18px;
+  --composeui-font-weight-medium: 500;
+  --composeui-font-weight-semibold: 600;
+  --composeui-space-1: 4px;
+  --composeui-space-2: 8px;
+  --composeui-space-3: 12px;
+  --composeui-space-4: 16px;
+  --composeui-app-bar-height: 44px;
+  --composeui-tab-height: 36px;
+  --composeui-toolbar-height: 42px;
+  --composeui-control-height: 32px;
+  --composeui-icon-button-size: 32px;
+  --composeui-tree-row-height: 36px;
+  --composeui-radius-control: 4px;
+  --composeui-radius-panel: 3px;
+  --composeui-shadow-panel: 0 8px 24px rgb(0 0 0 / 18%);
+  --composeui-shadow-control: 0 1px 2px rgb(0 0 0 / 22%);
+}

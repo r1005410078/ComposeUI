@@ -8,7 +8,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./editor.css": "./dist/editor.css"
+    "./editor.css": "./dist/editor.css",
+    "./theme.css": "./dist/theme.css"
   },
   "scripts": {
     "build": "vite build"

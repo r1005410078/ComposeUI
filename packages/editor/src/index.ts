@@ -1,6 +1,7 @@
+import "dockview/dist/styles/dockview.css"
+import "./theme.css"
 import "./editor.css"
 import "./workspace/workspace.css"
-import "dockview/dist/styles/dockview.css"
 
 export { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "./coordinates"
 export type { Point } from "./coordinates"
