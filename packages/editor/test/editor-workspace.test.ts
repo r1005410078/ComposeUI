@@ -282,21 +282,15 @@ describe("editor workspace", () => {
     expect(fake.panelOptions.get("history")?.tabComponent).toBe("workspace-non-closable-tab")
   })
 
-  it("blocks Dockview Delete and Backspace close keys for Scene", () => {
+  it("allows Scene to close through the workspace API", () => {
     const fake = createDockviewFake()
-    mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
       pageId: "page-1",
       createDockview: fake.factory,
     })
-    const sceneTab = fake.tabs.get("scene")
-    if (sceneTab === undefined) throw new Error("Scene tab was not created")
 
-    for (const key of ["Delete", "Backspace"]) {
-      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
-      sceneTab.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
-      expect(fake.panels.has("scene")).toBe(true)
-    }
+    expect(mounted.api.closePanel("scene")).toBe(true)
+    expect(fake.panels.has("scene")).toBe(false)
   })
 
   it("disposes each mounted panel exactly once across close and reopen", () => {

@@ -75,6 +75,7 @@ function handleTreeKeyDown(
   event: KeyboardEvent,
   button: HTMLButtonElement,
   session: EditorSession,
+  onDelete?: (id: string) => void,
 ): void {
   const tree = button.closest("[role='tree']") as HTMLElement
   const buttons = treeButtons(tree)
@@ -83,6 +84,13 @@ function handleTreeKeyDown(
 
   let nextIndex: number | undefined
   switch (event.key) {
+    case "Delete":
+    case "Backspace":
+      if (button.dataset.treeControl === "select" && button.dataset.treeId !== undefined) {
+        event.preventDefault()
+        onDelete?.(button.dataset.treeId)
+      }
+      return
     case "ArrowUp":
       nextIndex = Math.max(0, index - 1)
       break
@@ -358,7 +366,11 @@ function buildTree(
       selectButton.addEventListener("dblclick", () => beginRename(editor, item, selectButton))
     }
     selectButton.addEventListener("keydown", (event) =>
-      handleTreeKeyDown(event, selectButton, session),
+      handleTreeKeyDown(event, selectButton, session, (id) => {
+        if (item.typeName !== "node") return
+        const result = editor.dispatch({ id: "node.delete", payload: { ids: [id] } })
+        if (result.ok) session.setSelection([])
+      }),
     )
     row.append(selectButton)
     if (item.typeName === "node") {

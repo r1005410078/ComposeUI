@@ -26,7 +26,9 @@ export interface WorkspacePanelRegistry {
 }
 
 export interface EditorWorkspaceDockview {
-  readonly onDidLayoutChange?: { subscribe(listener: () => void): { dispose(): void } }
+  readonly onDidLayoutChange?:
+    | ((listener: () => void) => { dispose(): void })
+    | { subscribe(listener: () => void): { dispose(): void } }
   addPanel(options: AddPanelOptions): { id: string; focus?(): void }
   getPanel(id: string): { id: string; focus?(): void } | undefined
   removePanel(panel: { id: string }): void
@@ -408,19 +410,22 @@ export function mountEditorWorkspace(
   }
 
   applyDefaultLayout()
-  if (dockview.onDidLayoutChange !== undefined) {
-    layoutSubscription = dockview.onDidLayoutChange.subscribe(() => {
-      if (options.layoutStore === undefined || disposed) return
-      if (applyingLayout) return
-      layoutDirty = true
-      void Promise.resolve()
-        .then(() =>
-          options.layoutStore!.save({ version: 1, modeId: "2d", layout: dockview.toJSON() }),
-        )
-        .catch((error) => {
-          events({ type: "layout-failure", operation: "save", error })
-        })
-    })
+  const onLayoutChange = (): void => {
+    if (options.layoutStore === undefined || disposed) return
+    if (applyingLayout) return
+    layoutDirty = true
+    void Promise.resolve()
+      .then(() =>
+        options.layoutStore!.save({ version: 1, modeId: "2d", layout: dockview.toJSON() }),
+      )
+      .catch((error) => {
+        events({ type: "layout-failure", operation: "save", error })
+      })
+  }
+  if (typeof dockview.onDidLayoutChange === "function") {
+    layoutSubscription = dockview.onDidLayoutChange(onLayoutChange)
+  } else if (dockview.onDidLayoutChange !== undefined) {
+    layoutSubscription = dockview.onDidLayoutChange.subscribe(onLayoutChange)
   }
 
   void Promise.resolve()

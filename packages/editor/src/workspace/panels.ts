@@ -21,7 +21,7 @@ const PANEL_META: Record<
   PanelId,
   Pick<WorkspacePanelDescriptor, "title" | "closable" | "defaultPosition">
 > = {
-  scene: { title: "Scene", closable: false, defaultPosition: "left" },
+  scene: { title: "Scene", closable: true, defaultPosition: "left" },
   resources: { title: "Resources", closable: true, defaultPosition: "left" },
   history: { title: "History", closable: true, defaultPosition: "left" },
   canvas: { title: "Canvas", closable: false, defaultPosition: "center" },

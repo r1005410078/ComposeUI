@@ -80,16 +80,15 @@ function mountPlayground(app: HTMLElement): void {
       output.textContent = scenario.exportCanonicalJson()
       output.hidden = false
     }),
-  )
-  tools.append(commands)
-
-  const panelMenu = toolbar.querySelector<HTMLElement>(".composeui-editor__panel-menu")
-  if (panelMenu === null) throw new Error("PLAYGROUND_PANEL_MENU_MISSING")
-  panelMenu.append(
     createCommandButton("reset-layout", "Reset layout", () => {
       void mounted.api.resetLayout()
     }),
   )
+  const panelMenu = toolbar.querySelector<HTMLElement>(".composeui-editor__panel-menu")
+  if (panelMenu === null) throw new Error("PLAYGROUND_PANEL_MENU_MISSING")
+  window.setTimeout(() => {
+    tools.append(commands)
+  }, 0)
 
   scenario.editor.subscribe(syncOverflowButton)
   syncOverflowButton()

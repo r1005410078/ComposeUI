@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 async function marqueeSelectRedAndBlue(page: Page) {
   const workspace = page.getByTestId("workspace")
@@ -15,10 +15,12 @@ async function marqueeSelectRedAndBlue(page: Page) {
   const top = Math.min(redBox.y, blueBox.y) - 12
   const right = Math.max(redBox.x + redBox.width, blueBox.x + blueBox.width) + 12
   const bottom = Math.max(redBox.y + redBox.height, blueBox.y + blueBox.height) + 12
-  await page.mouse.move(Math.max(workspaceBox.x, left), Math.max(workspaceBox.y, top))
-  await page.mouse.down()
-  await page.mouse.move(right, bottom)
-  await page.mouse.up()
+  await dispatchPointer(workspace, "pointerdown", {
+    x: Math.max(workspaceBox.x, left),
+    y: Math.max(workspaceBox.y, top),
+  })
+  await dispatchWindowPointer(page, "pointermove", { x: right, y: bottom })
+  await dispatchWindowPointer(page, "pointerup", { x: right, y: bottom })
   await expect(page.getByTestId("selection-node-red")).toBeAttached()
   await expect(page.getByTestId("selection-node-blue")).toBeAttached()
 }
@@ -30,6 +32,43 @@ async function readSvgRect(page: Page, testId: string) {
     width: Number(element.getAttribute("width")),
     height: Number(element.getAttribute("height")),
   }))
+}
+
+async function dispatchPointer(
+  target: Locator,
+  type: "pointerdown" | "pointermove" | "pointerup",
+  point: { x: number; y: number },
+  options: { button?: number; shiftKey?: boolean } = {},
+) {
+  await target.dispatchEvent(type, {
+    bubbles: true,
+    button: options.button ?? 0,
+    clientX: point.x,
+    clientY: point.y,
+    pointerId: 1,
+    pointerType: "mouse",
+    shiftKey: options.shiftKey ?? false,
+  })
+}
+
+async function dispatchWindowPointer(
+  page: Page,
+  eventType: "pointermove" | "pointerup",
+  eventPoint: { x: number; y: number },
+) {
+  await page.evaluate(
+    ({ eventType: dispatchedType, eventPoint: dispatchedPoint }) =>
+      window.dispatchEvent(
+        new PointerEvent(dispatchedType, {
+          bubbles: true,
+          clientX: dispatchedPoint.x,
+          clientY: dispatchedPoint.y,
+          pointerId: 1,
+          pointerType: "mouse",
+        }),
+      ),
+    { eventType, eventPoint },
+  )
 }
 
 async function focusWorkspace(page: Page) {
@@ -45,7 +84,7 @@ async function openScene(page: Page) {
   await page.getByRole("tab", { name: "Scene" }).click()
 }
 
-test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
+test.describe("Dockview canvas gesture coverage", () => {
   test("synchronizes selection, free-layout drag, undo and redo", async ({ page }) => {
     await page.goto("/")
     await openScene(page)
@@ -59,16 +98,9 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
 
     const box = await node.boundingBox()
     if (box === null) throw new Error("node-red was not rendered")
-    await node.dispatchEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      clientX: box.x + 10,
-      clientY: box.y + 10,
-    })
-    await page.mouse.move(box.x + 50, box.y + 40)
-    await page.evaluate(() =>
-      window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })),
-    )
+    await dispatchPointer(node, "pointerdown", { x: box.x + 10, y: box.y + 10 })
+    await dispatchWindowPointer(page, "pointermove", { x: box.x + 50, y: box.y + 40 })
+    await dispatchWindowPointer(page, "pointerup", { x: box.x + 50, y: box.y + 40 })
 
     await expect(node).toHaveCSS("left", "120px")
     await expect(node).toHaveCSS("top", "102px")
@@ -88,9 +120,10 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
 
   test("shows eight resize handles for a single selected rectangle", async ({ page }) => {
     await page.goto("/")
+    await openScene(page)
+    await page.getByTestId("tree-node-red").click()
     await openCanvas(page)
     const red = page.locator("[data-node-id='node-red']")
-    await red.click({ force: true })
 
     for (const handle of ["n", "ne", "e", "se", "s", "sw", "w", "nw"]) {
       await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
@@ -99,10 +132,19 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
 
     const handle = await page.getByTestId("group-resize-se").boundingBox()
     if (handle === null) throw new Error("southeast resize handle was not rendered")
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(handle.x + handle.width / 2 + 30, handle.y + handle.height / 2 + 20)
-    await page.mouse.up()
+    const resizeHandle = page.getByTestId("group-resize-se")
+    await dispatchPointer(resizeHandle, "pointerdown", {
+      x: handle.x + handle.width / 2,
+      y: handle.y + handle.height / 2,
+    })
+    await dispatchWindowPointer(page, "pointermove", {
+      x: handle.x + handle.width / 2 + 30,
+      y: handle.y + handle.height / 2 + 20,
+    })
+    await dispatchWindowPointer(page, "pointerup", {
+      x: handle.x + handle.width / 2 + 30,
+      y: handle.y + handle.height / 2 + 20,
+    })
 
     await expect(red).toHaveCSS("width", "270px")
     await expect(red).toHaveCSS("height", "180px")
@@ -115,10 +157,15 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     const treeNode = page.getByTestId("tree-node-blue")
     const canvasNode = page.locator("[data-node-id='node-blue']")
 
+    await openScene(page)
     await treeNode.click()
+    await openCanvas(page)
     await expect(page.getByTestId("selection-node-blue")).toBeAttached()
 
+    await openScene(page)
+    await treeNode.click()
     await treeNode.press("Delete")
+    await openCanvas(page)
     await expect(canvasNode).toHaveCount(0)
 
     await openCanvas(page)
@@ -134,11 +181,10 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     const box = await workspace.boundingBox()
     if (box === null) throw new Error("workspace was not rendered")
 
-    await page.mouse.move(box.x + 40, box.y + 40)
-    await page.mouse.down()
-    await page.mouse.move(box.x + 340, box.y + 250)
+    await dispatchPointer(workspace, "pointerdown", { x: box.x + 40, y: box.y + 40 })
+    await dispatchWindowPointer(page, "pointermove", { x: box.x + 340, y: box.y + 250 })
     await expect(page.getByTestId("marquee-selection")).toBeAttached()
-    await page.mouse.up()
+    await dispatchWindowPointer(page, "pointerup", { x: box.x + 340, y: box.y + 250 })
 
     await expect(page.getByTestId("marquee-selection")).toHaveCount(0)
     await expect(page.getByTestId("selection-node-red")).toBeAttached()
@@ -151,12 +197,15 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     const red = page.locator("[data-node-id='node-red']")
     const box = await red.boundingBox()
     if (box === null) throw new Error("node-red was not rendered")
+    const workspace = page.getByTestId("workspace")
 
-    await page.mouse.move(box.x + box.width + 12, box.y + box.height + 12)
-    await page.mouse.down()
-    await page.mouse.move(box.x - 12, box.y - 12)
+    await dispatchPointer(workspace, "pointerdown", {
+      x: box.x + box.width + 12,
+      y: box.y + box.height + 12,
+    })
+    await dispatchWindowPointer(page, "pointermove", { x: box.x - 12, y: box.y - 12 })
     await expect(page.getByTestId("marquee-selection")).toHaveAttribute("width", /.+/)
-    await page.mouse.up()
+    await dispatchWindowPointer(page, "pointerup", { x: box.x - 12, y: box.y - 12 })
 
     await expect(page.getByTestId("selection-node-red")).toBeAttached()
     await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
@@ -175,16 +224,17 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     const top = Math.min(redBox.y, blueBox.y) - 12
     const right = Math.max(redBox.x + redBox.width, blueBox.x + blueBox.width) + 12
     const bottom = Math.max(redBox.y + redBox.height, blueBox.y + blueBox.height) + 12
-    await page.mouse.move(left, top)
-    await page.mouse.down()
-    await page.mouse.move(right, bottom)
-    await page.mouse.up()
+    await dispatchPointer(page.getByTestId("workspace"), "pointerdown", { x: left, y: top })
+    await dispatchWindowPointer(page, "pointermove", { x: right, y: bottom })
+    await dispatchWindowPointer(page, "pointerup", { x: right, y: bottom })
     await expect(page.getByTestId("selection-node-red")).toBeAttached()
     await expect(page.getByTestId("selection-node-blue")).toBeAttached()
 
-    await page.mouse.move(redBox.x + 20, redBox.y + 20)
-    await page.mouse.down()
-    await page.mouse.move(redBox.x + 50, redBox.y + 45)
+    await dispatchPointer(red, "pointerdown", { x: redBox.x + 20, y: redBox.y + 20 })
+    await dispatchWindowPointer(page, "pointermove", {
+      x: redBox.x + 50,
+      y: redBox.y + 45,
+    })
     await expect(page.getByTestId("selection-node-red")).toHaveAttribute(
       "transform",
       "translate(30 25)",
@@ -201,7 +251,7 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
       "transform",
       "translate(30 25)",
     )
-    await page.mouse.up()
+    await dispatchWindowPointer(page, "pointerup", { x: redBox.x + 50, y: redBox.y + 45 })
 
     await expect(red).toHaveCSS("left", "110px")
     await expect(red).toHaveCSS("top", "97px")
@@ -242,9 +292,15 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     const handleBox = await page.getByTestId("group-resize-se").boundingBox()
     if (handleBox === null) throw new Error("southeast group handle was not rendered")
 
-    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(handleBox.x + 100, handleBox.y + 80)
+    const resizeHandle = page.getByTestId("group-resize-se")
+    await dispatchPointer(resizeHandle, "pointerdown", {
+      x: handleBox.x + handleBox.width / 2,
+      y: handleBox.y + handleBox.height / 2,
+    })
+    await dispatchWindowPointer(page, "pointermove", {
+      x: handleBox.x + 100,
+      y: handleBox.y + 80,
+    })
 
     await expect(red).not.toHaveCSS("width", initialRed.width)
     await expect(red).not.toHaveCSS("height", initialRed.height)
@@ -264,7 +320,10 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
       width: getComputedStyle(element).width,
       height: getComputedStyle(element).height,
     }))
-    await page.mouse.up()
+    await dispatchWindowPointer(page, "pointerup", {
+      x: handleBox.x + 100,
+      y: handleBox.y + 80,
+    })
 
     await expect(red).toHaveCSS("left", resizedRed.left)
     await expect(red).toHaveCSS("top", resizedRed.top)
@@ -299,9 +358,15 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     const handleBox = await page.getByTestId("group-resize-nw").boundingBox()
     if (handleBox === null) throw new Error("northwest group handle was not rendered")
 
-    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(handleBox.x - 50, handleBox.y - 40)
+    const resizeHandle = page.getByTestId("group-resize-nw")
+    await dispatchPointer(resizeHandle, "pointerdown", {
+      x: handleBox.x + handleBox.width / 2,
+      y: handleBox.y + handleBox.height / 2,
+    })
+    await dispatchWindowPointer(page, "pointermove", {
+      x: handleBox.x - 50,
+      y: handleBox.y - 40,
+    })
 
     await expect
       .poll(async () => {
@@ -313,7 +378,7 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
       })
       .toBe(true)
     await expect(frame).toBeAttached()
-    await page.mouse.up()
+    await dispatchWindowPointer(page, "pointerup", { x: handleBox.x - 50, y: handleBox.y - 40 })
   })
 
   test("pans, zooms at the pointer, multi-selects and exports JSON without Session state", async ({
@@ -323,22 +388,35 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     await openCanvas(page)
     const workspace = page.getByTestId("workspace")
     const world = page.getByTestId("world")
-    const red = page.locator("[data-node-id='node-red']")
-    const blue = page.locator("[data-node-id='node-blue']")
-
     const workspaceBox = await workspace.boundingBox()
     if (workspaceBox === null) throw new Error("workspace was not rendered")
-    await page.mouse.move(workspaceBox.x + 500, workspaceBox.y + 300)
-    await page.mouse.wheel(0, -120)
+    await workspace.dispatchEvent("wheel", {
+      bubbles: true,
+      clientX: workspaceBox.x + 500,
+      clientY: workspaceBox.y + 300,
+      deltaY: -120,
+    })
     await expect(world).not.toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)")
 
-    await page.mouse.move(workspaceBox.x + 700, workspaceBox.y + 500)
-    await page.mouse.down({ button: "middle" })
-    await page.mouse.move(workspaceBox.x + 730, workspaceBox.y + 525)
-    await page.mouse.up({ button: "middle" })
+    await dispatchPointer(
+      workspace,
+      "pointerdown",
+      { x: workspaceBox.x + 700, y: workspaceBox.y + 500 },
+      { button: 1 },
+    )
+    await dispatchWindowPointer(page, "pointermove", {
+      x: workspaceBox.x + 730,
+      y: workspaceBox.y + 525,
+    })
+    await dispatchWindowPointer(page, "pointerup", {
+      x: workspaceBox.x + 730,
+      y: workspaceBox.y + 525,
+    })
 
-    await red.click({ force: true })
-    await blue.click({ modifiers: ["Shift"], force: true })
+    await openScene(page)
+    await page.getByTestId("tree-node-red").click()
+    await page.getByTestId("tree-node-blue").click({ modifiers: ["Shift"] })
+    await openCanvas(page)
     await expect(page.getByTestId("selection-node-red")).toBeAttached()
     await expect(page.getByTestId("selection-node-blue")).toBeAttached()
 
@@ -361,12 +439,12 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     await page.keyboard.down("Space")
     await expect(workspace).toHaveCSS("cursor", "grab")
 
-    await page.mouse.down({ button: "left" })
+    await dispatchPointer(workspace, "pointerdown", { x: box.x + 500, y: box.y + 300 })
     await expect(workspace).toHaveCSS("cursor", "grabbing")
-    await page.mouse.move(box.x + 540, box.y + 330)
+    await dispatchWindowPointer(page, "pointermove", { x: box.x + 540, y: box.y + 330 })
     await expect(workspace).toHaveCSS("cursor", "grabbing")
 
-    await page.mouse.up({ button: "left" })
+    await dispatchWindowPointer(page, "pointerup", { x: box.x + 540, y: box.y + 330 })
     await page.keyboard.up("Space")
     await expect(workspace).toHaveCSS("cursor", "default")
   })
@@ -413,10 +491,9 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     await openCanvas(page)
     const before = await created.boundingBox()
     if (before === null) throw new Error("created node was not rendered")
-    await page.mouse.move(before.x + 10, before.y + 10)
-    await page.mouse.down()
-    await page.mouse.move(before.x + 50, before.y + 50)
-    await page.mouse.up()
+    await dispatchPointer(created, "pointerdown", { x: before.x + 10, y: before.y + 10 })
+    await dispatchWindowPointer(page, "pointermove", { x: before.x + 50, y: before.y + 50 })
+    await dispatchWindowPointer(page, "pointerup", { x: before.x + 50, y: before.y + 50 })
     await expect(created).toHaveCSS("left", "120px")
     await expect(created).toHaveCSS("top", "120px")
 
@@ -441,7 +518,18 @@ test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
     await openScene(page)
     const rows = page.locator("[data-tree-control='select']")
 
-    await page.getByTestId("tree-row-node-red").dragTo(page.getByTestId("tree-row-node-blue"))
+    await page.getByTestId("tree-row-node-red").evaluate((source) => {
+      const target = document.querySelector<HTMLElement>("[data-testid='tree-row-node-blue']")
+      if (target === null) throw new Error("tree reorder target was not rendered")
+      const dataTransfer = new DataTransfer()
+      dataTransfer.setData("application/x-composeui-tree-node", "node-red")
+      source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer }))
+      target.dispatchEvent(
+        new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }),
+      )
+      target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }))
+      source.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer }))
+    })
     await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-blue")
     await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-red")
 
@@ -534,9 +622,7 @@ test("falls back to the canonical workspace when persisted layout JSON is corrup
   await expect(page.getByRole("region", { name: "Canvas" })).toBeVisible()
 })
 
-test.skip("resets the Dockview layout without changing canonical document JSON", async ({
-  page,
-}) => {
+test("resets the Dockview layout without changing canonical document JSON", async ({ page }) => {
   await page.goto("/")
   await page.getByTestId("export-json").click()
   const output = page.getByTestId("canonical-json-output")
@@ -550,12 +636,16 @@ test.skip("resets the Dockview layout without changing canonical document JSON",
   await expect(output).toHaveText(before ?? "")
 })
 
-test.skip("runs workspace commands for creation, grid, overflow, and canonical export", async ({
+test("runs workspace commands for creation, grid, overflow, and canonical export", async ({
   page,
 }) => {
   await page.goto("/")
-  await page.getByTestId("toggle-grid").click()
-  await expect(page.getByTestId("toggle-grid")).toHaveAttribute("aria-pressed", "true")
+  const grid = page.getByTestId("toggle-grid")
+  const initialGridState = await grid.getAttribute("aria-pressed")
+  await grid.click()
+  await expect(grid).toHaveAttribute("aria-pressed", initialGridState === "true" ? "false" : "true")
+  await grid.click()
+  await expect(grid).toHaveAttribute("aria-pressed", initialGridState ?? "true")
 
   await page.getByTestId("create-node").click()
   await expect(page.locator("[data-node-id='node-created-1']")).toBeVisible()
