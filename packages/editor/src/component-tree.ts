@@ -1,5 +1,5 @@
-import { getTreeItems } from "@composeui/core"
-import type { RecordStore, TreeItem } from "@composeui/core"
+import { getChildren, getTreeItems } from "@composeui/core"
+import type { Editor, RecordStore, TreeItem } from "@composeui/core"
 import type { EditorSession, EditorSessionState } from "./session"
 
 interface FocusTarget {
@@ -32,8 +32,21 @@ function restoreFocus(tree: HTMLElement, target: FocusTarget | undefined): void 
   }
 }
 
-function selectItem(session: EditorSession, id: string): void {
-  session.setSelection([id])
+function selectItem(
+  session: EditorSession,
+  id: string,
+  modifiers?: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey">,
+): void {
+  if (modifiers?.shiftKey !== true && modifiers?.ctrlKey !== true && modifiers?.metaKey !== true) {
+    session.setSelection([id])
+    return
+  }
+  const selection = session.getState().selection
+  session.setSelection(
+    selection.includes(id)
+      ? selection.filter((selectedId) => selectedId !== id)
+      : [...selection, id],
+  )
 }
 
 function handleTreeKeyDown(
@@ -102,12 +115,85 @@ function createExpandControl(item: TreeItem, session: EditorSession, expanded: S
   return button
 }
 
+function createActionButton(
+  item: TreeItem,
+  action: string,
+  label: string,
+  text: string,
+  disabled: boolean,
+  execute: () => void,
+): HTMLButtonElement {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "composeui-editor__tree-action"
+  button.dataset.testid = `tree-${action}-${item.id}`
+  button.tabIndex = -1
+  button.disabled = disabled
+  button.title = label
+  button.setAttribute("aria-label", label)
+  button.textContent = text
+  button.addEventListener("click", (event) => {
+    event.stopPropagation()
+    execute()
+  })
+  return button
+}
+
+function reorderSibling(
+  editor: Editor,
+  store: RecordStore,
+  item: TreeItem,
+  direction: -1 | 1,
+): void {
+  if (item.parentId === null) return
+  const siblings = getChildren(store, item.parentId)
+  const current = siblings.findIndex((sibling) => sibling.id === item.id)
+  const target = current + direction
+  if (current < 0 || target < 0 || target >= siblings.length) return
+  const targetIndex = siblings[target]?.index
+  if (targetIndex === undefined) return
+  editor.dispatch({
+    id: "node.reorder",
+    payload: { id: item.id, parentId: item.parentId, index: targetIndex },
+  })
+}
+
+function beginRename(editor: Editor, item: TreeItem, selectButton: HTMLButtonElement): void {
+  const input = document.createElement("input")
+  input.className = "composeui-editor__tree-rename"
+  input.dataset.testid = `tree-rename-${item.id}`
+  input.setAttribute("aria-label", `Rename ${item.name}`)
+  input.value = item.name
+  selectButton.replaceWith(input)
+  input.focus()
+  input.select()
+
+  let finished = false
+  const finish = (commit: boolean): void => {
+    if (finished) return
+    finished = true
+    const name = input.value.trim()
+    if (commit && name.length > 0 && name !== item.name) {
+      editor.dispatch({ id: "node.rename", payload: { id: item.id, name } })
+      return
+    }
+    input.replaceWith(selectButton)
+    selectButton.focus()
+  }
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") finish(true)
+    else if (event.key === "Escape") finish(false)
+  })
+  input.addEventListener("blur", () => finish(true))
+}
+
 function buildTree(
   tree: HTMLElement,
   store: RecordStore,
   pageId: string,
   state: EditorSessionState,
   session: EditorSession,
+  editor: Editor,
 ): void {
   const expanded = new Set(state.expanded)
   const selected = new Set(state.selection)
@@ -137,11 +223,55 @@ function buildTree(
     selectButton.tabIndex = index === 0 ? 0 : -1
     selectButton.setAttribute("aria-label", `Select ${item.name}`)
     selectButton.textContent = item.name
-    selectButton.addEventListener("click", () => selectItem(session, item.id))
+    selectButton.addEventListener("click", (event) => selectItem(session, item.id, event))
+    if (item.typeName === "node") {
+      selectButton.addEventListener("dblclick", () => beginRename(editor, item, selectButton))
+    }
     selectButton.addEventListener("keydown", (event) =>
       handleTreeKeyDown(event, selectButton, session),
     )
     row.append(selectButton)
+    if (item.typeName === "node") {
+      const siblings = getChildren(store, item.parentId!)
+      const siblingIndex = siblings.findIndex((sibling) => sibling.id === item.id)
+      row.append(
+        createActionButton(
+          item,
+          "visibility",
+          `${item.visible ? "Hide" : "Show"} ${item.name}`,
+          "V",
+          false,
+          () =>
+            editor.dispatch({
+              id: "node.setVisible",
+              payload: { id: item.id, visible: !item.visible },
+            }),
+        ),
+        createActionButton(
+          item,
+          "lock",
+          `${item.locked ? "Unlock" : "Lock"} ${item.name}`,
+          "L",
+          false,
+          () =>
+            editor.dispatch({
+              id: "node.setLocked",
+              payload: { id: item.id, locked: !item.locked },
+            }),
+        ),
+        createActionButton(item, "move-up", `Move ${item.name} up`, "^", siblingIndex <= 0, () =>
+          reorderSibling(editor, store, item, -1),
+        ),
+        createActionButton(
+          item,
+          "move-down",
+          `Move ${item.name} down`,
+          "v",
+          siblingIndex < 0 || siblingIndex >= siblings.length - 1,
+          () => reorderSibling(editor, store, item, 1),
+        ),
+      )
+    }
     treeItem.append(row)
     fragment.append(treeItem)
   }
@@ -153,11 +283,12 @@ export function createComponentTree(
   pageId: string,
   state: EditorSessionState,
   session: EditorSession,
+  editor: Editor,
 ): ComponentTreeView {
   const tree = document.createElement("ul")
   tree.className = "composeui-editor__tree"
   tree.setAttribute("role", "tree")
-  buildTree(tree, store, pageId, state, session)
+  buildTree(tree, store, pageId, state, session, editor)
 
   return {
     element: tree,
@@ -166,7 +297,7 @@ export function createComponentTree(
         const focusTarget = captureFocus(tree)
         const scrollTop = tree.scrollTop
         const scrollLeft = tree.scrollLeft
-        buildTree(tree, nextStore, nextPageId, nextState, session)
+        buildTree(tree, nextStore, nextPageId, nextState, session, editor)
         tree.scrollTop = scrollTop
         tree.scrollLeft = scrollLeft
         restoreFocus(tree, focusTarget)

@@ -1,4 +1,4 @@
-import { createEditor, createEmptyDocument } from "@composeui/core"
+import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
 
 export function createM1Scenario() {
   const pageId = "page-1"
@@ -29,5 +29,26 @@ export function createM1Scenario() {
       fill: "#2563eb",
     },
   })
-  return { editor, pageId }
+  let createdCount = 0
+  const createNode = () => {
+    createdCount += 1
+    const offset = (createdCount - 1) * 24
+    return editor.dispatch({
+      id: "node.create",
+      payload: {
+        id: `node-created-${createdCount}`,
+        parentId: pageId,
+        name: `Rectangle ${createdCount}`,
+        x: 120 + offset,
+        y: 120 + offset,
+        width: 180,
+        height: 120,
+        fill: "#16a34a",
+      },
+    })
+  }
+  const exportCanonicalJson = () =>
+    `${JSON.stringify(canonicalizeDocument(editor.getStore()), null, 2)}\n`
+
+  return { editor, pageId, createNode, exportCanonicalJson }
 }

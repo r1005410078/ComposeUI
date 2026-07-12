@@ -9,6 +9,7 @@ export interface EditorSessionState {
   selection: string[]
   expanded: string[]
   hoveredId: string | null
+  gridVisible: boolean
 }
 
 function assertValidZoom(zoom: number): void {
@@ -28,6 +29,7 @@ export class EditorSession {
     selection: [],
     expanded: [],
     hoveredId: null,
+    gridVisible: true,
   }
 
   readonly #listeners = new Set<(state: EditorSessionState) => void>()
@@ -59,6 +61,11 @@ export class EditorSession {
 
   setHoveredId(hoveredId: string | null): void {
     this.#state = { ...this.#state, hoveredId }
+    this.#emit()
+  }
+
+  setGridVisible(gridVisible: boolean): void {
+    this.#state = { ...this.#state, gridVisible }
     this.#emit()
   }
 

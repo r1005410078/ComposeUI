@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest"
-import { createEditor, createEmptyDocument } from "@composeui/core"
+import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
 import type { PageDocument } from "@composeui/core"
 import { mountEditor } from "../src/index"
 import { EditorSession } from "../src/session"
@@ -70,7 +70,160 @@ function pointerEvent(type: string, x: number, y: number, pointerId = 1): Pointe
   return event
 }
 
+function modifiedPointerEvent(
+  type: string,
+  x: number,
+  y: number,
+  modifiers: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = {},
+  pointerId = 1,
+): PointerEvent {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    button: 0,
+    clientX: x,
+    clientY: y,
+    ...modifiers,
+  }) as PointerEvent
+  Object.defineProperty(event, "pointerId", { value: pointerId })
+  return event
+}
+
 describe("mountEditor", () => {
+  it("zooms at the pointer, pans with the middle button and renders a session grid", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
+    const grid = root.querySelector<HTMLElement>("[data-testid='workspace-grid']")!
+    workspace.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, width: 800, height: 600 }) as DOMRect
+
+    workspace.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 210,
+        clientY: 120,
+        deltaY: -100,
+      }),
+    )
+
+    const zoomed = mounted.session.getState().viewport
+    expect(zoomed.zoom).toBeGreaterThan(1)
+    expect((200 - zoomed.x) / zoomed.zoom).toBeCloseTo(200)
+    expect((100 - zoomed.y) / zoomed.zoom).toBeCloseTo(100)
+    expect(grid.style.backgroundSize).toBe(`${16 * zoomed.zoom}px ${16 * zoomed.zoom}px`)
+
+    workspace.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 1, clientX: 50, clientY: 60 }),
+    )
+    window.dispatchEvent(
+      new MouseEvent("pointermove", { bubbles: true, button: 1, clientX: 80, clientY: 95 }),
+    )
+    window.dispatchEvent(
+      new MouseEvent("pointerup", { bubbles: true, button: 1, clientX: 80, clientY: 95 }),
+    )
+
+    expect(mounted.session.getState().viewport).toMatchObject({
+      x: zoomed.x + 30,
+      y: zoomed.y + 35,
+      zoom: zoomed.zoom,
+    })
+    mounted.session.setGridVisible(false)
+    expect(grid.hidden).toBe(true)
+  })
+
+  it("supports modifier multi-selection and renders one SVG outline per selected node", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", x: 20, y: 30 })
+    addRectangle(editor, { id: "node-b", x: 200, y: 160 })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
+    const second = root.querySelector<HTMLElement>("[data-node-id='node-b']")!
+
+    first.dispatchEvent(modifiedPointerEvent("pointerdown", 25, 35))
+    window.dispatchEvent(modifiedPointerEvent("pointerup", 25, 35))
+    second.dispatchEvent(modifiedPointerEvent("pointerdown", 205, 165, { shiftKey: true }))
+    window.dispatchEvent(modifiedPointerEvent("pointerup", 205, 165, { shiftKey: true }))
+
+    expect(mounted.session.getState().selection).toEqual(["node-a", "node-b"])
+    expect(root.querySelector("[data-testid='selection-node-a']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='selection-node-b']")).not.toBeNull()
+
+    first.dispatchEvent(modifiedPointerEvent("pointerdown", 25, 35, { metaKey: true }))
+    expect(mounted.session.getState().selection).toEqual(["node-b"])
+  })
+
+  it("previews a marquee in SVG and commits intersecting nodes only to Session", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "inside", x: 20, y: 30, width: 40, height: 40 })
+    addRectangle(editor, { id: "outside", x: 300, y: 300, width: 40, height: 40 })
+    const before = JSON.stringify(canonicalizeDocument(editor.getStore()))
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
+
+    workspace.dispatchEvent(modifiedPointerEvent("pointerdown", 0, 0))
+    window.dispatchEvent(modifiedPointerEvent("pointermove", 100, 100))
+    expect(root.querySelector("[data-testid='marquee-selection']")).not.toBeNull()
+    window.dispatchEvent(modifiedPointerEvent("pointerup", 100, 100))
+
+    expect(root.querySelector("[data-testid='marquee-selection']")).toBeNull()
+    expect(mounted.session.getState().selection).toEqual(["inside"])
+    expect(root.querySelector("[data-testid='selection-inside']")).not.toBeNull()
+    expect(JSON.stringify(canonicalizeDocument(editor.getStore()))).toBe(before)
+  })
+
+  it("routes tree rename, visibility, lock and sibling reorder through commands", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", name: "A" })
+    addRectangle(editor, { id: "node-b", name: "B" })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    mountEditor(root, editor, { pageId: "page-1" })
+
+    root
+      .querySelector<HTMLButtonElement>("[data-testid='tree-node-a']")
+      ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))
+    const rename = root.querySelector<HTMLInputElement>("[data-testid='tree-rename-node-a']")!
+    rename.value = "Renamed A"
+    rename.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-visibility-node-a']")?.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-lock-node-a']")?.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-move-up-node-b']")?.click()
+
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.rename",
+      payload: { id: "node-a", name: "Renamed A" },
+    })
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.setVisible",
+      payload: { id: "node-a", visible: false },
+    })
+    expect(dispatch).toHaveBeenCalledWith({
+      id: "node.setLocked",
+      payload: { id: "node-a", locked: true },
+    })
+    expect(editor.getRecord("node-a")).toMatchObject({
+      name: "Renamed A",
+      visible: false,
+      locked: true,
+    })
+    expect(
+      [...root.querySelectorAll("[data-tree-control='select']")].map(
+        (element) => (element as HTMLElement).dataset.treeId,
+      ),
+    ).toEqual(["page-1", "node-b", "node-a"])
+    expect(dispatch.mock.calls.filter(([command]) => command.id === "node.reorder")).toHaveLength(1)
+
+    editor.undo()
+    expect(
+      [...root.querySelectorAll("[data-tree-control='select']")].map(
+        (element) => (element as HTMLElement).dataset.treeId,
+      ),
+    ).toEqual(["page-1", "node-a", "node-b"])
+  })
   it("selects and previews an unlocked rectangle before dispatching one parent-local move", () => {
     const root = document.createElement("div")
     document.body.append(root)

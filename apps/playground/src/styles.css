@@ -9,5 +9,50 @@ body {
 }
 
 #app {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
   height: 100%;
+}
+
+.playground-toolbar {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d4d4d8;
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.playground-toolbar button {
+  background: #ffffff;
+  border: 1px solid #a1a1aa;
+  border-radius: 4px;
+  color: #18181b;
+  cursor: pointer;
+  font: inherit;
+  height: 30px;
+  padding: 0 10px;
+}
+
+.playground-toolbar button:hover,
+.playground-toolbar button[aria-pressed="true"] {
+  background: #f4f4f5;
+  border-color: #52525b;
+}
+
+.playground-editor-host {
+  min-height: 0;
+}
+
+.playground-json-output {
+  background: #ffffff;
+  border: 1px solid #a1a1aa;
+  inset: 54px 10px 10px auto;
+  margin: 0;
+  max-width: min(560px, calc(100% - 20px));
+  overflow: auto;
+  padding: 12px;
+  position: fixed;
+  width: 560px;
+  z-index: 10;
 }

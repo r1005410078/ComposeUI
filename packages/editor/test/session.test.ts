@@ -9,6 +9,7 @@ describe("EditorSession", () => {
     session.setSelection(["node-1", "node-1", "node-2"])
     session.toggleExpanded("node-1")
     session.setHoveredId("node-2")
+    session.setGridVisible(false)
 
     const snapshot = session.getState()
     snapshot.viewport.x = 999
@@ -20,6 +21,7 @@ describe("EditorSession", () => {
       selection: ["node-1", "node-2"],
       expanded: ["node-1"],
       hoveredId: "node-2",
+      gridVisible: false,
     })
   })
 
@@ -41,6 +43,7 @@ describe("EditorSession", () => {
       selection: [],
       expanded: ["node-2"],
       hoveredId: null,
+      gridVisible: true,
     })
   })
 

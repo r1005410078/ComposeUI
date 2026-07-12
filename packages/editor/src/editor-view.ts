@@ -1,7 +1,7 @@
 import type { Editor, NodeRecord, PageRecord, RecordStore } from "@composeui/core"
 import type { EditorChangeEvent, TransactionPatch } from "@composeui/core"
 import { safeColor } from "./colors"
-import { worldToScreen } from "./coordinates"
+import { worldToScreen, zoomAt } from "./coordinates"
 import { createComponentTree } from "./component-tree"
 import { createPointerMoveSession } from "./interactions"
 import type { PointerMoveSession } from "./interactions"
@@ -176,6 +176,7 @@ function renderSelectionOverlay(
   visibleNodes: ReadonlyMap<string, VisibleNode>,
   state: EditorSessionState,
 ): void {
+  for (const outline of overlay.querySelectorAll("[data-selection-outline]")) outline.remove()
   const fragment = document.createDocumentFragment()
   for (const id of state.selection) {
     const selected = visibleNodes.get(id)
@@ -190,13 +191,31 @@ function renderSelectionOverlay(
     )
     const rect = document.createElementNS(SVG_NAMESPACE, "rect")
     rect.dataset.testid = `selection-${id}`
+    rect.dataset.selectionOutline = "true"
     rect.setAttribute("x", String(origin.x))
     rect.setAttribute("y", String(origin.y))
     rect.setAttribute("width", String(end.x - origin.x))
     rect.setAttribute("height", String(end.y - origin.y))
     fragment.append(rect)
   }
-  overlay.replaceChildren(fragment)
+  overlay.append(fragment)
+}
+
+function hasSelectionModifier(
+  event: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey">,
+): boolean {
+  return event.shiftKey || event.ctrlKey || event.metaKey
+}
+
+function toggleSelection(selection: readonly string[], id: string): string[] {
+  return selection.includes(id)
+    ? selection.filter((selectedId) => selectedId !== id)
+    : [...selection, id]
+}
+
+function workspacePoint(event: MouseEvent, workspace: HTMLElement): { x: number; y: number } {
+  const bounds = workspace.getBoundingClientRect()
+  return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
 }
 
 function createCanvasView(
@@ -338,11 +357,21 @@ export function mountEditor(
   overlay.classList.add("composeui-editor__selection-overlay")
   overlay.dataset.testid = "selection-overlay"
   overlay.setAttribute("aria-label", "Selection overlay")
+  const grid = document.createElement("div")
+  grid.className = "composeui-editor__workspace-grid"
+  grid.dataset.testid = "workspace-grid"
+  grid.setAttribute("aria-hidden", "true")
 
-  const tree = createComponentTree(coreEditor.getStore(), options.pageId, sessionState, session)
+  const tree = createComponentTree(
+    coreEditor.getStore(),
+    options.pageId,
+    sessionState,
+    session,
+    coreEditor,
+  )
   aside.append(tree.element)
   world.append(board)
-  workspace.append(world, overlay)
+  workspace.append(grid, world, overlay)
   shell.append(aside, workspace)
   root.replaceChildren(shell)
 
@@ -350,6 +379,10 @@ export function mountEditor(
   const canvas = createCanvasView(currentStore, initialPage, world, board, overlay)
   const updateViewport = (): void => {
     world.style.transform = `translate(${sessionState.viewport.x}px, ${sessionState.viewport.y}px) scale(${sessionState.viewport.zoom})`
+    const gridSize = 16 * sessionState.viewport.zoom
+    grid.style.backgroundPosition = `${sessionState.viewport.x}px ${sessionState.viewport.y}px`
+    grid.style.backgroundSize = `${gridSize}px ${gridSize}px`
+    grid.hidden = !sessionState.gridVisible
   }
   updateViewport()
   renderSelectionOverlay(overlay, canvas.visibleNodes, sessionState)
@@ -378,7 +411,12 @@ export function mountEditor(
 
     activeInteraction?.cancel()
     shell.focus()
-    session.setSelection([node.id])
+    if (hasSelectionModifier(event)) {
+      session.setSelection(toggleSelection(sessionState.selection, node.id))
+      event.preventDefault()
+      return
+    }
+    if (!sessionState.selection.includes(node.id)) session.setSelection([node.id])
     event.preventDefault()
 
     const startScreen = { x: event.clientX, y: event.clientY }
@@ -504,6 +542,122 @@ export function mountEditor(
     if (record?.typeName !== "node" || record.nodeType !== "rectangle") return
     startPointerInteraction(event, record, nodeElement, target, handle === null ? "move" : "resize")
   }
+  const startWorkspacePan = (event: PointerEvent): void => {
+    activeInteraction?.cancel()
+    event.preventDefault()
+    const start = { x: event.clientX, y: event.clientY }
+    const viewport = sessionState.viewport
+    let ended = false
+    const cancel = (): void => {
+      if (ended) return
+      ended = true
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerUp)
+      if (activeInteraction?.cancel === cancel) activeInteraction = undefined
+    }
+    function onPointerMove(nextEvent: PointerEvent): void {
+      session.setViewport({
+        x: viewport.x + nextEvent.clientX - start.x,
+        y: viewport.y + nextEvent.clientY - start.y,
+        zoom: viewport.zoom,
+      })
+    }
+    function onPointerUp(nextEvent: PointerEvent): void {
+      onPointerMove(nextEvent)
+      cancel()
+    }
+    activeInteraction = { cancel }
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerUp)
+  }
+  const startMarqueeSelection = (event: PointerEvent): void => {
+    activeInteraction?.cancel()
+    event.preventDefault()
+    shell.focus()
+    const start = workspacePoint(event, workspace)
+    const initialSelection = sessionState.selection
+    const additive = hasSelectionModifier(event)
+    const marquee = document.createElementNS(SVG_NAMESPACE, "rect")
+    marquee.dataset.testid = "marquee-selection"
+    marquee.dataset.marquee = "true"
+    overlay.append(marquee)
+    let current = start
+    let ended = false
+    const render = (): void => {
+      marquee.setAttribute("x", String(Math.min(start.x, current.x)))
+      marquee.setAttribute("y", String(Math.min(start.y, current.y)))
+      marquee.setAttribute("width", String(Math.abs(current.x - start.x)))
+      marquee.setAttribute("height", String(Math.abs(current.y - start.y)))
+    }
+    const cancel = (): void => {
+      if (ended) return
+      ended = true
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerCancel)
+      marquee.remove()
+      if (activeInteraction?.cancel === cancel) activeInteraction = undefined
+    }
+    function onPointerMove(nextEvent: PointerEvent): void {
+      current = workspacePoint(nextEvent, workspace)
+      render()
+    }
+    function onPointerUp(nextEvent: PointerEvent): void {
+      onPointerMove(nextEvent)
+      const left = Math.min(start.x, current.x)
+      const top = Math.min(start.y, current.y)
+      const right = Math.max(start.x, current.x)
+      const bottom = Math.max(start.y, current.y)
+      const matches: string[] = []
+      for (const [id, visible] of canvas.visibleNodes) {
+        const origin = worldToScreen(
+          { x: visible.worldX, y: visible.worldY },
+          sessionState.viewport,
+        )
+        const end = worldToScreen(
+          {
+            x: visible.worldX + visible.node.layout.width,
+            y: visible.worldY + visible.node.layout.height,
+          },
+          sessionState.viewport,
+        )
+        if (origin.x <= right && end.x >= left && origin.y <= bottom && end.y >= top) {
+          matches.push(id)
+        }
+      }
+      cancel()
+      session.setSelection(additive ? [...new Set([...initialSelection, ...matches])] : matches)
+    }
+    function onPointerCancel(): void {
+      cancel()
+    }
+    render()
+    activeInteraction = { cancel }
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerCancel)
+  }
+  const onWorkspacePointerDown = (event: PointerEvent): void => {
+    if (event.defaultPrevented || shell.dataset.mode !== "stage-edit") return
+    if (event.button === 1) {
+      startWorkspacePan(event)
+      return
+    }
+    if (event.button !== 0) return
+    const target = event.target
+    if (target instanceof Element && target.closest("[data-node-id]")) return
+    startMarqueeSelection(event)
+  }
+  const onWorkspaceWheel = (event: WheelEvent): void => {
+    if (shell.dataset.mode !== "stage-edit") return
+    event.preventDefault()
+    const point = workspacePoint(event, workspace)
+    const factor = Math.exp(-event.deltaY * 0.001)
+    const nextZoom = Math.min(4, Math.max(0.1, sessionState.viewport.zoom * factor))
+    session.setViewport(zoomAt(sessionState.viewport, point, nextZoom))
+  }
   const onShellKeyDown = (event: KeyboardEvent): void => {
     const target = event.target
     if (event.key === "Delete" && target instanceof Element) {
@@ -531,6 +685,8 @@ export function mountEditor(
     else coreEditor.undo()
   }
   board.addEventListener("pointerdown", onBoardPointerDown)
+  workspace.addEventListener("pointerdown", onWorkspacePointerDown)
+  workspace.addEventListener("wheel", onWorkspaceWheel, { passive: false })
   shell.addEventListener("keydown", onShellKeyDown)
 
   const onCoreChange = (event: EditorChangeEvent): void => {
@@ -553,10 +709,11 @@ export function mountEditor(
       sessionState.viewport.y !== nextState.viewport.y ||
       sessionState.viewport.zoom !== nextState.viewport.zoom
     const expandedChanged = !sameArray(sessionState.expanded, nextState.expanded)
+    const gridChanged = sessionState.gridVisible !== nextState.gridVisible
     sessionState = nextState
     if (expandedChanged) tree.update(currentStore, options.pageId, nextState, true)
     else if (selectionChanged) tree.update(currentStore, options.pageId, nextState, false)
-    if (viewportChanged) updateViewport()
+    if (viewportChanged || gridChanged) updateViewport()
     if (selectionChanged || viewportChanged) {
       renderSelectionOverlay(overlay, canvas.visibleNodes, nextState)
     }
@@ -572,6 +729,8 @@ export function mountEditor(
       destroyed = true
       activeInteraction?.cancel()
       board.removeEventListener("pointerdown", onBoardPointerDown)
+      workspace.removeEventListener("pointerdown", onWorkspacePointerDown)
+      workspace.removeEventListener("wheel", onWorkspaceWheel)
       shell.removeEventListener("keydown", onShellKeyDown)
       unsubscribeCore()
       unsubscribeSession()

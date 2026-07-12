@@ -53,6 +53,28 @@ const initializedTree = () => {
 }
 
 describe("Free Layout commands", () => {
+  it("swaps occupied sibling indexes in one reorder transaction and one undo step", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    createRectangle(editor, { id: "first" })
+    createRectangle(editor, { id: "second" })
+    const events: string[] = []
+    editor.subscribe((event) => events.push(event.transaction.label))
+
+    expect(
+      editor.dispatch({
+        id: "node.reorder",
+        payload: { id: "second", parentId: "page-1", index: "a0" },
+      }).ok,
+    ).toBe(true)
+
+    expect(editor.getRecord("first")).toMatchObject({ index: "a1" })
+    expect(editor.getRecord("second")).toMatchObject({ index: "a0" })
+    expect(events).toEqual(["node.reorder"])
+    expect(editor.undo().ok).toBe(true)
+    expect(editor.getRecord("first")).toMatchObject({ index: "a0" })
+    expect(editor.getRecord("second")).toMatchObject({ index: "a1" })
+  })
+
   it("executes all eight commands through one complete lifecycle", () => {
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
 

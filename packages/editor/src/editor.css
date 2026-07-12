@@ -54,11 +54,31 @@
 }
 
 .composeui-editor__tree-toggle,
-.composeui-editor__tree-select {
+.composeui-editor__tree-select,
+.composeui-editor__tree-action {
   background: transparent;
   border: 0;
   color: inherit;
   font: inherit;
+}
+
+.composeui-editor__tree-action {
+  cursor: pointer;
+  flex: 0 0 24px;
+  height: 24px;
+  padding: 0;
+  width: 24px;
+}
+
+.composeui-editor__tree-action:disabled {
+  color: var(--composeui-muted-text);
+  cursor: default;
+  opacity: 0.35;
+}
+
+.composeui-editor__tree-rename {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .composeui-editor__tree-toggle {
@@ -86,6 +106,16 @@
   min-width: 0;
   overflow: auto;
   position: relative;
+}
+
+.composeui-editor__workspace-grid {
+  background-image:
+    linear-gradient(to right, rgb(113 113 122 / 10%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(113 113 122 / 10%) 1px, transparent 1px);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
 }
 
 .composeui-editor__world {
@@ -127,6 +157,7 @@
   pointer-events: none;
   position: absolute;
   width: 100%;
+  z-index: 2;
 }
 
 .composeui-editor__selection-overlay rect {
@@ -134,4 +165,9 @@
   stroke: var(--composeui-selection);
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
+}
+
+.composeui-editor__selection-overlay [data-marquee="true"] {
+  fill: rgb(37 99 235 / 12%);
+  stroke-dasharray: 4 3;
 }

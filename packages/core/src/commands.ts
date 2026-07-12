@@ -350,12 +350,24 @@ function prepareReorder(store: RecordStore, command: ReorderNodeCommand): Prepar
       command.payload.parentId,
     )
   }
-  return success((draft) =>
+  const occupiedSibling = store
+    .all()
+    .find(
+      (record): record is NodeRecord =>
+        record.typeName === "node" &&
+        record.id !== node.value.id &&
+        record.parentId === command.payload.parentId &&
+        record.index === command.payload.index,
+    )
+  return success((draft) => {
+    if (node.value.parentId === command.payload.parentId && occupiedSibling !== undefined) {
+      draft.update(occupiedSibling.id, { index: node.value.index })
+    }
     draft.update(command.payload.id, {
       parentId: command.payload.parentId,
       index: command.payload.index,
-    }),
-  )
+    })
+  })
 }
 
 function prepareNodeUpdate(

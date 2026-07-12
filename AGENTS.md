@@ -12,7 +12,7 @@ ComposeUI is not a general low-code platform and is not a Figma replacement. Its
 
 - Product and architecture design documents exist.
 - The M0 and M1 implementation plans exist: [M0 Core Loop](docs/superpowers/plans/2026-07-11-m0-core-loop-implementation.md) and [M1 Editor Spine](docs/superpowers/plans/2026-07-11-m1-editor-spine-implementation.md).
-- M0 and M1 are implemented: the repository has the Core transaction path plus a desktop Free Layout editor with Document/Session separation, component tree, SVG selection overlay, pointer move/resize, undo/redo, JSON goldens, property tests, and Chromium E2E.
+- M0 and M1 are implemented: the repository has the Core transaction path plus a desktop Free Layout editor with Session-only pan, pointer-centered zoom and helper grid; modifier multi-selection and marquee selection; a command-backed component tree with rename, visibility, lock and sibling reorder; pointer move/resize; undo/redo; deterministic create/export Playground actions; JSON goldens, property tests, and Chromium E2E.
 - M1 is an editor spine, not the complete product. Auto Layout/Grid, framework adapters and business components, bindings, Figma, Yjs, GPU/Worker and other large-screen optimizations, and advanced vector editing are not implemented.
 - Do not claim features are implemented because they appear in design documents.
 - Create a separate scoped plan for each milestone and update the roadmap only after its exit criteria pass.

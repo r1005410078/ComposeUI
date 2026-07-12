@@ -8,10 +8,12 @@ describe("Document and Session scopes", () => {
     const session = new EditorSession()
     session.setViewport({ x: 20, y: 30, zoom: 2 })
     session.setSelection(["page-1"])
+    session.setGridVisible(false)
 
     const serialized = JSON.stringify(canonicalizeDocument(editor.getStore()))
     expect(serialized).not.toContain("viewport")
     expect(serialized).not.toContain("selection")
+    expect(serialized).not.toContain("gridVisible")
   })
 
   it("isolates state and listeners between session instances", () => {
@@ -28,6 +30,7 @@ describe("Document and Session scopes", () => {
       selection: [],
       expanded: [],
       hoveredId: null,
+      gridVisible: true,
     })
     expect(secondNotifications).toBe(0)
   })
