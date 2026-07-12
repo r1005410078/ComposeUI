@@ -137,3 +137,17 @@ test("creates a node and performs tree rename, visibility, lock and reorder", as
   await page.getByTestId("tree-visibility-node-created-1").click()
   await expect(created).toHaveCount(0)
 })
+
+test("drag-reorders sibling tree rows through one undoable command", async ({ page }) => {
+  await page.goto("/")
+  const rows = page.locator("[data-tree-control='select']")
+
+  await page.getByTestId("tree-row-node-red").dragTo(page.getByTestId("tree-row-node-blue"))
+  await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-blue")
+  await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-red")
+
+  await page.getByTestId("editor-shell").focus()
+  await page.keyboard.press("Meta+z")
+  await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-red")
+  await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-blue")
+})

@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
 import type { PageDocument } from "@composeui/core"
+import { reorderTreeItem } from "../src/component-tree"
 import { mountEditor } from "../src/index"
 import { EditorSession } from "../src/session"
 
@@ -86,6 +87,22 @@ function modifiedPointerEvent(
   }) as PointerEvent
   Object.defineProperty(event, "pointerId", { value: pointerId })
   return event
+}
+
+function dragEvent(type: string, dataTransfer: DataTransfer): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, "dataTransfer", { value: dataTransfer })
+  return event
+}
+
+function createDataTransfer(): DataTransfer {
+  const data = new Map<string, string>()
+  return {
+    dropEffect: "none",
+    effectAllowed: "uninitialized",
+    getData: (format) => data.get(format) ?? "",
+    setData: (format, value) => data.set(format, value),
+  } as DataTransfer
 }
 
 describe("mountEditor", () => {
@@ -224,6 +241,82 @@ describe("mountEditor", () => {
       ),
     ).toEqual(["page-1", "node-a", "node-b"])
   })
+
+  it("drag-reorders sibling tree rows through one command and preserves undo", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", name: "A" })
+    addRectangle(editor, { id: "node-b", name: "B" })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    mountEditor(root, editor, { pageId: "page-1" })
+    const source = root.querySelector<HTMLElement>("[data-testid='tree-row-node-a']")!
+    const target = root.querySelector<HTMLElement>("[data-testid='tree-row-node-b']")!
+    const transfer = createDataTransfer()
+
+    expect(source.draggable).toBe(true)
+    expect(target.draggable).toBe(true)
+    source.dispatchEvent(dragEvent("dragstart", transfer))
+    expect(target.dispatchEvent(dragEvent("dragover", transfer))).toBe(false)
+    target.dispatchEvent(dragEvent("drop", transfer))
+
+    expect(dispatch.mock.calls.filter(([command]) => command.id === "node.reorder")).toEqual([
+      [{ id: "node.reorder", payload: { id: "node-a", parentId: "page-1", index: "a1" } }],
+    ])
+    expect(
+      [...root.querySelectorAll("[data-tree-control='select']")].map(
+        (element) => (element as HTMLElement).dataset.treeId,
+      ),
+    ).toEqual(["page-1", "node-b", "node-a"])
+
+    editor.undo()
+    expect(
+      [...root.querySelectorAll("[data-tree-control='select']")].map(
+        (element) => (element as HTMLElement).dataset.treeId,
+      ),
+    ).toEqual(["page-1", "node-a", "node-b"])
+  })
+
+  it("rejects page-root, cross-parent and locked tree drops with diagnostics", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "parent-a" })
+    addRectangle(editor, { id: "parent-b" })
+    addRectangle(editor, { id: "child-a", parentId: "parent-a" })
+    addRectangle(editor, { id: "child-b", parentId: "parent-b" })
+    addRectangle(editor, { id: "locked", locked: true })
+    addRectangle(editor, { id: "unlocked" })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    mountEditor(root, editor, { pageId: "page-1" })
+
+    expect(root.querySelector<HTMLElement>("[data-testid='tree-row-page-1']")?.draggable).toBe(
+      false,
+    )
+    expect(root.querySelector<HTMLElement>("[data-testid='tree-row-locked']")?.draggable).toBe(
+      false,
+    )
+    expect(root.querySelector<HTMLElement>("[data-testid='tree-row-unlocked']")?.draggable).toBe(
+      true,
+    )
+
+    expect(reorderTreeItem(editor, editor.getStore(), "page-1", "unlocked")).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "TREE_REORDER_NODE_REQUIRED", recordId: "page-1" }],
+    })
+    expect(reorderTreeItem(editor, editor.getStore(), "child-a", "child-b")).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "TREE_REORDER_PARENT_MISMATCH", recordId: "child-a" }],
+    })
+    expect(reorderTreeItem(editor, editor.getStore(), "locked", "unlocked")).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "NODE_LOCKED", recordId: "locked" }],
+    })
+    expect(reorderTreeItem(editor, editor.getStore(), "unlocked", "locked")).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "NODE_LOCKED", recordId: "locked" }],
+    })
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it("selects and previews an unlocked rectangle before dispatching one parent-local move", () => {
     const root = document.createElement("div")
     document.body.append(root)

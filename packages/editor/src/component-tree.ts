@@ -1,10 +1,12 @@
 import { getChildren, getTreeItems } from "@composeui/core"
-import type { Editor, RecordStore, TreeItem } from "@composeui/core"
+import type { Diagnostic, Editor, RecordStore, Result, TreeItem } from "@composeui/core"
 import type { EditorSession, EditorSessionState } from "./session"
 
 interface FocusTarget {
   testId: string
 }
+
+const TREE_DRAG_TYPE = "application/x-composeui-tree-node"
 
 export interface ComponentTreeView {
   element: HTMLElement
@@ -158,6 +160,70 @@ function reorderSibling(
   })
 }
 
+function reorderFailure(code: string, message: string, recordId: string): Result<void> {
+  const diagnostic: Diagnostic = { code, severity: "error", message, recordId }
+  return { ok: false, diagnostics: [diagnostic] }
+}
+
+function lockedTreeRecord(store: RecordStore, id: string): string | undefined {
+  let record = store.get(id)
+  while (record?.typeName === "node") {
+    if (record.locked) return record.id
+    record = store.get(record.parentId)
+  }
+  return undefined
+}
+
+export function reorderTreeItem(
+  editor: Editor,
+  store: RecordStore,
+  sourceId: string,
+  targetId: string,
+): Result<void> {
+  const source = store.get(sourceId)
+  if (source?.typeName !== "node") {
+    return reorderFailure(
+      "TREE_REORDER_NODE_REQUIRED",
+      `Tree reorder source ${sourceId} is not a node.`,
+      sourceId,
+    )
+  }
+  const target = store.get(targetId)
+  if (target?.typeName !== "node") {
+    return reorderFailure(
+      "TREE_REORDER_NODE_REQUIRED",
+      `Tree reorder target ${targetId} is not a node.`,
+      targetId,
+    )
+  }
+  if (source.id === target.id) {
+    return reorderFailure(
+      "TREE_REORDER_SAME_NODE",
+      `Node ${source.id} cannot be dropped onto itself.`,
+      source.id,
+    )
+  }
+  if (source.parentId !== target.parentId) {
+    return reorderFailure(
+      "TREE_REORDER_PARENT_MISMATCH",
+      `Nodes ${source.id} and ${target.id} do not share a parent.`,
+      source.id,
+    )
+  }
+  const lockedId = lockedTreeRecord(store, source.id) ?? lockedTreeRecord(store, target.id)
+  if (lockedId !== undefined) {
+    return reorderFailure("NODE_LOCKED", `Node ${lockedId} is locked.`, lockedId)
+  }
+  return editor.dispatch({
+    id: "node.reorder",
+    payload: { id: source.id, parentId: source.parentId, index: target.index },
+  })
+}
+
+function canDragTreeItem(store: RecordStore, item: TreeItem): boolean {
+  return item.typeName === "node" && lockedTreeRecord(store, item.id) === undefined
+}
+
 function beginRename(editor: Editor, item: TreeItem, selectButton: HTMLButtonElement): void {
   const input = document.createElement("input")
   input.className = "composeui-editor__tree-rename"
@@ -199,6 +265,7 @@ function buildTree(
   const selected = new Set(state.selection)
   const fragment = document.createDocumentFragment()
   const items = getTreeItems(store, pageId, expanded)
+  let draggedId: string | undefined
 
   for (const [index, item] of items.entries()) {
     const treeItem = document.createElement("li")
@@ -211,7 +278,50 @@ function buildTree(
 
     const row = document.createElement("div")
     row.className = "composeui-editor__tree-row"
+    row.dataset.testid = `tree-row-${item.id}`
+    row.dataset.treeId = item.id
+    row.draggable = canDragTreeItem(store, item)
     row.style.paddingInlineStart = `${item.depth * 16 + 8}px`
+    row.addEventListener("dragstart", (event) => {
+      if (!row.draggable || event.dataTransfer === null) {
+        event.preventDefault()
+        return
+      }
+      draggedId = item.id
+      event.dataTransfer.effectAllowed = "move"
+      event.dataTransfer.setData(TREE_DRAG_TYPE, item.id)
+      event.dataTransfer.setData("text/plain", item.id)
+      row.dataset.dragging = "true"
+    })
+    row.addEventListener("dragover", (event) => {
+      if (draggedId === undefined) return
+      const source = store.get(draggedId)
+      const target = store.get(item.id)
+      if (
+        source?.typeName !== "node" ||
+        target?.typeName !== "node" ||
+        source.id === target.id ||
+        source.parentId !== target.parentId ||
+        lockedTreeRecord(store, source.id) !== undefined ||
+        lockedTreeRecord(store, target.id) !== undefined
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "move"
+    })
+    row.addEventListener("drop", (event) => {
+      event.preventDefault()
+      const sourceId = draggedId ?? event.dataTransfer?.getData(TREE_DRAG_TYPE)
+      draggedId = undefined
+      if (sourceId !== undefined && sourceId.length > 0) {
+        reorderTreeItem(editor, store, sourceId, item.id)
+      }
+    })
+    row.addEventListener("dragend", () => {
+      draggedId = undefined
+      delete row.dataset.dragging
+    })
     row.append(createExpandControl(item, session, expanded))
 
     const selectButton = document.createElement("button")

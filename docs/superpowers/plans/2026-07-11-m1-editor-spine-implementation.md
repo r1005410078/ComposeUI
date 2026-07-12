@@ -67,7 +67,7 @@ tests/e2e/
 - Create: `packages/core/test/store-update.test.ts`
 - Modify: `packages/core/test/schema.test.ts`
 
-- [ ] **Step 1: Write failing Store tests**
+- [x] **Step 1: Write failing Store tests**
 
 Create `packages/core/test/store-update.test.ts`:
 
@@ -99,7 +99,7 @@ describe("RecordStore persistent operations", () => {
 })
 ```
 
-- [ ] **Step 2: Verify the test fails**
+- [x] **Step 2: Verify the test fails**
 
 Run:
 
@@ -109,7 +109,7 @@ bunx vitest run packages/core/test/store-update.test.ts
 
 Expected: FAIL because `RecordStore.withUpdated` does not exist.
 
-- [ ] **Step 3: Replace M0 record contracts with M1 contracts**
+- [x] **Step 3: Replace M0 record contracts with M1 contracts**
 
 In `packages/core/src/schema.ts`, define the following persistent model. `PageRecord` is the one page board for M1; all nodes must be its descendants.
 
@@ -168,7 +168,7 @@ withRemovedMany(ids: readonly string[]): RecordStore
 
 `withUpdated` must reject a missing id with `MISSING_RECORD_ID`, preserve `id` and `typeName`, increment the record revision by one, and never accept a patch that changes its discriminant. `withRemoved` delegates to `withRemovedMany`.
 
-- [ ] **Step 4: Run the focused tests and typecheck**
+- [x] **Step 4: Run the focused tests and typecheck**
 
 ```bash
 bunx vitest run packages/core/test/schema.test.ts packages/core/test/store.test.ts packages/core/test/store-update.test.ts
@@ -177,7 +177,7 @@ bunx tsc -p packages/core --pretty false
 
 Expected: all focused tests PASS and Core typecheck exits 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/src/schema.ts packages/core/src/store.ts packages/core/src/index.ts packages/core/test
@@ -191,7 +191,7 @@ git commit -m "feat(core): add free layout page schema and record updates"
 - Modify: `packages/core/src/index.ts`
 - Create: `packages/core/test/transaction-update.test.ts`
 
-- [ ] **Step 1: Write failing transaction tests**
+- [x] **Step 1: Write failing transaction tests**
 
 Create `packages/core/test/transaction-update.test.ts`:
 
@@ -229,7 +229,7 @@ describe("record transaction", () => {
 })
 ```
 
-- [ ] **Step 2: Verify the red state**
+- [x] **Step 2: Verify the red state**
 
 ```bash
 bunx vitest run packages/core/test/transaction-update.test.ts
@@ -237,7 +237,7 @@ bunx vitest run packages/core/test/transaction-update.test.ts
 
 Expected: FAIL because `TransactionDraft.update`, `TransactionDraft.remove`, and `applyPatch` do not exist.
 
-- [ ] **Step 3: Implement the transaction draft, patch, and policy**
+- [x] **Step 3: Implement the transaction draft, patch, and policy**
 
 Replace `TransactionPatch` in `packages/core/src/transaction.ts` with:
 
@@ -282,7 +282,7 @@ export type TransactionOrigin =
   | { kind: "system-init" }
 ```
 
-- [ ] **Step 4: Run transaction tests**
+- [x] **Step 4: Run transaction tests**
 
 ```bash
 bunx vitest run packages/core/test/transaction.test.ts packages/core/test/transaction-update.test.ts
@@ -290,7 +290,7 @@ bunx vitest run packages/core/test/transaction.test.ts packages/core/test/transa
 
 Expected: all transaction tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/core/src/transaction.ts packages/core/src/index.ts packages/core/test/transaction-update.test.ts
@@ -306,7 +306,7 @@ git commit -m "feat(core): support reversible record transactions"
 - Create: `packages/core/test/history.test.ts`
 - Create: `packages/core/test/commands-free-layout.test.ts`
 
-- [ ] **Step 1: Write failing command and History tests**
+- [x] **Step 1: Write failing command and History tests**
 
 Create `packages/core/test/history.test.ts`:
 
@@ -349,7 +349,7 @@ describe("Free Layout commands", () => {
 })
 ```
 
-- [ ] **Step 2: Verify the red state**
+- [x] **Step 2: Verify the red state**
 
 ```bash
 bunx vitest run packages/core/test/history.test.ts packages/core/test/commands-free-layout.test.ts
@@ -357,7 +357,7 @@ bunx vitest run packages/core/test/history.test.ts packages/core/test/commands-f
 
 Expected: FAIL because `undo`, `redo`, `node.move`, and `node.setLocked` do not exist.
 
-- [ ] **Step 3: Implement History**
+- [x] **Step 3: Implement History**
 
 Create `packages/core/src/history.ts`:
 
@@ -395,7 +395,7 @@ export class History {
 }
 ```
 
-- [ ] **Step 4: Expand the Editor command contract**
+- [x] **Step 4: Expand the Editor command contract**
 
 In `packages/core/src/commands.ts`, define these command payloads and add them to `EditorCommand`:
 
@@ -422,7 +422,7 @@ subscribe(listener: (event: EditorChangeEvent) => void): () => void
 
 `EditorChangeEvent` contains `store`, `transaction`, and `origin`; `subscribe` invokes listeners only after a successful commit, undo, or redo. `node.delete` must reject the page board, delete selected descendants before ancestors, and remove all descendants of selected nodes in one transaction. `node.move` and `node.resize` reject missing/non-node/locked records and reject dimensions below `1` with `INVALID_FREE_LAYOUT_SIZE`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 bunx vitest run packages/core/test/history.test.ts packages/core/test/commands-free-layout.test.ts
@@ -446,7 +446,7 @@ git commit -m "feat(core): add free layout commands and history"
 - Create: `packages/editor/test/session-separation.test.ts`
 - Create: `packages/core/test/projections.test.ts`
 
-- [ ] **Step 1: Write failing pure-state tests**
+- [x] **Step 1: Write failing pure-state tests**
 
 Create `packages/editor/test/coordinates.test.ts`:
 
@@ -493,7 +493,7 @@ describe("Document and Session scopes", () => {
 })
 ```
 
-- [ ] **Step 2: Verify the red state**
+- [x] **Step 2: Verify the red state**
 
 ```bash
 bunx vitest run packages/editor/test/coordinates.test.ts packages/editor/test/session-separation.test.ts
@@ -501,7 +501,7 @@ bunx vitest run packages/editor/test/coordinates.test.ts packages/editor/test/se
 
 Expected: FAIL because `@composeui/editor`, coordinate functions, and `EditorSession` do not exist.
 
-- [ ] **Step 3: Create the editor workspace and Session store**
+- [x] **Step 3: Create the editor workspace and Session store**
 
 Create `packages/editor/package.json`:
 
@@ -577,7 +577,7 @@ export function zoomAt(viewport: Viewport, screenPoint: Point, nextZoom: number)
 
 Export `EditorSession` from `@composeui/editor`. Export no Session type from `@composeui/core`; update the separation test to import `EditorSession` from `@composeui/editor`.
 
-- [ ] **Step 4: Add Core tree projections**
+- [x] **Step 4: Add Core tree projections**
 
 Create `packages/core/src/projections.ts`:
 
@@ -605,7 +605,7 @@ export function getTreeItems(store: RecordStore, pageId: string, expanded: Reado
 
 Write `packages/core/test/projections.test.ts` to create siblings with indexes `a0` and `b0`, expand the page, and assert that `getTreeItems` returns page, `a0`, then `b0` with depths `0, 1, 1`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 bun install
@@ -627,7 +627,7 @@ git commit -m "feat(editor): add session state and tree projections"
 - Modify: `apps/playground/src/main.ts`
 - Create: `apps/playground/src/m1-free-layout-scenario.ts`
 
-- [ ] **Step 1: Write the DOM-level rendering test**
+- [x] **Step 1: Write the DOM-level rendering test**
 
 Create `packages/editor/test/editor-view.test.ts` with Vitest `environment: "jsdom"` configured at the file top:
 
@@ -653,7 +653,7 @@ describe("mountEditor", () => {
 })
 ```
 
-- [ ] **Step 2: Verify the red state**
+- [x] **Step 2: Verify the red state**
 
 ```bash
 bunx vitest run packages/editor/test/editor-view.test.ts
@@ -661,7 +661,7 @@ bunx vitest run packages/editor/test/editor-view.test.ts
 
 Expected: FAIL because `mountEditor` does not exist.
 
-- [ ] **Step 3: Implement the editor renderer**
+- [x] **Step 3: Implement the editor renderer**
 
 `mountEditor(root, coreEditor, { pageId })` creates an editor-local DOM tree. It must return:
 
@@ -705,7 +705,7 @@ if (import.meta.env.DEV) {
 
 Add `@composeui/editor: "workspace:*"` to the Playground dependencies.
 
-- [ ] **Step 4: Run editor rendering tests and build**
+- [x] **Step 4: Run editor rendering tests and build**
 
 ```bash
 bun install
@@ -716,7 +716,7 @@ bun run build
 
 Expected: editor rendering test, typecheck, and both package builds PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/editor apps/playground package.json bun.lock tsconfig.json
@@ -731,7 +731,7 @@ git commit -m "feat(editor): render workspace board and component tree"
 - Create: `packages/editor/test/interactions.test.ts`
 - Create: `tests/e2e/m1-editor-spine.spec.ts`
 
-- [ ] **Step 1: Write failing pointer-session tests**
+- [x] **Step 1: Write failing pointer-session tests**
 
 Create `packages/editor/test/interactions.test.ts`:
 
@@ -750,7 +750,7 @@ describe("pointer move session", () => {
 })
 ```
 
-- [ ] **Step 2: Verify the red state**
+- [x] **Step 2: Verify the red state**
 
 ```bash
 bunx vitest run packages/editor/test/interactions.test.ts
@@ -758,7 +758,7 @@ bunx vitest run packages/editor/test/interactions.test.ts
 
 Expected: FAIL because `createPointerMoveSession` does not exist.
 
-- [ ] **Step 3: Implement interaction drafts**
+- [x] **Step 3: Implement interaction drafts**
 
 Create `packages/editor/src/interactions.ts`:
 
@@ -786,7 +786,7 @@ In `editor-view.ts`, attach `pointerdown` only to unlocked rectangle nodes when 
 
 Add one resize handle with `data-testid="resize-<id>-se"`; it uses the same draft rule and commits exactly one `node.resize` with dimensions clamped to `1` or greater.
 
-- [ ] **Step 4: Add browser regression coverage**
+- [x] **Step 4: Add browser regression coverage**
 
 Create `tests/e2e/m1-editor-spine.spec.ts`:
 
@@ -818,7 +818,7 @@ test("synchronizes selection, free-layout drag, undo and redo", async ({ page })
 
 In `editor-view.ts`, handle `Meta+z`/`Control+z` and `Meta+Shift+z`/`Control+Shift+z` only while the editor shell has focus. Add `tabindex="0"` to the shell and call `coreEditor.undo()`/`redo()` accordingly.
 
-- [ ] **Step 5: Run focused and browser tests**
+- [x] **Step 5: Run focused and browser tests**
 
 ```bash
 bunx vitest run packages/editor/test/interactions.test.ts packages/editor/test/editor-view.test.ts
@@ -827,7 +827,7 @@ bun run test:e2e -- tests/e2e/m1-editor-spine.spec.ts
 
 Expected: interaction unit tests and the M1 Playwright flow PASS without arbitrary waits.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/editor tests/e2e/m1-editor-spine.spec.ts
@@ -846,7 +846,7 @@ git commit -m "feat(editor): commit free layout pointer interactions"
 - Modify: `AGENTS.md`
 - Modify: `docs/project-overview.md`
 
-- [ ] **Step 1: Add command-sequence property test**
+- [x] **Step 1: Add command-sequence property test**
 
 Create `packages/core/test/properties.test.ts`:
 
@@ -874,13 +874,13 @@ describe("M1 command invariants", () => {
 
 Add `fast-check` to root `devDependencies` with `bun add -d fast-check` rather than editing `bun.lock` manually.
 
-- [ ] **Step 2: Add the M1 canonical Golden**
+- [x] **Step 2: Add the M1 canonical Golden**
 
 Create a deterministic M1 scenario that creates `node-red` and `node-blue`, moves `node-red`, hides `node-blue`, and serializes with `canonicalizeDocument`. Add `packages/core/test/m1-free-layout.golden.test.ts` using `readFile(new URL("./goldens/m1-free-layout.json", import.meta.url), "utf8")` and compare exact JSON plus trailing newline.
 
 The golden must contain page board fields (`background`, `overflow`, `layout`), both node persistent layout records, and no session keys such as `viewport`, `selection`, `expanded`, `hoveredId`, `dragPreview`, or `history`.
 
-- [ ] **Step 3: Expand E2E tree coverage**
+- [x] **Step 3: Expand E2E tree coverage**
 
 Append a second test to `tests/e2e/m1-editor-spine.spec.ts`:
 
@@ -899,7 +899,7 @@ test("synchronizes component tree selection and persistent node flags", async ({
 
 Implement tree-row `Delete` handling through `node.delete`; do not directly remove DOM elements.
 
-- [ ] **Step 4: Run the entire M1 quality gate**
+- [x] **Step 4: Run the entire M1 quality gate**
 
 ```bash
 bun run format
@@ -909,7 +909,7 @@ bun run test:e2e
 
 Expected: formatting, lint, TypeScript, all Core/editor Vitest tests, JSON Goldens, both Vite builds, and all Chromium E2E tests PASS.
 
-- [ ] **Step 5: Update completed-milestone documentation and commit**
+- [x] **Step 5: Update completed-milestone documentation and commit**
 
 Update the M1 status in `docs/superpowers/specs/2026-07-11-specification-roadmap-design.md`, `AGENTS.md`, and `docs/project-overview.md` only after the quality gate passes. State precisely that M1 supports Free Layout editor interactions and that Auto Layout/Grid, adapters, bindings, Figma, Yjs, performance layers, and advanced vectors remain unimplemented.
 
@@ -917,6 +917,14 @@ Update the M1 status in `docs/superpowers/specs/2026-07-11-specification-roadmap
 git add AGENTS.md docs/project-overview.md docs/superpowers/specs/2026-07-11-specification-roadmap-design.md packages/core packages/editor apps/playground tests package.json bun.lock tsconfig.json
 git commit -m "feat: complete M1 editor spine"
 ```
+
+## 路线图补充能力
+
+- Workspace pan/zoom and the session-only grid are implemented.
+- Modifier multi-selection and marquee selection are implemented as Session Scope behavior.
+- Tree rename, visibility, lock, move up/down, delete, and sibling drag reorder route through editor commands.
+- Node creation and canonical JSON export are available in the Playground.
+- Tree drag reorder rejects page-root, cross-parent, and locked-node drops with structured diagnostics and commits valid drops through one undoable `node.reorder` transaction.
 
 ## M1 Exit Criteria
 
