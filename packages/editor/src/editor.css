@@ -109,12 +109,14 @@
   position: relative;
 }
 
-.composeui-editor[data-panning="true"] .composeui-editor__workspace {
-  cursor: grab;
+.composeui-editor[data-panning="true"] .composeui-editor__workspace,
+.composeui-editor[data-panning="true"] .composeui-editor__workspace * {
+  cursor: grab !important;
 }
 
-.composeui-editor__workspace[data-pan-active="true"] {
-  cursor: grabbing;
+.composeui-editor__workspace[data-pan-active="true"],
+.composeui-editor__workspace[data-pan-active="true"] * {
+  cursor: grabbing !important;
 }
 
 .composeui-editor__workspace-grid {
