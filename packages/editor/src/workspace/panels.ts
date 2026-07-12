@@ -200,9 +200,16 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
       if (history.past.length === 0 && history.future.length > 0) {
         const future = document.createElement("li")
         future.dataset.testid = "history-future-entry"
+        future.dataset.current = "false"
         const label = history.future.at(-1)?.label ?? "记录"
         future.title = label
-        future.textContent = `重做: ${label}`
+        const sequence = document.createElement("span")
+        sequence.className = "composeui-editor__history-sequence"
+        sequence.textContent = "1"
+        const labelElement = document.createElement("span")
+        labelElement.className = "composeui-editor__history-label"
+        labelElement.textContent = `重做: ${label}`
+        future.append(sequence, labelElement)
         list.append(future)
       }
       panel.replaceChildren(actions, list)

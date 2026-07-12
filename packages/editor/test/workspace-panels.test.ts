@@ -143,6 +143,25 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("keeps the future history row aligned with dense history entries", () => {
+    const context = createContext()
+    const root = document.createElement("div")
+    const dispose = panel("history").mount(root, context)
+
+    root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")!.click()
+
+    const future = root.querySelector<HTMLElement>("[data-testid='history-future-entry']")
+    expect(future?.textContent).toContain("重做: node.create")
+    expect(future?.getAttribute("title")).toBe("node.create")
+    expect(future?.getAttribute("data-current")).toBe("false")
+    expect(future?.querySelector(".composeui-editor__history-sequence")?.textContent).toBe("1")
+    expect(future?.querySelector(".composeui-editor__history-label")?.textContent).toBe(
+      "重做: node.create",
+    )
+
+    if (typeof dispose === "function") dispose()
+  })
+
   it("renders resources or an honest empty state", async () => {
     const resources = { list: vi.fn().mockResolvedValue([{ id: "asset-1", name: "Logo" }]) }
     const context = createContext(resources)
