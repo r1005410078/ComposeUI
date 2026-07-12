@@ -110,6 +110,18 @@ function isEmptyPatch(patch: TransactionPatch): boolean {
   return patch.created.length === 0 && patch.updated.length === 0 && patch.removed.length === 0
 }
 
+function safeErrorMessage(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const message = error.message
+      return typeof message === "string" ? message : String(message)
+    }
+    return String(error)
+  } catch {
+    return "Unknown thrown value"
+  }
+}
+
 function nodeResult(store: RecordStore, id: string): Result<NodeRecord> {
   const record = store.get(id)
   if (record === undefined) {
@@ -399,7 +411,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
       diagnostics.push({
         code: "EDITOR_DIAGNOSTIC_HOOK_ERROR",
         severity: "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: safeErrorMessage(error),
       })
     }
   }
@@ -416,7 +428,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
         reportDiagnostic({
           code: "EDITOR_LISTENER_ERROR",
           severity: "error",
-          message: error instanceof Error ? error.message : String(error),
+          message: safeErrorMessage(error),
         })
       }
     }

@@ -18,6 +18,49 @@ const createNode = (editor: ReturnType<typeof createEditor>, id: string) =>
   })
 
 describe("Editor history", () => {
+  it("survives thrown values whose toString also throws", () => {
+    const malicious = {
+      toString() {
+        throw new Error("toString exploded")
+      },
+    }
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }), {
+      onDiagnostic: () => {
+        throw malicious
+      },
+    })
+    createNode(editor, "node-1")
+    const calls: string[] = []
+    editor.subscribe(() => {
+      calls.push("first")
+      throw malicious
+    })
+    editor.subscribe(() => calls.push("second"))
+
+    const dispatch = editor.dispatch({
+      id: "node.move",
+      payload: { ids: ["node-1"], delta: { x: 1, y: 2 } },
+    })
+    const undo = editor.undo()
+    const redo = editor.redo()
+
+    expect(dispatch.ok).toBe(true)
+    expect(undo.ok).toBe(true)
+    expect(redo.ok).toBe(true)
+    expect(calls).toEqual(["first", "second", "first", "second", "first", "second"])
+    expect(editor.getDiagnostics().map((diagnostic) => diagnostic.code)).toEqual([
+      "EDITOR_LISTENER_ERROR",
+      "EDITOR_DIAGNOSTIC_HOOK_ERROR",
+      "EDITOR_LISTENER_ERROR",
+      "EDITOR_DIAGNOSTIC_HOOK_ERROR",
+      "EDITOR_LISTENER_ERROR",
+      "EDITOR_DIAGNOSTIC_HOOK_ERROR",
+    ])
+    expect(
+      editor.getDiagnostics().every((diagnostic) => diagnostic.message === "Unknown thrown value"),
+    ).toBe(true)
+  })
+
   it("isolates listener failures and reports them while notifying later listeners", () => {
     const diagnostics: string[] = []
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }), {
