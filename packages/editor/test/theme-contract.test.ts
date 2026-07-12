@@ -65,4 +65,30 @@ describe("editor theme contract", () => {
       expect(paletteLiterals, path).toEqual([])
     }
   })
+
+  it("tokenizes Dockview group backgrounds and renders the active tab indicator", () => {
+    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+
+    expect(workspaceCss).toContain(
+      "--dv-group-view-background-color: var(--composeui-surface-panel)",
+    )
+    expect(workspaceCss).toContain(
+      "--dv-activegroup-hiddenpanel-tab-background-color: var(--composeui-surface-panel)",
+    )
+    expect(workspaceCss).toContain(
+      "--dv-inactivegroup-hiddenpanel-tab-background-color: var(--composeui-surface-panel)",
+    )
+
+    const indicator = workspaceCss.match(
+      /\.composeui-editor__workspace-host\s+\.dv-groupview\s+\.dv-tabs-and-actions-container\s+\.dv-tabs-container\s+> \.dv-tab\.dv-active-tab::after\s+\{([\s\S]*?)\}/,
+    )?.[1]
+    expect(indicator).toBeDefined()
+    expect(indicator).toContain("position: absolute")
+    expect(indicator).toContain('content: ""')
+    expect(indicator).toContain("left: 0")
+    expect(indicator).toContain("bottom: 0")
+    expect(indicator).toContain("width: 100%")
+    expect(indicator).toContain("height: 2px")
+    expect(indicator).toContain("background: var(--composeui-accent-primary)")
+  })
 })

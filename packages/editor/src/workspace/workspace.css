@@ -249,11 +249,19 @@
 .composeui-editor__workspace-host .dockview-theme-abyss,
 .composeui-editor__workspace-host .dv-dockview {
   --dv-background-color: var(--composeui-surface-app);
+  --dv-group-view-background-color: var(--composeui-surface-panel);
   --dv-paneview-header-border-color: var(--composeui-border-default);
   --dv-tabs-and-actions-container-background-color: var(--composeui-surface-panel);
   --dv-activegroup-visiblepanel-tab-background-color: var(--composeui-surface-panel-raised);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--composeui-surface-panel);
   --dv-activegroup-visiblepanel-tab-color: var(--composeui-text-primary);
+  --dv-activegroup-hiddenpanel-tab-color: var(--composeui-text-muted);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--composeui-surface-panel);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--composeui-surface-panel);
   --dv-inactivegroup-visiblepanel-tab-color: var(--composeui-text-secondary);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--composeui-text-muted);
+  --dv-tab-divider-color: var(--composeui-border-subtle);
+  --dv-paneview-active-outline-color: var(--composeui-focus-ring);
   --dv-separator-border: var(--composeui-border-default);
 }
 
@@ -261,8 +269,28 @@
   min-height: var(--composeui-tab-height);
 }
 
-.composeui-editor__workspace-host .dv-tab.dv-active-tab::after {
+.composeui-editor__workspace-host
+  .dv-groupview
+  .dv-tabs-and-actions-container
+  .dv-tabs-container
+  > .dv-tab.dv-active-tab {
+  position: relative;
+}
+
+.composeui-editor__workspace-host
+  .dv-groupview
+  .dv-tabs-and-actions-container
+  .dv-tabs-container
+  > .dv-tab.dv-active-tab::after {
+  bottom: 0;
   background: var(--composeui-accent-primary);
+  content: "";
+  height: 2px;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+  z-index: 1;
 }
 
 .composeui-editor__workspace-host .dv-tab .dv-default-tab .dv-default-tab-action:hover {
