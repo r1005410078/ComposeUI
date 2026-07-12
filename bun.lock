@@ -24,9 +24,18 @@
       "name": "@composeui/core",
       "version": "0.0.0",
     },
+    "packages/editor": {
+      "name": "@composeui/editor",
+      "version": "0.0.0",
+      "dependencies": {
+        "@composeui/core": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@composeui/core": ["@composeui/core@workspace:packages/core"],
+
+    "@composeui/editor": ["@composeui/editor@workspace:packages/editor"],
 
     "@composeui/playground": ["@composeui/playground@workspace:apps/playground"],
 

@@ -16,6 +16,8 @@ export type {
 } from "./commands"
 export { History } from "./history"
 export type { HistoryChange, HistoryEntry } from "./history"
+export { getChildren, getTreeItems } from "./projections"
+export type { TreeItem } from "./projections"
 export { createEmptyDocument } from "./schema"
 export type {
   BaseRecord,
