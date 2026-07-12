@@ -595,18 +595,15 @@ test("selects a Scene node, edits its Inspector name, and undoes and redoes the 
   await expect(page.getByTestId("tree-node-red")).toHaveText("Renamed rectangle")
 })
 
-test("closes and reopens the Inspector from the visible Dockview tab", async ({ page }) => {
+test("closes the Inspector from the visible Dockview tab without showing a panel menu", async ({
+  page,
+}) => {
   await page.goto("/")
   const tab = page.getByRole("tab", { name: "Inspector" })
   await expect(tab).toBeVisible()
+  await expect(page.getByTestId("workspace-panel-menu")).toHaveCount(0)
   await tab.press("Delete")
   await expect(page.getByRole("tab", { name: "Inspector" })).toHaveCount(0)
-
-  await page.getByTestId("workspace-panel-menu").click()
-  await page.getByRole("menuitem", { name: "Inspector" }).click()
-  await expect(page.getByRole("tab", { name: "Inspector" })).toBeVisible()
-  await page.getByRole("tab", { name: "Inspector" }).click()
-  await expect(page.getByTestId("inspector-name")).toBeVisible()
 })
 
 test("persists a closed History panel across reload", async ({ page }) => {

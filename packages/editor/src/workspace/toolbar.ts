@@ -2,7 +2,6 @@ import {
   Eye,
   Grid3X3,
   Hand,
-  LayoutPanelTop,
   Lock,
   Magnet,
   MousePointer2,
@@ -69,33 +68,7 @@ export function mountWorkspaceToolbar(
   for (const button of [move, rotate, scale, snap, lock, view]) button.disabled = true
   tools.append(select, pan, move, rotate, scale, snap, lock, view, grid, undo, redo)
 
-  const panels = document.createElement("div")
-  panels.className = "composeui-editor__toolbar-group composeui-editor__toolbar-panels"
-  const panelMenuButton = iconButton("panel-menu", "Open panels", LayoutPanelTop)
-  panelMenuButton.dataset.testid = "workspace-panel-menu"
-  const panelMenu = document.createElement("div")
-  panelMenu.className = "composeui-editor__panel-menu"
-  panelMenu.hidden = true
-  panelMenu.setAttribute("role", "menu")
-  for (const panel of options.panels) {
-    if (!panel.closable) continue
-    const item = document.createElement("button")
-    item.type = "button"
-    item.className = "composeui-editor__panel-menu-item"
-    item.dataset.panelId = panel.id
-    item.setAttribute("role", "menuitem")
-    item.textContent = panel.title
-    item.addEventListener("click", () => {
-      options.api.openPanel(panel.id)
-      panelMenu.hidden = true
-    })
-    panelMenu.append(item)
-  }
-  panelMenuButton.addEventListener("click", () => {
-    panelMenu.hidden = !panelMenu.hidden
-  })
-  panels.append(panelMenuButton, panelMenu)
-  root.replaceChildren(tools, panels)
+  root.replaceChildren(tools)
 
   const render = (): void => {
     const state = options.session.getState()

@@ -66,7 +66,7 @@ describe("workspace toolbar", () => {
     expect(grid.getAttribute("aria-pressed")).toBe("false")
   })
 
-  it("enables history controls from editor history and opens panels from the menu", () => {
+  it("enables history controls from editor history without rendering the panel menu", () => {
     const context = createToolbarContext()
     const root = document.createElement("div")
     mountWorkspaceToolbar(root, {
@@ -80,9 +80,7 @@ describe("workspace toolbar", () => {
     expect(redo.disabled).toBe(true)
     undo.click()
     expect(redo.disabled).toBe(false)
-
-    root.querySelector<HTMLButtonElement>("[data-testid='workspace-panel-menu']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-panel-id='resources']")!.click()
-    expect(context.api.openPanel).toHaveBeenCalledWith("resources")
+    expect(root.querySelector("[data-testid='workspace-panel-menu']")).toBeNull()
+    expect(root.querySelector("[role='menu']")).toBeNull()
   })
 })

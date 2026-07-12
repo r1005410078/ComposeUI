@@ -65,8 +65,7 @@
 
 .composeui-editor__mode-bar button,
 .composeui-editor__app-action,
-.composeui-editor__toolbar-button,
-.composeui-editor__panel-menu-item {
+.composeui-editor__toolbar-button {
   background: transparent;
   border: 0;
   color: inherit;
@@ -143,33 +142,6 @@
 .composeui-editor__toolbar-button svg {
   height: 16px;
   width: 16px;
-}
-
-.composeui-editor__toolbar-panels {
-  position: relative;
-}
-
-.composeui-editor__panel-menu {
-  background: #27272a;
-  border: 1px solid #3f3f46;
-  box-shadow: 0 8px 20px rgb(0 0 0 / 30%);
-  min-width: 150px;
-  padding: 4px;
-  position: absolute;
-  right: 0;
-  top: 32px;
-  z-index: 20;
-}
-
-.composeui-editor__panel-menu-item {
-  display: block;
-  padding: 6px 8px;
-  text-align: left;
-  width: 100%;
-}
-
-.composeui-editor__panel-menu-item:hover {
-  background: #3f3f46;
 }
 
 .composeui-editor__dockview-host {

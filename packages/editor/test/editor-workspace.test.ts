@@ -376,7 +376,7 @@ describe("editor workspace", () => {
     expect(dispose).toHaveBeenCalledTimes(2)
   })
 
-  it("closes and reopens a panel through the mounted toolbar menu", () => {
+  it("closes and reopens a panel through the public workspace API", () => {
     const mount = vi.fn(() => dispose)
     const dispose = vi.fn()
     const registry: WorkspacePanelRegistry = {
@@ -402,8 +402,8 @@ describe("editor workspace", () => {
     expect(mounted.api.closePanel("history")).toBe(true)
     expect(dispose).toHaveBeenCalledTimes(1)
     const canvas = fake.panels.get("canvas:page-1")?.renderer?.element
-    canvas?.querySelector<HTMLButtonElement>("[data-testid='workspace-panel-menu']")!.click()
-    canvas?.querySelector<HTMLButtonElement>("[data-panel-id='history']")!.click()
+    expect(canvas?.querySelector("[data-testid='workspace-panel-menu']")).toBeNull()
+    expect(mounted.api.openPanel("history")).toBe(true)
     expect(fake.panels.has("history")).toBe(true)
     expect(mount).toHaveBeenCalledTimes(2)
     mounted.dispose()
