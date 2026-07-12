@@ -505,6 +505,21 @@ export function mountEditor(
     startPointerInteraction(event, record, nodeElement, target, handle === null ? "move" : "resize")
   }
   const onShellKeyDown = (event: KeyboardEvent): void => {
+    const target = event.target
+    if (event.key === "Delete" && target instanceof Element) {
+      const treeControl = target.closest<HTMLElement>("[data-tree-control='select']")
+      const id = treeControl?.dataset.treeId
+      const record = id === undefined ? undefined : currentStore.get(id)
+      if (record?.typeName === "node") {
+        event.preventDefault()
+        const result = coreEditor.dispatch({ id: "node.delete", payload: { ids: [record.id] } })
+        if (result.ok) {
+          session.setSelection([])
+          shell.focus()
+        }
+      }
+      return
+    }
     if (document.activeElement !== shell) return
     const key = event.key.toLowerCase()
     if (!event.metaKey && !event.ctrlKey) return

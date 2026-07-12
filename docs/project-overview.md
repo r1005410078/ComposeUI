@@ -139,12 +139,13 @@ ComposeUI 不负责替代宿主项目，也不是完整的低代码平台或 Fig
 | 示例与演示方案 | 已完成设计 | 已确定只使用单一 Vite Playground，并复用场景 Fixture 服务演示、E2E、视觉和性能测试。 |
 | 规范地图 | 已完成 | 已建立 M0–M6 依赖路线、阶段边界和验收出口，见[规范地图](./superpowers/specs/2026-07-11-specification-roadmap-design.md)。 |
 | M0 实施计划 | 已完成 | 已完成脚手架、最小文档/事务闭环、Golden、Playground 和 E2E。 |
-| 工程代码 | M0 已完成 | 已实现最小 `@composeui/core` 与 `apps/playground`；编辑器骨架、布局、运行时和集成能力尚未开始。 |
-| 自动化测试工程 | M0 已完成 | Vitest、Golden 和 Chromium Playwright 已建立；属性、视觉、协同和性能测试尚未开始。 |
+| M1 实施计划 | 已完成 | 已完成桌面 Free Layout 编辑器骨架、Document/Session 分离、组件树、SVG 选区、指针 move/resize 和 undo/redo。 |
+| 工程代码 | M1 已完成 | 已实现 `@composeui/core`、`@composeui/editor` 和单一 Playground 的 M1 纵向路径；Auto Layout/Grid、框架 Adapter/业务组件、bindings 及后续集成能力尚未实现。 |
+| 自动化测试工程 | M1 已完成 | Vitest、JSON Golden、确定性 fast-check property test 和 Chromium Playwright E2E 已覆盖 M1；Figma、Yjs、GPU/Worker、大屏优化和高级矢量测试尚未开始。 |
 
 ## 下一步
 
-依据[规范地图](./superpowers/specs/2026-07-11-specification-roadmap-design.md)为 M1 编写实施计划，优先完成 Transaction/History、Session Scope、无限工作区、页面画板、选区、组件树和 Free Layout 的最小可运行闭环。
+依据[规范地图](./superpowers/specs/2026-07-11-specification-roadmap-design.md)为 M2 编写独立实施计划，聚焦 Auto Layout、Grid、基础节点和确定性布局 Projection。当前 M1 仅是桌面 Free Layout 编辑器骨架；framework adapters/business components、bindings、Figma、Yjs、GPU/Worker、大屏优化和高级矢量仍未实现。
 
 详细设计见：[ComposeUI 可嵌入式可视化页面编排引擎设计](./superpowers/specs/2026-07-11-embeddable-visual-page-composer-design.md)。
 

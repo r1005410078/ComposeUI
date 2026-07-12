@@ -34,3 +34,21 @@ test("synchronizes selection, free-layout drag, undo and redo", async ({ page })
   await expect(node).toHaveCSS("left", "120px")
   await expect(node).toHaveCSS("top", "102px")
 })
+
+test("deletes the selected tree node through a command and restores it with undo", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const treeNode = page.getByTestId("tree-node-blue")
+  const canvasNode = page.locator("[data-node-id='node-blue']")
+
+  await treeNode.click()
+  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+
+  await treeNode.press("Delete")
+  await expect(canvasNode).toHaveCount(0)
+
+  await page.getByTestId("editor-shell").focus()
+  await page.keyboard.press("Meta+z")
+  await expect(canvasNode).toBeVisible()
+})

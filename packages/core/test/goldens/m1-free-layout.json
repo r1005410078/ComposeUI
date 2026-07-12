@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "rootPageId": "page-1",
+  "records": [
+    {
+      "id": "doc-1",
+      "revision": 0,
+      "typeName": "document",
+      "schemaVersion": 1,
+      "rootPageId": "page-1"
+    },
+    {
+      "id": "node-blue",
+      "revision": 1,
+      "typeName": "node",
+      "nodeType": "rectangle",
+      "name": "Blue rectangle",
+      "parentId": "page-1",
+      "index": "a1",
+      "layout": {
+        "mode": "free",
+        "x": 380,
+        "y": 240,
+        "width": 280,
+        "height": 180
+      },
+      "visible": false,
+      "locked": false,
+      "props": {
+        "fill": "#2563eb"
+      }
+    },
+    {
+      "id": "node-red",
+      "revision": 1,
+      "typeName": "node",
+      "nodeType": "rectangle",
+      "name": "Red rectangle",
+      "parentId": "page-1",
+      "index": "a0",
+      "layout": {
+        "mode": "free",
+        "x": 120,
+        "y": 102,
+        "width": 240,
+        "height": 160
+      },
+      "visible": true,
+      "locked": false,
+      "props": {
+        "fill": "#dc2626"
+      }
+    },
+    {
+      "id": "page-1",
+      "revision": 0,
+      "typeName": "page",
+      "name": "Page 1",
+      "width": 1440,
+      "height": 900,
+      "background": "#ffffff",
+      "overflow": "hidden",
+      "layout": {
+        "mode": "free"
+      }
+    }
+  ]
+}
