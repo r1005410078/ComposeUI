@@ -119,6 +119,11 @@
   cursor: grabbing !important;
 }
 
+.composeui-editor[data-pan-active="true"] .composeui-editor__workspace,
+.composeui-editor[data-pan-active="true"] .composeui-editor__workspace * {
+  cursor: grabbing !important;
+}
+
 .composeui-editor__workspace-grid {
   background-image:
     linear-gradient(to right, rgb(113 113 122 / 10%) 1px, transparent 1px),

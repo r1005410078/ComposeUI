@@ -551,6 +551,7 @@ export function mountEditor(
     activeInteraction?.cancel()
     event.preventDefault()
     workspace.dataset.panActive = "true"
+    shell.dataset.panActive = "true"
     const start = { x: event.clientX, y: event.clientY }
     const viewport = sessionState.viewport
     let ended = false
@@ -561,6 +562,7 @@ export function mountEditor(
       window.removeEventListener("pointerup", onPointerUp)
       window.removeEventListener("pointercancel", onPointerUp)
       delete workspace.dataset.panActive
+      delete shell.dataset.panActive
       if (activeInteraction?.cancel === cancel) activeInteraction = undefined
     }
     function onPointerMove(nextEvent: PointerEvent): void {
