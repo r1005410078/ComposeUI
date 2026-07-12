@@ -31,6 +31,7 @@ describe("Document and Session scopes", () => {
       expanded: [],
       hoveredId: null,
       gridVisible: true,
+      interactionMode: "select",
     })
     expect(secondNotifications).toBe(0)
   })

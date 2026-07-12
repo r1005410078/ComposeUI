@@ -48,10 +48,19 @@ describe("workspace toolbar", () => {
     expect(grid.title).toBe("Toggle grid")
     expect(grid.querySelector("svg")).not.toBeNull()
     expect(select.getAttribute("aria-pressed")).toBe("true")
+    for (const id of ["move", "rotate", "scale", "snap", "lock", "view"]) {
+      const button = root.querySelector<HTMLButtonElement>(`[data-testid='workspace-tool-${id}']`)
+      expect(button?.disabled).toBe(true)
+      expect(button?.getAttribute("aria-label")).toBeTruthy()
+      expect(button?.title).toBeTruthy()
+    }
 
     pan.click()
     expect(pan.getAttribute("aria-pressed")).toBe("true")
     expect(select.getAttribute("aria-pressed")).toBe("false")
+    expect(context.session.getState().interactionMode).toBe("pan")
+    context.session.setInteractionMode("select")
+    expect(select.getAttribute("aria-pressed")).toBe("true")
     grid.click()
     expect(context.session.getState().gridVisible).toBe(false)
     expect(grid.getAttribute("aria-pressed")).toBe("false")

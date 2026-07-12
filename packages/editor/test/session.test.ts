@@ -10,6 +10,7 @@ describe("EditorSession", () => {
     session.toggleExpanded("node-1")
     session.setHoveredId("node-2")
     session.setGridVisible(false)
+    session.setInteractionMode("pan")
 
     const snapshot = session.getState()
     snapshot.viewport.x = 999
@@ -22,6 +23,7 @@ describe("EditorSession", () => {
       expanded: ["node-1"],
       hoveredId: "node-2",
       gridVisible: false,
+      interactionMode: "pan",
     })
   })
 
@@ -44,6 +46,7 @@ describe("EditorSession", () => {
       expanded: ["node-2"],
       hoveredId: null,
       gridVisible: true,
+      interactionMode: "select",
     })
   })
 

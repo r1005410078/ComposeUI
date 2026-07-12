@@ -23,7 +23,7 @@
   --composeui-workspace-min-height: 320px;
   height: 100%;
   min-height: var(--composeui-workspace-min-height);
-  min-width: var(--composeui-workspace-min-width);
+  min-width: 0;
   overflow: hidden;
 }
 

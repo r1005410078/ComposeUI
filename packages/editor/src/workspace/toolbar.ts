@@ -1,4 +1,18 @@
-import { Hand, LayoutPanelTop, MousePointer2, Redo2, Undo2, Grid3X3, createElement } from "lucide"
+import {
+  Eye,
+  Grid3X3,
+  Hand,
+  LayoutPanelTop,
+  Lock,
+  Magnet,
+  MousePointer2,
+  Move,
+  Redo2,
+  RotateCw,
+  Scale,
+  Undo2,
+  createElement,
+} from "lucide"
 import type { Editor } from "@composeui/core"
 import type { EditorSession } from "../session"
 import type { EditorWorkspaceApi } from "./editor-workspace"
@@ -46,7 +60,14 @@ export function mountWorkspaceToolbar(
   const grid = iconButton("grid", "Toggle grid", Grid3X3)
   const undo = iconButton("undo", "Undo", Undo2)
   const redo = iconButton("redo", "Redo", Redo2)
-  tools.append(select, pan, grid, undo, redo)
+  const move = iconButton("move", "Move tool", Move)
+  const rotate = iconButton("rotate", "Rotate tool", RotateCw)
+  const scale = iconButton("scale", "Scale tool", Scale)
+  const snap = iconButton("snap", "Snap to grid", Magnet)
+  const lock = iconButton("lock", "Lock selection", Lock)
+  const view = iconButton("view", "View options", Eye)
+  for (const button of [move, rotate, scale, snap, lock, view]) button.disabled = true
+  tools.append(select, pan, move, rotate, scale, snap, lock, view, grid, undo, redo)
 
   const panels = document.createElement("div")
   panels.className = "composeui-editor__toolbar-group composeui-editor__toolbar-panels"
@@ -76,18 +97,16 @@ export function mountWorkspaceToolbar(
   panels.append(panelMenuButton, panelMenu)
   root.replaceChildren(tools, panels)
 
-  let activeTool: ToolId = "select"
   const render = (): void => {
     const state = options.session.getState()
-    setPressed(select, activeTool === "select")
-    setPressed(pan, activeTool === "pan")
+    setPressed(select, state.interactionMode === "select")
+    setPressed(pan, state.interactionMode === "pan")
     setPressed(grid, state.gridVisible)
     undo.disabled = !options.editor.canUndo()
     redo.disabled = !options.editor.canRedo()
   }
   const chooseTool = (tool: ToolId): void => {
-    activeTool = tool
-    render()
+    options.session.setInteractionMode(tool)
   }
   select.addEventListener("click", () => chooseTool("select"))
   pan.addEventListener("click", () => chooseTool("pan"))

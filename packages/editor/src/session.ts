@@ -4,12 +4,15 @@ export interface Viewport {
   zoom: number
 }
 
+export type InteractionMode = "select" | "pan"
+
 export interface EditorSessionState {
   viewport: Viewport
   selection: string[]
   expanded: string[]
   hoveredId: string | null
   gridVisible: boolean
+  interactionMode: InteractionMode
 }
 
 function assertValidZoom(zoom: number): void {
@@ -30,6 +33,7 @@ export class EditorSession {
     expanded: [],
     hoveredId: null,
     gridVisible: true,
+    interactionMode: "select",
   }
 
   readonly #listeners = new Set<(state: EditorSessionState) => void>()
@@ -66,6 +70,11 @@ export class EditorSession {
 
   setGridVisible(gridVisible: boolean): void {
     this.#state = { ...this.#state, gridVisible }
+    this.#emit()
+  }
+
+  setInteractionMode(interactionMode: InteractionMode): void {
+    this.#state = { ...this.#state, interactionMode }
     this.#emit()
   }
 

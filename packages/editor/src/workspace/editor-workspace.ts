@@ -182,7 +182,6 @@ export function mountEditorWorkspace(
   let layoutDirty = false
 
   root.classList.add("composeui-editor__workspace-host")
-  root.style.setProperty("--composeui-workspace-min-width", "480px")
   root.style.setProperty("--composeui-workspace-min-height", "320px")
   const shell = document.createElement("div")
   shell.className = "composeui-editor__workspace-shell"

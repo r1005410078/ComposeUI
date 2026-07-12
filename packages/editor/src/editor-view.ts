@@ -824,6 +824,10 @@ export function mountEditor(
   }
 
   const onBoardPointerDown = (event: PointerEvent): void => {
+    if (sessionState.interactionMode === "pan") {
+      startWorkspacePan(event)
+      return
+    }
     if (shell.dataset.mode === "stage-edit" && (spacePressed || event.pointerType === "touch")) {
       startWorkspacePan(event)
       return
@@ -841,6 +845,7 @@ export function mountEditor(
   const startWorkspacePan = (event: PointerEvent): void => {
     activeInteraction?.cancel()
     event.preventDefault()
+    event.stopPropagation()
     workspace.dataset.panActive = "true"
     shell.dataset.panActive = "true"
     const start = { x: event.clientX, y: event.clientY }
@@ -941,6 +946,10 @@ export function mountEditor(
   }
   const onWorkspacePointerDown = (event: PointerEvent): void => {
     if (event.defaultPrevented || shell.dataset.mode !== "stage-edit") return
+    if (sessionState.interactionMode === "pan") {
+      startWorkspacePan(event)
+      return
+    }
     if (spacePressed || event.pointerType === "touch" || event.button === 1) {
       startWorkspacePan(event)
       return

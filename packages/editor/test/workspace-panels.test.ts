@@ -88,6 +88,11 @@ describe("workspace panel renderers", () => {
       "Rectangle",
     )
 
+    context.editor.redo()
+    expect(root.querySelector<HTMLInputElement>("[data-testid='inspector-name']")?.value).toBe(
+      "Renamed",
+    )
+
     if (typeof dispose === "function") {
       dispose()
       dispose()

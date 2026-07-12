@@ -205,6 +205,23 @@ describe("mountEditor", () => {
     expect(shell.dataset.panning).toBeUndefined()
   })
 
+  it("uses the shared interaction mode for toolbar-style pan drags", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
+
+    mounted.session.setInteractionMode("pan")
+    workspace.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 40, clientY: 50 }),
+    )
+    window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 90, clientY: 80 }))
+    window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 90, clientY: 80 }))
+
+    expect(mounted.session.getState().viewport).toMatchObject({ x: 50, y: 30, zoom: 1 })
+    expect(root.querySelector("[data-testid='marquee-selection']")).toBeNull()
+  })
+
   it("supports modifier multi-selection and renders one SVG outline per selected node", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

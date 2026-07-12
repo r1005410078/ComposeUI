@@ -57,6 +57,7 @@ function createDockviewFake(
       if (panel !== undefined) dockview.removePanel(panel)
     }
   })
+  let layout = initialLayout
   let layoutListener: (() => void) | undefined
   let componentFactory:
     | ((options: { id: string; name: string }) => {
@@ -153,7 +154,8 @@ function createDockviewFake(
         })),
       }
     },
-    fromJSON: vi.fn((_nextLayout) => {
+    fromJSON: vi.fn((nextLayout) => {
+      layout = nextLayout
       if (restorePanelIds !== undefined) {
         for (const panel of panels.values()) panel.renderer?.dispose?.()
         for (const panel of panels.values()) panel.tab?.dispose?.()
@@ -181,6 +183,7 @@ function createDockviewFake(
     tabFactory = options.createTabComponent
     return dockview
   }
+  void layout
   return {
     factory,
     dockview,
@@ -320,6 +323,39 @@ describe("editor workspace", () => {
     expect(mounted.api.openPanel("history")).toBe(true)
     mounted.dispose()
 
+    expect(dispose).toHaveBeenCalledTimes(2)
+  })
+
+  it("closes and reopens a panel through the mounted toolbar menu", () => {
+    const mount = vi.fn(() => dispose)
+    const dispose = vi.fn()
+    const registry: WorkspacePanelRegistry = {
+      all: () => [
+        {
+          id: "history",
+          title: "History",
+          closable: true,
+          defaultPosition: "bottom",
+          mount,
+        },
+      ],
+    }
+    const fake = createDockviewFake()
+    const root = document.createElement("div")
+    const mounted = mountEditorWorkspace(root, createEditorInstance(), {
+      pageId: "page-1",
+      panelRegistry: registry,
+      createDockview: fake.factory,
+    })
+
+    expect(mount).toHaveBeenCalledTimes(1)
+    expect(mounted.api.closePanel("history")).toBe(true)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-panel-menu']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-panel-id='history']")!.click()
+    expect(fake.panels.has("history")).toBe(true)
+    expect(mount).toHaveBeenCalledTimes(2)
+    mounted.dispose()
     expect(dispose).toHaveBeenCalledTimes(2)
   })
 
