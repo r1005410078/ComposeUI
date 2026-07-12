@@ -3,9 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
 import type { PageDocument } from "@composeui/core"
-import { mountComponentTree } from "../src/component-tree"
-import { mountEditor } from "../src/editor-view"
-import { EditorSession } from "../src/session"
+import { EditorSession, mountComponentTree, mountEditor } from "../src/index"
 
 function createDocumentWithNode(): PageDocument {
   return createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
