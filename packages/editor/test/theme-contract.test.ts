@@ -19,7 +19,13 @@ describe("editor theme contract", () => {
       "--composeui-accent-primary",
       "--composeui-canvas-grid-minor",
       "--composeui-control-height",
+      "--composeui-gap-compact",
       "--composeui-component-tree-width",
+      "--composeui-tree-control-size",
+      "--composeui-resize-handle-size",
+      "--composeui-icon-size",
+      "--composeui-workspace-min-width",
+      "--composeui-workspace-min-width-compact",
       "--composeui-app-bar-height",
       "--composeui-toolbar-height",
       "--composeui-radius-control",
@@ -108,13 +114,20 @@ describe("editor theme contract", () => {
 
     expect(editorCss).toContain("var(--composeui-component-tree-width)")
     expect(editorCss).toContain("var(--composeui-radius-panel)")
+    for (const token of ["--composeui-tree-control-size", "--composeui-resize-handle-size"]) {
+      expect(editorCss, token).toContain(`var(${token})`)
+    }
     for (const token of [
+      "--composeui-gap-compact",
+      "--composeui-icon-size",
       "--composeui-app-bar-height",
       "--composeui-toolbar-height",
       "--composeui-radius-panel",
       "--composeui-space-1",
       "--composeui-space-2",
       "--composeui-space-3",
+      "--composeui-workspace-min-width",
+      "--composeui-workspace-min-width-compact",
     ]) {
       expect(workspaceCss, token).toContain(`var(${token})`)
     }

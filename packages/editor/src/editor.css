@@ -15,7 +15,6 @@
 }
 
 .composeui-editor__workspace-host {
-  --composeui-workspace-min-width: 480px;
   --composeui-workspace-min-height: 320px;
   display: block;
   height: 100%;
@@ -77,9 +76,9 @@
 
 .composeui-editor__tree-toggle,
 .composeui-editor__tree-toggle-spacer {
-  flex: 0 0 24px;
-  height: 24px;
-  width: 24px;
+  flex: 0 0 var(--composeui-tree-control-size);
+  height: var(--composeui-tree-control-size);
+  width: var(--composeui-tree-control-size);
 }
 
 .composeui-editor__tree-toggle,
@@ -93,10 +92,10 @@
 
 .composeui-editor__tree-action {
   cursor: pointer;
-  flex: 0 0 24px;
-  height: 24px;
+  flex: 0 0 var(--composeui-tree-control-size);
+  height: var(--composeui-tree-control-size);
   padding: 0;
-  width: 24px;
+  width: var(--composeui-tree-control-size);
 }
 
 .composeui-editor__tree-action:disabled {
@@ -201,9 +200,9 @@
 .composeui-editor__selection-overlay .composeui-editor__group-resize-handle {
   cursor: default;
   fill: var(--composeui-canvas-handle-fill);
-  height: 8px;
+  height: var(--composeui-resize-handle-size);
   pointer-events: auto;
-  width: 8px;
+  width: var(--composeui-resize-handle-size);
 }
 
 .composeui-editor__selection-overlay [data-group-resize-handle="n"],

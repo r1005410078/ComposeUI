@@ -1,5 +1,4 @@
 .composeui-editor__workspace-shell {
-  --composeui-workspace-min-width: 480px;
   --composeui-workspace-min-height: 320px;
   background: var(--composeui-surface-app);
   color: var(--composeui-text-primary);
@@ -9,7 +8,7 @@
   grid-template-rows: var(--composeui-app-bar-height) minmax(0, 1fr);
   height: 100%;
   min-height: var(--composeui-workspace-min-height);
-  min-width: min(480px, 100%);
+  min-width: min(var(--composeui-workspace-min-width), 100%);
   overflow: hidden;
   width: 100%;
 }
@@ -48,7 +47,7 @@
 .composeui-editor__app-actions {
   align-items: center;
   display: flex;
-  gap: 2px;
+  gap: var(--composeui-gap-compact);
   justify-content: flex-end;
   min-width: 0;
   padding: 0 var(--composeui-space-2);
@@ -58,7 +57,7 @@
   align-items: center;
   border-right: 1px solid var(--composeui-border-default);
   display: flex;
-  gap: 2px;
+  gap: var(--composeui-gap-compact);
   padding: var(--composeui-space-1) var(--composeui-space-2);
 }
 
@@ -101,8 +100,8 @@
 }
 
 .composeui-editor__app-action svg {
-  height: 16px;
-  width: 16px;
+  height: var(--composeui-icon-size);
+  width: var(--composeui-icon-size);
 }
 
 .composeui-editor__toolbar {
@@ -120,7 +119,7 @@
 .composeui-editor__toolbar-group {
   align-items: center;
   display: flex;
-  gap: 2px;
+  gap: var(--composeui-gap-compact);
 }
 
 .composeui-editor__toolbar-button {
@@ -146,8 +145,8 @@
 }
 
 .composeui-editor__toolbar-button svg {
-  height: 16px;
-  width: 16px;
+  height: var(--composeui-icon-size);
+  width: var(--composeui-icon-size);
 }
 
 .composeui-editor__dockview-host {
@@ -315,7 +314,7 @@
 
 @media (max-width: 640px) {
   .composeui-editor__workspace-shell {
-    --composeui-workspace-min-width: 320px;
+    --composeui-workspace-min-width: var(--composeui-workspace-min-width-compact);
   }
 
   .composeui-editor__workspace-header:has(.composeui-editor__mode-bar) {

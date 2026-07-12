@@ -39,7 +39,13 @@
   --composeui-space-2: 8px;
   --composeui-space-3: 12px;
   --composeui-space-4: 16px;
+  --composeui-gap-compact: 2px;
   --composeui-component-tree-width: 260px;
+  --composeui-tree-control-size: 24px;
+  --composeui-resize-handle-size: 8px;
+  --composeui-icon-size: 16px;
+  --composeui-workspace-min-width: 480px;
+  --composeui-workspace-min-width-compact: 320px;
   --composeui-app-bar-height: 44px;
   --composeui-tab-height: 36px;
   --composeui-toolbar-height: 42px;
