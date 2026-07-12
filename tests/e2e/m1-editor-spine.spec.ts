@@ -103,6 +103,26 @@ test("pans, zooms at the pointer, multi-selects and exports JSON without Session
   await expect(output).not.toContainText("gridVisible")
 })
 
+test("changes from grab to grabbing for space plus left-button pan", async ({ page }) => {
+  await page.goto("/")
+  const workspace = page.getByTestId("workspace")
+  const box = await workspace.boundingBox()
+  if (box === null) throw new Error("workspace was not rendered")
+
+  await page.mouse.move(box.x + 500, box.y + 300)
+  await page.keyboard.down("Space")
+  await expect(workspace).toHaveCSS("cursor", "grab")
+
+  await page.mouse.down({ button: "left" })
+  await expect(workspace).toHaveCSS("cursor", "grabbing")
+  await page.mouse.move(box.x + 540, box.y + 330)
+  await expect(workspace).toHaveCSS("cursor", "grabbing")
+
+  await page.mouse.up({ button: "left" })
+  await page.keyboard.up("Space")
+  await expect(workspace).toHaveCSS("cursor", "default")
+})
+
 test("creates a node and performs tree rename, visibility, lock and reorder", async ({ page }) => {
   await page.goto("/")
   await page.getByTestId("create-node").click()

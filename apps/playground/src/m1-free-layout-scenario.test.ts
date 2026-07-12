@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest"
+import type { UserConfig } from "vite"
+import viteConfig from "../vite.config"
 import { createM1Scenario } from "./m1-free-layout-scenario"
 
 describe("M1 Playground scenario", () => {
@@ -17,5 +19,25 @@ describe("M1 Playground scenario", () => {
     expect(exported).not.toContain("viewport")
     expect(exported).not.toContain("selection")
     expect(exported.endsWith("\n")).toBe(true)
+  })
+
+  it("resolves workspace packages from source during development", () => {
+    const aliases = (viteConfig as UserConfig).resolve?.alias
+    expect(aliases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          find: "@composeui/editor/editor.css",
+          replacement: expect.stringContaining("packages/editor/src/editor.css"),
+        }),
+        expect.objectContaining({
+          find: "@composeui/editor",
+          replacement: expect.stringContaining("packages/editor/src/index.ts"),
+        }),
+        expect.objectContaining({
+          find: "@composeui/core",
+          replacement: expect.stringContaining("packages/core/src/index.ts"),
+        }),
+      ]),
+    )
   })
 })
