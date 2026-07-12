@@ -23,6 +23,14 @@ export {
 } from "./workspace/mode-registry"
 export { createLocalStorageLayoutStore } from "./workspace/layout-store"
 export type { StorageLike } from "./workspace/layout-store"
+export {
+  mountEditorWorkspace,
+  type DockviewFactory,
+  type EditorWorkspaceApi,
+  type EditorWorkspaceDockview,
+  type MountEditorWorkspaceOptions,
+  type MountedEditorWorkspace,
+} from "./workspace/editor-workspace"
 export type {
   MountedWorkspace,
   StoredWorkspaceLayout,
