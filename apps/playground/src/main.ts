@@ -1,78 +1,105 @@
-import { mountEditor } from "@composeui/editor"
-import "@composeui/editor/editor.css"
+import {
+  createLocalStorageLayoutStore,
+  mountEditorWorkspace,
+  type StorageLike,
+} from "@composeui/editor"
 import { createM1Scenario } from "./m1-free-layout-scenario"
 import "./styles.css"
 
-const app = document.querySelector<HTMLElement>("#app")
-if (app === null) throw new Error("PLAYGROUND_INIT_FAILED")
+const PLAYGROUND_LAYOUT_KEY = "composeui:workspace:2d:v1"
 
-const scenario = createM1Scenario()
-const toolbar = document.createElement("header")
-toolbar.className = "playground-toolbar"
-
-const createButton = document.createElement("button")
-createButton.type = "button"
-createButton.dataset.testid = "create-node"
-createButton.textContent = "Create rectangle"
-
-const gridButton = document.createElement("button")
-gridButton.type = "button"
-gridButton.dataset.testid = "toggle-grid"
-gridButton.textContent = "Grid"
-gridButton.setAttribute("aria-pressed", "true")
-
-const overflowButton = document.createElement("button")
-overflowButton.type = "button"
-overflowButton.dataset.testid = "toggle-page-overflow"
-overflowButton.textContent = "Show outside canvas"
-
-const exportButton = document.createElement("button")
-exportButton.type = "button"
-exportButton.dataset.testid = "export-json"
-exportButton.textContent = "Export JSON"
-
-const output = document.createElement("pre")
-output.className = "playground-json-output"
-output.dataset.testid = "canonical-json-output"
-output.hidden = true
-
-const editorHost = document.createElement("div")
-editorHost.className = "playground-editor-host"
-toolbar.append(createButton, gridButton, overflowButton, exportButton)
-app.replaceChildren(toolbar, editorHost, output)
-
-const mounted = mountEditor(editorHost, scenario.editor, { pageId: scenario.pageId })
-const syncOverflowButton = () => {
-  const page = scenario.editor.getRecord(scenario.pageId)
-  overflowButton.setAttribute(
-    "aria-pressed",
-    String(page?.typeName === "page" && page.overflow === "visible"),
-  )
+export function createPlaygroundLayoutStore(storage: StorageLike) {
+  return createLocalStorageLayoutStore(storage, PLAYGROUND_LAYOUT_KEY)
 }
-createButton.addEventListener("click", () => scenario.createNode())
-gridButton.addEventListener("click", () => {
-  const visible = !mounted.session.getState().gridVisible
-  mounted.session.setGridVisible(visible)
-  gridButton.setAttribute("aria-pressed", String(visible))
-})
-exportButton.addEventListener("click", () => {
-  output.textContent = scenario.exportCanonicalJson()
-  output.hidden = false
-})
-overflowButton.addEventListener("click", () => {
-  const page = scenario.editor.getRecord(scenario.pageId)
-  if (page?.typeName !== "page") return
-  scenario.editor.dispatch({
-    id: "page.setOverflow",
-    payload: {
-      id: page.id,
-      overflow: page.overflow === "visible" ? "hidden" : "visible",
-    },
-  })
-})
-scenario.editor.subscribe(syncOverflowButton)
-syncOverflowButton()
 
-if (import.meta.env.DEV) {
-  Object.assign(window, { __composeuiM1: { editor: scenario.editor, mounted } })
+function createCommandButton(
+  testId: string,
+  label: string,
+  onClick: () => void,
+): HTMLButtonElement {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "playground-command"
+  button.dataset.testid = testId
+  button.textContent = label
+  button.addEventListener("click", onClick)
+  return button
+}
+
+function mountPlayground(app: HTMLElement): void {
+  const scenario = createM1Scenario()
+  const output = document.createElement("pre")
+  output.className = "playground-json-output"
+  output.dataset.testid = "canonical-json-output"
+  output.hidden = true
+
+  const editorHost = document.createElement("div")
+  editorHost.className = "playground-editor-host"
+  app.replaceChildren(editorHost, output)
+
+  const layoutStore = createPlaygroundLayoutStore(window.localStorage)
+  const mounted = mountEditorWorkspace(editorHost, scenario.editor, {
+    pageId: scenario.pageId,
+    layoutStore,
+  })
+
+  const toolbar = editorHost.querySelector<HTMLElement>(".composeui-editor__toolbar")
+  if (toolbar === null) throw new Error("PLAYGROUND_TOOLBAR_MISSING")
+  const tools = toolbar.querySelector<HTMLElement>(".composeui-editor__toolbar-group")
+  if (tools === null) throw new Error("PLAYGROUND_TOOL_GROUP_MISSING")
+
+  const gridButton = toolbar.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-grid']")
+  if (gridButton === null) throw new Error("PLAYGROUND_GRID_BUTTON_MISSING")
+  gridButton.dataset.testid = "toggle-grid"
+
+  const commands = document.createElement("div")
+  commands.className = "playground-command-group"
+  const syncOverflowButton = (): void => {
+    const page = scenario.editor.getRecord(scenario.pageId)
+    overflowButton.setAttribute(
+      "aria-pressed",
+      String(page?.typeName === "page" && page.overflow === "visible"),
+    )
+  }
+  const overflowButton = createCommandButton("toggle-page-overflow", "Show outside canvas", () => {
+    const page = scenario.editor.getRecord(scenario.pageId)
+    if (page?.typeName !== "page") return
+    scenario.editor.dispatch({
+      id: "page.setOverflow",
+      payload: {
+        id: page.id,
+        overflow: page.overflow === "visible" ? "hidden" : "visible",
+      },
+    })
+  })
+  overflowButton.setAttribute("aria-pressed", "true")
+  commands.append(
+    createCommandButton("create-node", "Create rectangle", () => scenario.createNode()),
+    overflowButton,
+    createCommandButton("export-json", "Export JSON", () => {
+      output.textContent = scenario.exportCanonicalJson()
+      output.hidden = false
+    }),
+  )
+  tools.append(commands)
+
+  const panelMenu = toolbar.querySelector<HTMLElement>(".composeui-editor__panel-menu")
+  if (panelMenu === null) throw new Error("PLAYGROUND_PANEL_MENU_MISSING")
+  panelMenu.append(
+    createCommandButton("reset-layout", "Reset layout", () => {
+      void mounted.api.resetLayout()
+    }),
+  )
+
+  scenario.editor.subscribe(syncOverflowButton)
+  syncOverflowButton()
+
+  if (import.meta.env.DEV) {
+    Object.assign(window, { __composeuiM1: { editor: scenario.editor, mounted } })
+  }
+}
+
+if (typeof document !== "undefined") {
+  const app = document.querySelector<HTMLElement>("#app")
+  if (app !== null) mountPlayground(app)
 }

@@ -2,8 +2,39 @@ import { describe, expect, it } from "vitest"
 import type { UserConfig } from "vite"
 import viteConfig from "../vite.config"
 import { createM1Scenario } from "./m1-free-layout-scenario"
+import { createPlaygroundLayoutStore } from "./main"
+
+function createStorage(initial: string | null = null) {
+  let value = initial
+  return {
+    getItem: (_key: string) => value,
+    setItem: (_key: string, next: string) => {
+      value = next
+    },
+    removeItem: () => {
+      value = null
+    },
+  }
+}
 
 describe("M1 Playground scenario", () => {
+  it("persists the Dockview layout under the versioned playground key", async () => {
+    const storage = createStorage()
+    const store = createPlaygroundLayoutStore(storage)
+    const layout = { root: { panels: [{ id: "canvas:page-1" }] } }
+
+    await store.save({ version: 1, modeId: "2d", layout })
+
+    expect(storage.getItem("composeui:workspace:2d:v1")).toContain('"modeId":"2d"')
+    await expect(store.load()).resolves.toEqual({ version: 1, modeId: "2d", layout })
+  })
+
+  it("falls back to no layout when persisted JSON is malformed", async () => {
+    const store = createPlaygroundLayoutStore(createStorage("{malformed"))
+
+    await expect(store.load()).resolves.toBeUndefined()
+  })
+
   it("creates deterministic nodes and exports canonical JSON", () => {
     const scenario = createM1Scenario()
 
