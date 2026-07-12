@@ -2,10 +2,9 @@
 
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
-import type { PageDocument } from "@composeui/core"
 import { EditorSession } from "../src/index"
 import type { WorkspaceContext } from "../src/workspace/types"
-import { createWorkspacePanels } from "../src/workspace/panels"
+import { createWorkspacePanels, type PanelId } from "../src/workspace/panels"
 
 function createContext(resources?: WorkspaceContext["resources"]): WorkspaceContext {
   const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
@@ -39,7 +38,7 @@ function createContext(resources?: WorkspaceContext["resources"]): WorkspaceCont
   }
 }
 
-function panel(id: string) {
+function panel(id: PanelId) {
   const descriptor = createWorkspacePanels().find((candidate) => candidate.id === id)
   if (descriptor === undefined) throw new Error(`Missing panel ${id}`)
   return descriptor
@@ -102,6 +101,45 @@ describe("workspace panel renderers", () => {
     expect(emptyRoot.querySelector("[data-testid='empty-resources']")).not.toBeNull()
   })
 
+  it("renders a resource error and emits panel-failure when listing throws synchronously", () => {
+    const error = new Error("resource service unavailable")
+    const context = createContext({
+      list: () => {
+        throw error
+      },
+    })
+    const root = document.createElement("div")
+
+    expect(() => panel("resources").mount(root, context)).not.toThrow()
+    expect(root.querySelector("[data-testid='resource-error']")?.textContent).toBe(
+      "Unable to load resources.",
+    )
+    expect(root.querySelector("[data-testid='empty-resources']")).toBeNull()
+    expect(context.emit).toHaveBeenCalledWith({
+      type: "panel-failure",
+      panelId: "resources",
+      error,
+    })
+  })
+
+  it("renders a resource error and emits panel-failure when listing rejects", async () => {
+    const error = new Error("resource request failed")
+    const context = createContext({ list: () => Promise.reject(error) })
+    const root = document.createElement("div")
+
+    panel("resources").mount(root, context)
+    await vi.waitFor(() => {
+      expect(root.querySelector("[data-testid='resource-error']")?.textContent).toBe(
+        "Unable to load resources.",
+      )
+    })
+    expect(context.emit).toHaveBeenCalledWith({
+      type: "panel-failure",
+      panelId: "resources",
+      error,
+    })
+  })
+
   it("provides named empty states for utility panels", () => {
     const context = createContext()
     for (const id of ["history", "signals", "output", "debugger", "animation", "shader-editor"]) {
@@ -112,7 +150,8 @@ describe("workspace panel renderers", () => {
   })
 
   it("returns all first-party panel descriptors with stable ids", () => {
-    expect(createWorkspacePanels().map((descriptor) => descriptor.id)).toEqual([
+    const ids: PanelId[] = createWorkspacePanels().map((descriptor) => descriptor.id)
+    expect(ids).toEqual([
       "scene",
       "resources",
       "history",

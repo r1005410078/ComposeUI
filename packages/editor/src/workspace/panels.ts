@@ -1,10 +1,24 @@
 import type { EditorRecord } from "@composeui/core"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
-import type { WorkspaceContext, WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
+import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
+
+export type PanelId =
+  | "scene"
+  | "resources"
+  | "history"
+  | "canvas"
+  | "inspector"
+  | "signals"
+  | "output"
+  | "debugger"
+  | "animation"
+  | "shader-editor"
+
+export type FirstPartyPanelDescriptor = Omit<WorkspacePanelDescriptor, "id"> & { id: PanelId }
 
 const PANEL_META: Record<
-  string,
+  PanelId,
   Pick<WorkspacePanelDescriptor, "title" | "closable" | "defaultPosition">
 > = {
   scene: { title: "Scene", closable: false, defaultPosition: "left" },
@@ -19,7 +33,7 @@ const PANEL_META: Record<
   "shader-editor": { title: "Shader Editor", closable: true, defaultPosition: "bottom" },
 }
 
-function descriptor(id: string, mount: WorkspacePanelMount): WorkspacePanelDescriptor {
+function descriptor(id: PanelId, mount: WorkspacePanelMount): FirstPartyPanelDescriptor {
   const meta = PANEL_META[id]
   if (meta === undefined) throw new Error(`Unknown workspace panel: ${id}`)
   return { id, ...meta, mount }
@@ -50,7 +64,7 @@ function emptyPanel(
   }
 }
 
-export function createScenePanel(): WorkspacePanelDescriptor {
+export function createScenePanel(): FirstPartyPanelDescriptor {
   return descriptor("scene", (root, context) => {
     const mounted = mountComponentTree(root, context.editor, {
       pageId: context.pageId,
@@ -60,7 +74,7 @@ export function createScenePanel(): WorkspacePanelDescriptor {
   })
 }
 
-export function createCanvasPanel(): WorkspacePanelDescriptor {
+export function createCanvasPanel(): FirstPartyPanelDescriptor {
   return descriptor("canvas", (root, context) => {
     const mounted = mountEditor(root, context.editor, {
       pageId: context.pageId,
@@ -79,7 +93,7 @@ function recordLabel(record: EditorRecord | undefined): { name: string; type: st
   }
 }
 
-export function createInspectorPanel(): WorkspacePanelDescriptor {
+export function createInspectorPanel(): FirstPartyPanelDescriptor {
   return descriptor("inspector", (root, context) => {
     const panel = document.createElement("section")
     panel.className = "composeui-editor__inspector"
@@ -116,7 +130,7 @@ export function createInspectorPanel(): WorkspacePanelDescriptor {
   })
 }
 
-export function createResourcesPanel(): WorkspacePanelDescriptor {
+export function createResourcesPanel(): FirstPartyPanelDescriptor {
   return descriptor("resources", (root, context) => {
     const panel = document.createElement("section")
     panel.className = "composeui-editor__resources"
@@ -154,10 +168,33 @@ export function createResourcesPanel(): WorkspacePanelDescriptor {
       panel.append(list)
     }
 
+    const renderError = (): void => {
+      if (disposed) return
+      panel
+        .querySelector(
+          "[data-testid='empty-resources'], [data-testid='resource-list'], [data-testid='resource-error']",
+        )
+        ?.remove()
+      const error = document.createElement("p")
+      error.dataset.testid = "resource-error"
+      error.textContent = "Unable to load resources."
+      panel.append(error)
+    }
+
+    const handleFailure = (error: unknown): void => {
+      if (disposed) return
+      context.emit({ type: "panel-failure", panelId: "resources", error })
+      renderError()
+    }
+
     if (context.resources === undefined) {
       render([])
     } else {
-      Promise.resolve(context.resources.list()).then(render, () => render([]))
+      try {
+        Promise.resolve(context.resources.list()).then(render, handleFailure)
+      } catch (error) {
+        handleFailure(error)
+      }
     }
     return () => {
       if (disposed) return
@@ -168,14 +205,14 @@ export function createResourcesPanel(): WorkspacePanelDescriptor {
 }
 
 export function createUtilityPanel(
-  id: "history" | "signals" | "output" | "debugger" | "animation" | "shader-editor",
-): WorkspacePanelDescriptor {
+  id: Exclude<PanelId, "scene" | "resources" | "canvas" | "inspector">,
+): FirstPartyPanelDescriptor {
   const meta = PANEL_META[id]
   if (meta === undefined) throw new Error(`Unknown workspace panel: ${id}`)
   return descriptor(id, emptyPanel(id, meta.title))
 }
 
-export function createWorkspacePanels(): WorkspacePanelDescriptor[] {
+export function createWorkspacePanels(): FirstPartyPanelDescriptor[] {
   return [
     createScenePanel(),
     createResourcesPanel(),
