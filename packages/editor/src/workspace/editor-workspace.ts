@@ -1,4 +1,4 @@
-import { createDockview, type AddPanelOptions } from "dockview"
+import { createDockview, type AddPanelOptions, type IContentRenderer } from "dockview"
 import type { Editor } from "@composeui/core"
 import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
@@ -33,11 +33,7 @@ export interface EditorWorkspaceDockview {
 export type DockviewFactory = (
   root: HTMLElement,
   options: {
-    createComponent(options: { id: string; name: string }): {
-      readonly element: HTMLElement
-      init(params: { containerElement: HTMLElement }): void
-      dispose?(): void
-    }
+    createComponent(options: { id: string; name: string }): IContentRenderer
   },
 ) => EditorWorkspaceDockview
 
@@ -141,14 +137,26 @@ export function mountEditorWorkspace(
     })
   }
 
+  const disposers = new Map<string, () => void>()
+  let disposed = false
+
   const dockview = (options.createDockview ?? (createDockview as unknown as DockviewFactory))(
     root,
     {
       createComponent({ name }) {
         const descriptor = registry.get(name === canvasId(pageId) ? CANVAS : name)
-        return {
+        let rendererDisposed = false
+        let panelDisposer: (() => void) | undefined
+        const release = (): void => {
+          if (rendererDisposed) return
+          rendererDisposed = true
+          panelDisposer?.()
+          if (disposers.get(name) === release) disposers.delete(name)
+        }
+        const renderer: IContentRenderer = {
           element: document.createElement("div"),
-          init({ containerElement }) {
+          init() {
+            const containerElement = renderer.element
             if (descriptor === undefined) {
               errorPanel(containerElement, "Panel unavailable", `Unable to load ${name}.`)
               events({
@@ -181,8 +189,8 @@ export function mountEditorWorkspace(
               ...(options.resources === undefined ? {} : { resources: options.resources }),
             }
             try {
-              const dispose = toDisposer(descriptor.mount(containerElement, context))
-              if (dispose !== undefined) disposers.set(name, dispose)
+              panelDisposer = toDisposer(descriptor.mount(containerElement, context))
+              if (panelDisposer !== undefined) disposers.set(name, release)
             } catch (error) {
               if (descriptor.id === CANVAS)
                 errorPanel(containerElement, "Canvas unavailable", CANVAS_ERROR)
@@ -195,13 +203,13 @@ export function mountEditorWorkspace(
               events({ type: "panel-failure", panelId: descriptor.id, error })
             }
           },
+          dispose: release,
         }
+        return renderer
       },
     },
   )
 
-  const disposers = new Map<string, () => void>()
-  let disposed = false
   let layoutSubscription: { dispose(): void } | undefined
 
   const addPanel = (id: string): void => {
@@ -320,6 +328,14 @@ export function mountEditorWorkspace(
       if (!containsPanel(layout, canvasId(pageId))) return
       try {
         dockview.fromJSON(layout)
+        if (dockview.getPanel(canvasId(pageId)) === undefined) {
+          events({
+            type: "layout-failure",
+            operation: "load",
+            error: new Error(`Restored layout is missing ${canvasId(pageId)}`),
+          })
+          applyDefaultLayout()
+        }
       } catch (error) {
         events({ type: "layout-failure", operation: "load", error })
         applyDefaultLayout()
