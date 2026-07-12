@@ -28,14 +28,18 @@ describe("editor theme contract", () => {
 
   it("loads Dockview first, then theme tokens, then structural styles", () => {
     const entry = readEditorFile("src/index.ts")
-
-    expect(entry.indexOf('"dockview/dist/styles/dockview.css"')).toBeLessThan(
+    const importIndices = [
+      entry.indexOf('"dockview/dist/styles/dockview.css"'),
       entry.indexOf('"./theme.css"'),
-    )
-    expect(entry.indexOf('"./theme.css"')).toBeLessThan(entry.indexOf('"./editor.css"'))
-    expect(entry.indexOf('"./editor.css"')).toBeLessThan(
+      entry.indexOf('"./editor.css"'),
       entry.indexOf('"./workspace/workspace.css"'),
-    )
+    ]
+
+    expect(importIndices.every((index) => index >= 0)).toBe(true)
+
+    expect(importIndices[0]).toBeLessThan(importIndices[1])
+    expect(importIndices[1]).toBeLessThan(importIndices[2])
+    expect(importIndices[2]).toBeLessThan(importIndices[3])
   })
 
   it("exports a standalone theme stylesheet", () => {
@@ -44,5 +48,21 @@ describe("editor theme contract", () => {
     }
 
     expect(packageJson.exports["./theme.css"]).toBe("./dist/theme.css")
+  })
+
+  it("configures the build to emit the standalone theme asset", () => {
+    const config = readEditorFile("vite.config.ts")
+
+    expect(config).toContain('fileName: "theme.css"')
+    expect(config).toContain('new URL("./src/theme.css", import.meta.url)')
+  })
+
+  it("keeps structural stylesheets free of palette literals", () => {
+    for (const path of ["src/editor.css", "src/workspace/workspace.css"]) {
+      const structuralCss = readEditorFile(path)
+      const paletteLiterals = structuralCss.match(/#[0-9a-f]{3,8}|rgb\([^)]*\)/gi) ?? []
+
+      expect(paletteLiterals, path).toEqual([])
+    }
   })
 })
