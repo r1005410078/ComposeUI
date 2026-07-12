@@ -370,6 +370,37 @@ describe("mountEditor", () => {
     ).toEqual(["page-1", "node-a", "node-b"])
   })
 
+  it("shows a valid insertion indicator and clears it for drag lifecycle changes", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", name: "A" })
+    addRectangle(editor, { id: "node-b", name: "B" })
+    mountEditor(root, editor, { pageId: "page-1" })
+    const source = root.querySelector<HTMLElement>("[data-testid='tree-row-node-a']")!
+    const target = root.querySelector<HTMLElement>("[data-testid='tree-row-node-b']")!
+    const pageRow = root.querySelector<HTMLElement>("[data-testid='tree-row-page-1']")!
+    const transfer = createDataTransfer()
+
+    source.dispatchEvent(dragEvent("dragstart", transfer))
+    pageRow.dispatchEvent(dragEvent("dragover", transfer))
+    expect(pageRow.dataset.dropTarget).toBeUndefined()
+    target.dispatchEvent(dragEvent("dragover", transfer))
+    expect(target.dataset.dropTarget).toBe("true")
+
+    pageRow.dispatchEvent(dragEvent("dragover", transfer))
+    expect(target.dataset.dropTarget).toBeUndefined()
+    expect(pageRow.dataset.dropTarget).toBeUndefined()
+
+    target.dispatchEvent(dragEvent("dragover", transfer))
+    target.dispatchEvent(dragEvent("dragleave", transfer))
+    expect(target.dataset.dropTarget).toBeUndefined()
+
+    target.dispatchEvent(dragEvent("dragover", transfer))
+    source.dispatchEvent(dragEvent("dragend", transfer))
+    expect(target.dataset.dropTarget).toBeUndefined()
+    expect(source.dataset.dragging).toBeUndefined()
+  })
+
   it("renders semantic hierarchy icons and active visibility and lock states", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

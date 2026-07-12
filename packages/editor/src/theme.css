@@ -51,7 +51,14 @@
   --composeui-toolbar-height: 42px;
   --composeui-control-height: 32px;
   --composeui-icon-button-size: 32px;
-  --composeui-tree-row-height: 36px;
+  --composeui-tree-row-height: 28px;
+  --composeui-tree-indent: 16px;
+  --composeui-tree-icon-size: 14px;
+  --composeui-tree-action-opacity: 0.34;
+  --composeui-tree-action-opacity-active: 0.9;
+  --composeui-tree-row-hover: var(--composeui-surface-control);
+  --composeui-tree-row-selected: var(--composeui-selection-fill);
+  --composeui-tree-drag-indicator: var(--composeui-accent-primary);
   --composeui-radius-control: 4px;
   --composeui-radius-panel: 3px;
   --composeui-scrollbar-track: var(--composeui-surface-app);

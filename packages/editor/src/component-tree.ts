@@ -319,6 +319,14 @@ function buildTree(
   const items = getTreeItems(store, pageId, expanded)
   let draggedId: string | undefined
 
+  const clearDropTargets = (): void => {
+    for (const target of tree.querySelectorAll<HTMLElement>(
+      ".composeui-editor__tree-row[data-drop-target='true']",
+    )) {
+      delete target.dataset.dropTarget
+    }
+  }
+
   for (const [index, item] of items.entries()) {
     const treeItem = document.createElement("li")
     treeItem.className = "composeui-editor__tree-item"
@@ -333,13 +341,14 @@ function buildTree(
     row.dataset.testid = `tree-row-${item.id}`
     row.dataset.treeId = item.id
     row.draggable = canDragTreeItem(store, item)
-    row.style.paddingInlineStart = `${item.depth * 16 + 8}px`
+    row.style.setProperty("--composeui-tree-depth", String(item.depth))
     row.addEventListener("dragstart", (event) => {
       if (!row.draggable || event.dataTransfer === null) {
         event.preventDefault()
         return
       }
       draggedId = item.id
+      clearDropTargets()
       event.dataTransfer.effectAllowed = "move"
       event.dataTransfer.setData(TREE_DRAG_TYPE, item.id)
       event.dataTransfer.setData("text/plain", item.id)
@@ -357,21 +366,29 @@ function buildTree(
         lockedTreeRecord(store, source.id) !== undefined ||
         lockedTreeRecord(store, target.id) !== undefined
       ) {
+        clearDropTargets()
         return
       }
       event.preventDefault()
       if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "move"
+      clearDropTargets()
+      row.dataset.dropTarget = "true"
+    })
+    row.addEventListener("dragleave", () => {
+      delete row.dataset.dropTarget
     })
     row.addEventListener("drop", (event) => {
       event.preventDefault()
       const sourceId = draggedId ?? event.dataTransfer?.getData(TREE_DRAG_TYPE)
       draggedId = undefined
+      clearDropTargets()
       if (sourceId !== undefined && sourceId.length > 0) {
         reorderTreeItem(editor, store, sourceId, item.id)
       }
     })
     row.addEventListener("dragend", () => {
       draggedId = undefined
+      clearDropTargets()
       delete row.dataset.dragging
     })
     row.append(createExpandControl(item, session, expanded))

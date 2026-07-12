@@ -44,6 +44,24 @@ describe("editor theme contract", () => {
     }
   })
 
+  it("defines and consumes compact hierarchy tokens", () => {
+    const theme = readEditorFile("src/theme.css")
+    const editorCss = readEditorFile("src/editor.css")
+
+    for (const token of [
+      "--composeui-tree-row-height",
+      "--composeui-tree-indent",
+      "--composeui-tree-icon-size",
+      "--composeui-tree-action-opacity",
+      "--composeui-tree-row-hover",
+      "--composeui-tree-row-selected",
+      "--composeui-tree-drag-indicator",
+    ]) {
+      expect(theme, token).toContain(`${token}:`)
+      expect(editorCss, token).toContain(`var(${token})`)
+    }
+  })
+
   it("loads Dockview first, then theme tokens, then structural styles", () => {
     const entry = readEditorFile("src/index.ts")
     const importIndices = [
