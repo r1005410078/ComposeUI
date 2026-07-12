@@ -566,23 +566,29 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   const themeState = await page.evaluate(() => {
     const style = (selector: string) =>
       getComputedStyle(document.querySelector<HTMLElement>(selector)!)
+    const hostStyle = style(".composeui-editor__workspace-host")
     return {
       shellBackground: style(".composeui-editor__workspace-shell").backgroundColor,
+      headerBackground: style(".composeui-editor__workspace-header").backgroundColor,
       canvasBackground: style(".composeui-editor__workspace").backgroundColor,
       runBackground: style("[data-testid='workspace-run']").backgroundColor,
-      primaryToken: style(".composeui-editor__workspace-host").getPropertyValue(
-        "--composeui-accent-primary",
-      ),
+      surfaceApp: hostStyle.getPropertyValue("--composeui-surface-app").trim(),
+      surfaceToolbar: hostStyle.getPropertyValue("--composeui-surface-toolbar").trim(),
+      surfaceCanvas: hostStyle.getPropertyValue("--composeui-surface-canvas").trim(),
+      primaryToken: hostStyle.getPropertyValue("--composeui-accent-primary").trim(),
     }
   })
 
-  expect(themeState.shellBackground).toMatch(/^rgb\(/)
-  expect(themeState.canvasBackground).toMatch(/^rgb\(/)
-  expect(themeState.runBackground).toMatch(/^rgb\(/)
-  expect(themeState.shellBackground).not.toBe("rgb(255, 255, 255)")
-  expect(themeState.canvasBackground).not.toBe("rgb(255, 255, 255)")
-  expect(themeState.runBackground).not.toBe("rgb(255, 255, 255)")
-  expect(themeState.primaryToken.trim()).toBe("#1769e8")
+  expect(themeState).toEqual({
+    shellBackground: "rgb(3, 15, 31)",
+    headerBackground: "rgb(7, 23, 42)",
+    canvasBackground: "rgb(3, 20, 38)",
+    runBackground: "rgb(23, 105, 232)",
+    surfaceApp: "#030f1f",
+    surfaceToolbar: "#07172a",
+    surfaceCanvas: "#031426",
+    primaryToken: "#1769e8",
+  })
 
   const canvasScroller = page.locator(".composeui-editor__canvas-panel-body")
   await expect(canvasScroller).toHaveCSS("overflow-x", "hidden")
@@ -838,4 +844,5 @@ test("keeps the workspace panels within a 900x700 viewport without overlap", asy
     left.y + left.height > right.y
   expect(overlaps(title, run), "project title overlaps run control").toBe(false)
   expect(overlaps(title, save), "project title overlaps save control").toBe(false)
+  expect(save.x, "save control overlaps run control").toBeGreaterThanOrEqual(run.x + run.width - 1)
 })
