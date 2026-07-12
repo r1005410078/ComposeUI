@@ -105,8 +105,18 @@ describe("workspace panel renderers", () => {
     const dispose = panel("history").mount(root, context)
 
     expect(root.querySelector("[aria-label='历史']")).not.toBeNull()
+    expect(root.querySelector(".composeui-editor__history > h2")).toBeNull()
+    expect(root.querySelector("[data-testid='history-toolbar']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='history-undo'] svg")).not.toBeNull()
+    expect(root.querySelector("[data-testid='history-redo'] svg")).not.toBeNull()
     expect(root.querySelectorAll("[data-testid='history-entry']")).toHaveLength(1)
-    expect(root.querySelector("[data-testid='history-entry']")?.textContent).toBe("node.create")
+    expect(root.querySelector(".composeui-editor__history-label")?.textContent).toBe("node.create")
+    expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("title")).toBe(
+      "node.create",
+    )
+    expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("data-current")).toBe(
+      "true",
+    )
 
     const undo = root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")
     const redo = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
@@ -118,6 +128,9 @@ describe("workspace panel renderers", () => {
     const redoAfter = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
     expect(undoAfter?.disabled).toBe(true)
     expect(redoAfter?.disabled).toBe(false)
+    expect(root.querySelector("[data-testid='history-future-entry']")?.getAttribute("title")).toBe(
+      "node.create",
+    )
     redoAfter!.click()
     expect(context.editor.getRecord("node-1")).toBeDefined()
     expect(root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")?.disabled).toBe(
@@ -184,11 +197,17 @@ describe("workspace panel renderers", () => {
 
   it("provides named empty states for remaining utility panels", () => {
     const context = createContext()
-    for (const id of ["signals", "output"] satisfies PanelId[]) {
+    for (const id of ["signals"] satisfies PanelId[]) {
       const root = document.createElement("div")
       panel(id).mount(root, context)
       expect(root.querySelector(`[data-testid='empty-${id}']`)).not.toBeNull()
     }
+
+    const outputRoot = document.createElement("div")
+    panel("output").mount(outputRoot, context)
+    expect(outputRoot.querySelector(".composeui-editor__output > h2")).toBeNull()
+    expect(outputRoot.querySelector("[data-testid='output-messages']")).not.toBeNull()
+    expect(outputRoot.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
   })
 
   it("returns all first-party panel descriptors with stable ids", () => {

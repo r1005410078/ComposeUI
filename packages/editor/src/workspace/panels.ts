@@ -1,4 +1,5 @@
 import type { EditorRecord, HistoryEntry } from "@composeui/core"
+import { Redo2, Undo2, createElement as createIconElement } from "lucide"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
@@ -18,19 +19,36 @@ const PANEL_META: Record<
   PanelId,
   Pick<WorkspacePanelDescriptor, "title" | "closable" | "defaultPosition">
 > = {
-  scene: { title: "场景", closable: true, defaultPosition: "left" },
-  resources: { title: "资源", closable: true, defaultPosition: "left" },
-  history: { title: "历史", closable: true, defaultPosition: "left" },
+  scene: { title: "场景", closable: false, defaultPosition: "left" },
+  resources: { title: "资源", closable: false, defaultPosition: "left" },
+  history: { title: "历史", closable: false, defaultPosition: "left" },
   canvas: { title: "画布", closable: false, defaultPosition: "center" },
-  inspector: { title: "检查器", closable: true, defaultPosition: "right" },
-  signals: { title: "信号", closable: true, defaultPosition: "right" },
-  output: { title: "输出", closable: true, defaultPosition: "bottom" },
+  inspector: { title: "检查器", closable: false, defaultPosition: "right" },
+  signals: { title: "信号", closable: false, defaultPosition: "right" },
+  output: { title: "输出", closable: false, defaultPosition: "bottom" },
 }
 
 function descriptor(id: PanelId, mount: WorkspacePanelMount): FirstPartyPanelDescriptor {
   const meta = PANEL_META[id]
   if (meta === undefined) throw new Error(`Unknown workspace panel: ${id}`)
   return { id, ...meta, mount }
+}
+
+function panelIconButton(
+  testId: string,
+  label: string,
+  iconNode: Parameters<typeof createIconElement>[0],
+): HTMLButtonElement {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.dataset.testid = testId
+  button.title = label
+  button.setAttribute("aria-label", label)
+  const icon = createIconElement(iconNode)
+  icon.setAttribute("aria-hidden", "true")
+  icon.setAttribute("focusable", "false")
+  button.append(icon)
+  return button
 }
 
 function emptyPanel(id: string, title: string, message = `暂无${title}。`): WorkspacePanelMount {
@@ -147,50 +165,75 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
 
     const render = (): void => {
       const history = context.editor.getHistory()
-      const heading = document.createElement("h2")
-      heading.textContent = "历史"
       const actions = document.createElement("div")
-      actions.className = "composeui-editor__history-actions"
-      const undo = document.createElement("button")
-      undo.type = "button"
-      undo.dataset.testid = "history-undo"
-      undo.setAttribute("aria-label", "撤销历史记录")
-      undo.textContent = "撤销"
+      actions.className = "composeui-editor__history-toolbar"
+      actions.dataset.testid = "history-toolbar"
+      const undo = panelIconButton("history-undo", "撤销历史记录", Undo2)
       undo.disabled = history.past.length === 0
       undo.addEventListener("click", () => context.editor.undo())
-      const redo = document.createElement("button")
-      redo.type = "button"
-      redo.dataset.testid = "history-redo"
-      redo.setAttribute("aria-label", "重做历史记录")
-      redo.textContent = "重做"
+      const redo = panelIconButton("history-redo", "重做历史记录", Redo2)
       redo.disabled = history.future.length === 0
       redo.addEventListener("click", () => context.editor.redo())
       actions.append(undo, redo)
 
       const list = document.createElement("ol")
+      list.className = "composeui-editor__history-list"
       list.dataset.testid = "history-list"
       const entries = history.past.reduceRight<HistoryEntry[]>((reversed, entry) => {
         reversed.push(entry)
         return reversed
       }, [])
-      for (const entry of entries) {
+      for (const [index, entry] of entries.entries()) {
         const item = document.createElement("li")
         item.dataset.testid = "history-entry"
-        item.textContent = entry.label
+        item.dataset.current = String(index === 0)
+        item.title = entry.label
+        const sequence = document.createElement("span")
+        sequence.className = "composeui-editor__history-sequence"
+        sequence.textContent = String(entries.length - index)
+        const label = document.createElement("span")
+        label.className = "composeui-editor__history-label"
+        label.textContent = entry.label
+        item.append(sequence, label)
         list.append(item)
       }
       if (history.past.length === 0 && history.future.length > 0) {
         const future = document.createElement("li")
         future.dataset.testid = "history-future-entry"
-        future.textContent = `重做: ${history.future.at(-1)?.label ?? "记录"}`
+        const label = history.future.at(-1)?.label ?? "记录"
+        future.title = label
+        future.textContent = `重做: ${label}`
         list.append(future)
       }
-      panel.replaceChildren(heading, actions, list)
+      panel.replaceChildren(actions, list)
     }
     render()
     const unsubscribe = context.editor.subscribe(render)
     return () => {
       unsubscribe()
+      root.replaceChildren()
+    }
+  })
+}
+
+function createOutputPanel(): FirstPartyPanelDescriptor {
+  return descriptor("output", (root) => {
+    const panel = document.createElement("section")
+    panel.className = "composeui-editor__output"
+    panel.setAttribute("aria-label", "输出")
+    const messages = document.createElement("div")
+    messages.className = "composeui-editor__output-messages"
+    messages.dataset.testid = "output-messages"
+    const empty = document.createElement("p")
+    empty.dataset.testid = "empty-output"
+    empty.textContent = "暂无输出。"
+    messages.append(empty)
+    panel.append(messages)
+    root.replaceChildren(panel)
+    let disposed = false
+    return () => {
+      if (disposed) return
+      disposed = true
       root.replaceChildren()
     }
   })
@@ -286,7 +329,7 @@ export function createWorkspacePanels(): FirstPartyPanelDescriptor[] {
     createCanvasPanel(),
     createInspectorPanel(),
     createUtilityPanel("signals"),
-    createUtilityPanel("output"),
+    createOutputPanel(),
   ]
 }
 

@@ -221,7 +221,6 @@
 
 .composeui-editor__empty-panel,
 .composeui-editor__inspector,
-.composeui-editor__history,
 .composeui-editor__resources {
   background: var(--composeui-surface-panel);
   border-radius: var(--composeui-radius-panel);
@@ -233,7 +232,6 @@
 
 .composeui-editor__empty-panel h2,
 .composeui-editor__inspector h2,
-.composeui-editor__history h2,
 .composeui-editor__resources h2 {
   font-size: var(--composeui-font-size-heading);
   font-weight: var(--composeui-font-weight-semibold);
@@ -258,28 +256,116 @@
   width: 100%;
 }
 
-.composeui-editor__history-actions {
-  display: flex;
-  gap: var(--composeui-space-2);
+.composeui-editor__history,
+.composeui-editor__output {
+  background: var(--composeui-surface-panel);
+  border-radius: var(--composeui-radius-panel);
+  color: var(--composeui-text-primary);
+  font-family: var(--composeui-font-family);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
-.composeui-editor__history-actions button {
-  background: var(--composeui-surface-control);
-  border: 1px solid var(--composeui-border-default);
-  border-radius: var(--composeui-radius-control);
-  color: var(--composeui-text-primary);
-  font: inherit;
-  min-height: var(--composeui-control-height);
+.composeui-editor__history {
+  display: grid;
+  grid-template-rows: var(--composeui-panel-toolbar-height) minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.composeui-editor__history-toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--composeui-border-default);
+  display: flex;
+  gap: var(--composeui-gap-compact);
   padding: 0 var(--composeui-space-2);
 }
 
-.composeui-editor__history-actions button:disabled {
+.composeui-editor__history-toolbar button {
+  align-items: center;
+  background: var(--composeui-surface-control);
+  border: 1px solid var(--composeui-border-default);
+  border-radius: var(--composeui-radius-control);
+  color: var(--composeui-text-secondary);
+  display: inline-flex;
+  height: var(--composeui-icon-button-size);
+  justify-content: center;
+  padding: 0;
+  width: var(--composeui-icon-button-size);
+}
+
+.composeui-editor__history-toolbar button:hover {
+  background: var(--composeui-surface-control-hover);
+  color: var(--composeui-text-primary);
+}
+
+.composeui-editor__history-toolbar button:disabled {
   color: var(--composeui-text-disabled);
   cursor: default;
 }
 
+.composeui-editor__history-toolbar button svg {
+  height: var(--composeui-icon-size);
+  width: var(--composeui-icon-size);
+}
+
+.composeui-editor__history-list {
+  list-style: none;
+  margin: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--composeui-space-1) 0;
+}
+
+.composeui-editor__history-list li {
+  align-items: center;
+  display: grid;
+  font-size: var(--composeui-font-size-compact);
+  gap: var(--composeui-space-2);
+  grid-template-columns: 28px minmax(0, 1fr);
+  min-height: var(--composeui-panel-row-height);
+  padding: 0 var(--composeui-space-2);
+}
+
+.composeui-editor__history-list li[data-current="true"] {
+  background: var(--composeui-selection-fill);
+  color: var(--composeui-text-primary);
+}
+
+.composeui-editor__history-sequence {
+  color: var(--composeui-text-muted);
+  text-align: right;
+}
+
+.composeui-editor__history-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composeui-editor__output {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.composeui-editor__output-messages {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+  place-items: center;
+}
+
+.composeui-editor__output-messages p {
+  color: var(--composeui-text-muted);
+  margin: 0;
+  max-width: var(--composeui-panel-empty-max-width);
+  text-align: center;
+}
+
 .composeui-editor__inspector input:focus-visible,
-.composeui-editor__history-actions button:focus-visible,
+.composeui-editor__history-toolbar button:focus-visible,
 .composeui-editor__app-action:focus-visible,
 .composeui-editor__toolbar-button:focus-visible,
 .composeui-editor__mode-bar button:focus-visible {

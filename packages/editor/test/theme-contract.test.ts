@@ -62,6 +62,20 @@ describe("editor theme contract", () => {
     }
   })
 
+  it("defines and consumes compact panel tokens", () => {
+    const theme = readEditorFile("src/theme.css")
+    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+
+    for (const token of [
+      "--composeui-panel-toolbar-height",
+      "--composeui-panel-row-height",
+      "--composeui-panel-empty-max-width",
+    ]) {
+      expect(theme, token).toContain(`${token}:`)
+      expect(workspaceCss, token).toContain(`var(${token})`)
+    }
+  })
+
   it("keeps disabled hierarchy actions low contrast in active row states", () => {
     const editorCss = readEditorFile("src/editor.css")
     const activeOpacityRule = editorCss.indexOf(

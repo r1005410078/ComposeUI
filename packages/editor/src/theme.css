@@ -59,6 +59,9 @@
   --composeui-tree-row-hover: var(--composeui-surface-control);
   --composeui-tree-row-selected: var(--composeui-selection-fill);
   --composeui-tree-drag-indicator: var(--composeui-accent-primary);
+  --composeui-panel-toolbar-height: 32px;
+  --composeui-panel-row-height: 26px;
+  --composeui-panel-empty-max-width: 240px;
   --composeui-radius-control: 4px;
   --composeui-radius-panel: 3px;
   --composeui-scrollbar-track: var(--composeui-surface-app);
