@@ -558,7 +558,33 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   }
   await expect(page.getByRole("complementary", { name: "节点树" })).toBeVisible()
   await openCanvas(page)
+  await expect(page.getByRole("tab", { name: "画布" })).toHaveAttribute("aria-selected", "true")
   await expect(page.getByRole("region", { name: "页面画布" })).toBeVisible()
+  await expect(page.locator(".composeui-editor__page-board")).toBeVisible()
+  await expect(page.locator(".composeui-editor__toolbar")).toBeVisible()
+
+  const themeState = await page.evaluate(() => {
+    const style = (selector: string) =>
+      getComputedStyle(document.querySelector<HTMLElement>(selector)!)
+    return {
+      shellBackground: style(".composeui-editor__workspace-shell").backgroundColor,
+      canvasBackground: style(".composeui-editor__workspace").backgroundColor,
+      runBackground: style("[data-testid='workspace-run']").backgroundColor,
+      primaryToken: style(".composeui-editor__workspace-host").getPropertyValue(
+        "--composeui-accent-primary",
+      ),
+    }
+  })
+
+  expect(themeState).toEqual({
+    shellBackground: "rgb(3, 15, 31)",
+    canvasBackground: "rgb(3, 20, 38)",
+    runBackground: "rgb(23, 105, 232)",
+    primaryToken: "#1769e8",
+  })
+
+  const canvasScroller = page.locator(".composeui-editor__canvas-panel-body")
+  await expect(canvasScroller).toHaveCSS("overflow-x", "hidden")
   const dockviewBox = await page.locator(".composeui-editor__dockview-host").boundingBox()
   if (dockviewBox === null) throw new Error("workspace dockview was not rendered")
   expect(dockviewBox.width).toBeGreaterThan(600)
@@ -783,4 +809,13 @@ test("keeps the workspace panels within a 900x700 viewport without overlap", asy
   await page.setViewportSize({ width: 900, height: 700 })
   await page.goto("/")
   await assertViewportLayout(page)
+
+  const title = await page.getByTestId("workspace-project-title").boundingBox()
+  const run = await page.getByTestId("workspace-run").boundingBox()
+  const save = await page.getByTestId("workspace-save").boundingBox()
+  if (title === null || run === null || save === null) {
+    throw new Error("workspace header controls were not rendered")
+  }
+  expect(run.x).toBeGreaterThanOrEqual(title.x + title.width - 1)
+  expect(save.x).toBeGreaterThanOrEqual(run.x + run.width - 1)
 })
