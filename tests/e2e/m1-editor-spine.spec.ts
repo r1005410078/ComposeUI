@@ -534,15 +534,6 @@ test.describe("Dockview canvas gesture coverage", () => {
 
     await openScene(page)
     await page.getByTestId("tree-lock-node-created-1").click()
-    await page.getByTestId("tree-move-up-node-created-1").click()
-    const rows = page.locator("[data-tree-control='select']")
-    await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-red")
-    await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-created-1")
-    await expect(rows.nth(3)).toHaveAttribute("data-tree-id", "node-blue")
-    await openCanvas(page)
-    await focusWorkspace(page)
-    await page.keyboard.press("Meta+z")
-    await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-blue")
 
     await page.getByTestId("tree-visibility-node-created-1").click()
     await expect(created).toHaveCount(0)
@@ -597,13 +588,10 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   await expect(page.getByTestId("tree-toggle-page-1")).toBeVisible()
   await expect(page.getByTestId("tree-icon-page-1")).toBeVisible()
   await expect(page.getByTestId("tree-icon-node-red")).toBeVisible()
-  for (const action of ["visibility", "lock", "move-up", "move-down"]) {
+  for (const action of ["visibility", "lock"]) {
     await expect(page.getByTestId(`tree-${action}-node-red`)).toBeVisible()
   }
-  await expect(page.getByTestId("tree-visibility-node-red")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  )
+  await expect(page.getByTestId("tree-visibility-node-red")).toHaveAttribute("aria-pressed", "true")
   await expect(page.getByTestId("tree-lock-node-red")).toHaveAttribute("aria-pressed", "false")
   const pageBox = await pageRow.boundingBox()
   const redBox = await redRow.boundingBox()
@@ -611,7 +599,7 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   expect(redBox?.height).toBeLessThanOrEqual(30)
 
   await page.getByRole("tab", { name: "历史" }).click()
-  await expect(page.getByTestId("history-toolbar")).toBeVisible()
+  await expect(page.getByTestId("history-list")).toBeVisible()
   await expect(page.locator(".composeui-editor__history > h2")).toHaveCount(0)
 
   await page.getByRole("tab", { name: "输出" }).click()

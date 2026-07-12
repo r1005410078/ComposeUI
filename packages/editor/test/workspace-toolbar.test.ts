@@ -48,6 +48,8 @@ describe("workspace toolbar", () => {
     expect(grid.title).toBe("切换网格")
     expect(grid.querySelector("svg")).not.toBeNull()
     expect(select.getAttribute("aria-pressed")).toBe("true")
+    expect(root.querySelectorAll("[data-testid='workspace-toolbar-divider']")).toHaveLength(4)
+    expect(root.querySelectorAll(".composeui-editor__toolbar-group")).toHaveLength(5)
     for (const id of ["move", "rotate", "scale", "snap", "lock", "view"]) {
       const button = root.querySelector<HTMLButtonElement>(`[data-testid='workspace-tool-${id}']`)
       expect(button?.disabled).toBe(true)

@@ -286,7 +286,7 @@ describe("mountEditor", () => {
     expect(mounted.session.getState().selection).toEqual(["inside"])
   })
 
-  it("routes tree rename, visibility, lock and sibling reorder through commands", () => {
+  it("routes tree rename, visibility and lock through commands", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())
     addRectangle(editor, { id: "node-a", name: "A" })
@@ -302,7 +302,6 @@ describe("mountEditor", () => {
     rename.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
     root.querySelector<HTMLButtonElement>("[data-testid='tree-visibility-node-a']")?.click()
     root.querySelector<HTMLButtonElement>("[data-testid='tree-lock-node-a']")?.click()
-    root.querySelector<HTMLButtonElement>("[data-testid='tree-move-up-node-b']")?.click()
 
     expect(dispatch).toHaveBeenCalledWith({
       id: "node.rename",
@@ -321,13 +320,6 @@ describe("mountEditor", () => {
       visible: false,
       locked: true,
     })
-    expect(
-      [...root.querySelectorAll("[data-tree-control='select']")].map(
-        (element) => (element as HTMLElement).dataset.treeId,
-      ),
-    ).toEqual(["page-1", "node-b", "node-a"])
-    expect(dispatch.mock.calls.filter(([command]) => command.id === "node.reorder")).toHaveLength(1)
-
     editor.undo()
     expect(
       [...root.querySelectorAll("[data-tree-control='select']")].map(
@@ -418,7 +410,7 @@ describe("mountEditor", () => {
     expect(
       root.querySelector("[data-testid='tree-visibility-node-b']")?.getAttribute("aria-pressed"),
     ).toBe("false")
-    for (const action of ["visibility", "lock", "move-up", "move-down"]) {
+    for (const action of ["visibility", "lock"]) {
       expect(root.querySelector(`[data-testid='tree-${action}-node-a'] svg`)).not.toBeNull()
     }
   })

@@ -99,47 +99,38 @@ describe("workspace panel renderers", () => {
     }
   })
 
-  it("renders core history and wires accessible undo and redo actions", () => {
+  it("renders the history timeline without an action toolbar", () => {
     const context = createContext()
     const root = document.createElement("div")
     const dispose = panel("history").mount(root, context)
 
     expect(root.querySelector("[aria-label='历史']")).not.toBeNull()
     expect(root.querySelector(".composeui-editor__history > h2")).toBeNull()
-    expect(root.querySelector("[data-testid='history-toolbar']")).not.toBeNull()
-    expect(root.querySelector("[data-testid='history-undo'] svg")).not.toBeNull()
-    expect(root.querySelector("[data-testid='history-redo'] svg")).not.toBeNull()
+    expect(root.querySelector("[data-testid='history-toolbar']")).toBeNull()
+    expect(root.querySelector("[data-testid='history-undo']")).toBeNull()
+    expect(root.querySelector("[data-testid='history-redo']")).toBeNull()
     expect(root.querySelectorAll("[data-testid='history-entry']")).toHaveLength(1)
-    expect(root.querySelector(".composeui-editor__history-label")?.textContent).toBe("node.create")
-    expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("title")).toBe(
+    expect(root.querySelector(".composeui-editor__history-label")?.textContent).toContain(
+      "node.create",
+    )
+    expect(root.querySelector(".composeui-editor__history-label")?.textContent).toContain(
+      "x: 20, y: 30, width: 120, height: 80",
+    )
+    expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("title")).toContain(
       "node.create",
     )
     expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("data-current")).toBe(
       "true",
     )
 
-    const undo = root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")
-    const redo = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
-    expect(undo?.disabled).toBe(false)
-    expect(redo?.disabled).toBe(true)
-    undo!.click()
+    context.editor.undo()
     expect(context.editor.getRecord("node-1")).toBeUndefined()
-    const undoAfter = root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")
-    const redoAfter = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
-    expect(undoAfter?.disabled).toBe(true)
-    expect(redoAfter?.disabled).toBe(false)
     expect(root.querySelectorAll("[data-testid='history-entry']")).toHaveLength(1)
     expect(root.querySelector("[data-testid='history-entry']")?.getAttribute("data-future")).toBe(
       "true",
     )
-    redoAfter!.click()
+    context.editor.redo()
     expect(context.editor.getRecord("node-1")).toBeDefined()
-    expect(root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")?.disabled).toBe(
-      false,
-    )
-    expect(root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")?.disabled).toBe(
-      true,
-    )
 
     if (typeof dispose === "function") dispose()
   })
@@ -149,11 +140,11 @@ describe("workspace panel renderers", () => {
     const root = document.createElement("div")
     const dispose = panel("history").mount(root, context)
 
-    root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")!.click()
+    context.editor.undo()
 
     const future = root.querySelector<HTMLElement>("[data-testid='history-entry']")
     expect(future?.textContent).toContain("1node.create")
-    expect(future?.getAttribute("title")).toBe("node.create")
+    expect(future?.getAttribute("title")).toContain("node.create")
     expect(future?.getAttribute("data-current")).toBe("false")
     expect(future?.getAttribute("data-future")).toBe("true")
 

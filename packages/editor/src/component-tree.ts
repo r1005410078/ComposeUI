@@ -1,4 +1,4 @@
-import { getChildren, getTreeItems } from "@composeui/core"
+import { getTreeItems } from "@composeui/core"
 import type {
   Diagnostic,
   Editor,
@@ -9,8 +9,6 @@ import type {
   TreeItem,
 } from "@composeui/core"
 import {
-  ArrowDown,
-  ArrowUp,
   Box,
   ChevronDown,
   ChevronRight,
@@ -191,25 +189,6 @@ function createActionButton(
     execute()
   })
   return button
-}
-
-function reorderSibling(
-  editor: Editor,
-  store: RecordStore,
-  item: TreeItem,
-  direction: -1 | 1,
-): void {
-  if (item.parentId === null) return
-  const siblings = getChildren(store, item.parentId)
-  const current = siblings.findIndex((sibling) => sibling.id === item.id)
-  const target = current + direction
-  if (current < 0 || target < 0 || target >= siblings.length) return
-  const targetIndex = siblings[target]?.index
-  if (targetIndex === undefined) return
-  editor.dispatch({
-    id: "node.reorder",
-    payload: { id: item.id, parentId: item.parentId, index: targetIndex },
-  })
 }
 
 function reorderFailure(code: string, message: string, recordId: string): Result<void> {
@@ -422,8 +401,6 @@ function buildTree(
     )
     row.append(selectButton)
     if (item.typeName === "node") {
-      const siblings = getChildren(store, item.parentId!)
-      const siblingIndex = siblings.findIndex((sibling) => sibling.id === item.id)
       row.append(
         createActionButton(
           item,
@@ -450,22 +427,6 @@ function buildTree(
               payload: { id: item.id, locked: !item.locked },
             }),
           item.locked,
-        ),
-        createActionButton(
-          item,
-          "move-up",
-          `Move ${item.name} up`,
-          ArrowUp,
-          siblingIndex <= 0,
-          () => reorderSibling(editor, store, item, -1),
-        ),
-        createActionButton(
-          item,
-          "move-down",
-          `Move ${item.name} down`,
-          ArrowDown,
-          siblingIndex < 0 || siblingIndex >= siblings.length - 1,
-          () => reorderSibling(editor, store, item, 1),
         ),
       )
     }

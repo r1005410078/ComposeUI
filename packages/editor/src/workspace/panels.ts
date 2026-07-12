@@ -1,5 +1,4 @@
 import type { EditorRecord, HistoryEntry } from "@composeui/core"
-import { Redo2, Undo2, createElement as createIconElement } from "lucide"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
@@ -32,23 +31,6 @@ function descriptor(id: PanelId, mount: WorkspacePanelMount): FirstPartyPanelDes
   const meta = PANEL_META[id]
   if (meta === undefined) throw new Error(`Unknown workspace panel: ${id}`)
   return { id, ...meta, mount }
-}
-
-function panelIconButton(
-  testId: string,
-  label: string,
-  iconNode: Parameters<typeof createIconElement>[0],
-): HTMLButtonElement {
-  const button = document.createElement("button")
-  button.type = "button"
-  button.dataset.testid = testId
-  button.title = label
-  button.setAttribute("aria-label", label)
-  const icon = createIconElement(iconNode)
-  icon.setAttribute("aria-hidden", "true")
-  icon.setAttribute("focusable", "false")
-  button.append(icon)
-  return button
 }
 
 function emptyPanel(id: string, title: string, message = `暂无${title}。`): WorkspacePanelMount {
@@ -99,6 +81,23 @@ function recordLabel(record: EditorRecord | undefined): { name: string; type: st
     name: "name" in record ? record.name : record.id,
     type: record.typeName,
   }
+}
+
+function historyLabel(entry: HistoryEntry): string {
+  const records = [
+    ...entry.forward.created,
+    ...entry.forward.updated.map((change) => change.after),
+    ...entry.forward.removed,
+  ]
+  const positions = records
+    .filter((record): record is Extract<EditorRecord, { typeName: "node" }> => {
+      return record.typeName === "node" && record.layout.mode === "free"
+    })
+    .map(
+      (record) =>
+        `${record.name} (x: ${record.layout.x}, y: ${record.layout.y}, width: ${record.layout.width}, height: ${record.layout.height})`,
+    )
+  return positions.length === 0 ? entry.label : `${entry.label} · ${positions.join("; ")}`
 }
 
 export function createInspectorPanel(): FirstPartyPanelDescriptor {
@@ -165,17 +164,6 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
 
     const render = (): void => {
       const history = context.editor.getHistory()
-      const actions = document.createElement("div")
-      actions.className = "composeui-editor__history-toolbar"
-      actions.dataset.testid = "history-toolbar"
-      const undo = panelIconButton("history-undo", "撤销历史记录", Undo2)
-      undo.disabled = history.past.length === 0
-      undo.addEventListener("click", () => context.editor.undo())
-      const redo = panelIconButton("history-redo", "重做历史记录", Redo2)
-      redo.disabled = history.future.length === 0
-      redo.addEventListener("click", () => context.editor.redo())
-      actions.append(undo, redo)
-
       const list = document.createElement("ol")
       list.className = "composeui-editor__history-list"
       list.dataset.testid = "history-list"
@@ -187,16 +175,17 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
         [],
       )
       for (const { entry, index } of entries) {
+        const labelText = historyLabel(entry)
         const item = document.createElement("li")
         item.dataset.testid = "history-entry"
         item.dataset.current = String(index === history.currentIndex - 1)
         item.dataset.future = String(index >= history.currentIndex)
         item.setAttribute("role", "button")
         item.tabIndex = 0
-        item.title = entry.label
+        item.title = labelText
         item.setAttribute(
           "aria-label",
-          entry.label + (index === history.currentIndex - 1 ? "，当前" : "，跳转"),
+          labelText + (index === history.currentIndex - 1 ? "，当前" : "，跳转"),
         )
         const jump = (): void => {
           context.editor.jumpToHistory(index + 1)
@@ -212,11 +201,11 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
         sequence.textContent = String(index + 1)
         const label = document.createElement("span")
         label.className = "composeui-editor__history-label"
-        label.textContent = entry.label
+        label.textContent = labelText
         item.append(sequence, label)
         list.append(item)
       }
-      panel.replaceChildren(actions, list)
+      panel.replaceChildren(list)
     }
     render()
     const unsubscribe = context.editor.subscribe(render)

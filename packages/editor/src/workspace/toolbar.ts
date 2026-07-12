@@ -45,6 +45,21 @@ function setPressed(button: HTMLButtonElement, pressed: boolean): void {
   button.setAttribute("aria-pressed", String(pressed))
 }
 
+function toolbarDivider(): HTMLSpanElement {
+  const divider = document.createElement("span")
+  divider.className = "composeui-editor__toolbar-divider"
+  divider.dataset.testid = "workspace-toolbar-divider"
+  divider.setAttribute("aria-hidden", "true")
+  return divider
+}
+
+function toolbarGroup(...buttons: HTMLButtonElement[]): HTMLDivElement {
+  const group = document.createElement("div")
+  group.className = "composeui-editor__toolbar-group"
+  group.append(...buttons)
+  return group
+}
+
 export function mountWorkspaceToolbar(
   root: HTMLElement,
   options: WorkspaceToolbarOptions,
@@ -52,8 +67,6 @@ export function mountWorkspaceToolbar(
   root.className = "composeui-editor__toolbar"
   root.setAttribute("aria-label", "工作区工具")
 
-  const tools = document.createElement("div")
-  tools.className = "composeui-editor__toolbar-group"
   const select = iconButton("select", "选择工具", MousePointer2)
   const pan = iconButton("pan", "平移工具", Hand)
   const grid = iconButton("grid", "切换网格", Grid3X3)
@@ -66,9 +79,17 @@ export function mountWorkspaceToolbar(
   const lock = iconButton("lock", "锁定选中项", Lock)
   const view = iconButton("view", "视图选项", Eye)
   for (const button of [move, rotate, scale, snap, lock, view]) button.disabled = true
-  tools.append(select, pan, move, rotate, scale, snap, lock, view, grid, undo, redo)
-
-  root.replaceChildren(tools)
+  root.replaceChildren(
+    toolbarGroup(select, pan),
+    toolbarDivider(),
+    toolbarGroup(move, rotate, scale),
+    toolbarDivider(),
+    toolbarGroup(snap, lock, view),
+    toolbarDivider(),
+    toolbarGroup(grid),
+    toolbarDivider(),
+    toolbarGroup(undo, redo),
+  )
 
   const render = (): void => {
     const state = options.session.getState()

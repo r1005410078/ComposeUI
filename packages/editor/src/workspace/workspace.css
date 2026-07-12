@@ -108,8 +108,8 @@
   align-items: center;
   display: flex;
   flex: 1 1 auto;
-  gap: var(--composeui-space-2);
-  justify-content: space-between;
+  gap: 0;
+  justify-content: flex-start;
   min-height: var(--composeui-toolbar-height);
   min-width: 0;
   overflow-x: auto;
@@ -158,13 +158,21 @@
 .composeui-editor__toolbar-group {
   align-items: center;
   display: flex;
-  gap: var(--composeui-gap-compact);
+  gap: 2px;
+  padding: 0 var(--composeui-space-1);
+}
+
+.composeui-editor__toolbar-divider {
+  background: var(--composeui-border-default);
+  flex: 0 0 1px;
+  height: calc(var(--composeui-icon-button-size) - 8px);
+  margin: 0 var(--composeui-space-1);
 }
 
 .composeui-editor__toolbar-button {
   align-items: center;
-  background: var(--composeui-surface-control);
-  border: 1px solid var(--composeui-border-default);
+  background: transparent;
+  border: 0;
   border-radius: var(--composeui-radius-control);
   display: inline-flex;
   height: var(--composeui-icon-button-size);
@@ -269,44 +277,8 @@
 
 .composeui-editor__history {
   display: grid;
-  grid-template-rows: var(--composeui-panel-toolbar-height) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
-}
-
-.composeui-editor__history-toolbar {
-  align-items: center;
-  border-bottom: 1px solid var(--composeui-border-default);
-  display: flex;
-  gap: var(--composeui-gap-compact);
-  padding: 0 var(--composeui-space-2);
-}
-
-.composeui-editor__history-toolbar button {
-  align-items: center;
-  background: var(--composeui-surface-control);
-  border: 1px solid var(--composeui-border-default);
-  border-radius: var(--composeui-radius-control);
-  color: var(--composeui-text-secondary);
-  display: inline-flex;
-  height: var(--composeui-icon-button-size);
-  justify-content: center;
-  padding: 0;
-  width: var(--composeui-icon-button-size);
-}
-
-.composeui-editor__history-toolbar button:hover {
-  background: var(--composeui-surface-control-hover);
-  color: var(--composeui-text-primary);
-}
-
-.composeui-editor__history-toolbar button:disabled {
-  color: var(--composeui-text-disabled);
-  cursor: default;
-}
-
-.composeui-editor__history-toolbar button svg {
-  height: var(--composeui-icon-size);
-  width: var(--composeui-icon-size);
 }
 
 .composeui-editor__history-list {
@@ -383,7 +355,6 @@
 }
 
 .composeui-editor__inspector input:focus-visible,
-.composeui-editor__history-toolbar button:focus-visible,
 .composeui-editor__app-action:focus-visible,
 .composeui-editor__toolbar-button:focus-visible,
 .composeui-editor__mode-bar button:focus-visible {
