@@ -433,6 +433,7 @@ export function mountEditor(
 
   const shell = document.createElement("section")
   shell.className = "composeui-editor"
+  if (options.view === "canvas") shell.classList.add("composeui-editor--canvas-only")
   shell.dataset.testid = "editor-shell"
   shell.dataset.mode = "stage-edit"
   shell.tabIndex = 0

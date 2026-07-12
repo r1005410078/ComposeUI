@@ -28,6 +28,15 @@
   overflow: hidden;
 }
 
+.composeui-editor--canvas-only {
+  display: block;
+}
+
+.composeui-editor--canvas-only .composeui-editor__workspace {
+  height: 100%;
+  width: 100%;
+}
+
 .composeui-editor *,
 .composeui-editor *::before,
 .composeui-editor *::after,

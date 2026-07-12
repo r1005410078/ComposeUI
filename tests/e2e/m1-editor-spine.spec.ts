@@ -553,6 +553,10 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   await expect(page.getByRole("complementary", { name: "Component tree" })).toBeVisible()
   await openCanvas(page)
   await expect(page.getByRole("region", { name: "Page board" })).toBeVisible()
+  const workspaceBox = await page.getByTestId("workspace").boundingBox()
+  if (workspaceBox === null) throw new Error("canvas workspace was not rendered")
+  expect(workspaceBox.width).toBeGreaterThan(600)
+  expect(workspaceBox.height).toBeGreaterThan(500)
 })
 
 test("selects a Scene node, edits its Inspector name, and undoes and redoes the rename", async ({

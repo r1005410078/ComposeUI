@@ -243,6 +243,7 @@ export function mountEditorWorkspace(
           element: document.createElement("div"),
           init() {
             const containerElement = renderer.element
+            containerElement.className = "composeui-editor__dockview-panel"
             if (descriptor === undefined) {
               errorPanel(containerElement, "Panel unavailable", `Unable to load ${name}.`)
               events({

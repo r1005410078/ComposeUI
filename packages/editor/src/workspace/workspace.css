@@ -131,6 +131,13 @@
   position: relative;
 }
 
+.composeui-editor__dockview-panel {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
 @media (max-width: 640px) {
   .composeui-editor__workspace-shell {
     --composeui-workspace-min-width: 320px;
