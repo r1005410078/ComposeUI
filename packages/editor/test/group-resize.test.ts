@@ -64,12 +64,10 @@ describe("group resize geometry", () => {
       { id: "small", x: 0, y: 0, width: 10, height: 10 },
       { id: "large", x: 100, y: 100, width: 100, height: 100 },
     ]
-    const result = resizeGroup(
-      smallItems,
-      { left: 0, top: 0, right: 200, bottom: 200 },
-      "nw",
-      { x: 199, y: 199 },
-    )
+    const result = resizeGroup(smallItems, { left: 0, top: 0, right: 200, bottom: 200 }, "nw", {
+      x: 199,
+      y: 199,
+    })
 
     expect(result.items).toEqual([
       { id: "small", x: 199, y: 199, width: 1, height: 1 },

@@ -335,10 +335,7 @@ function prepareResize(store: RecordStore, command: ResizeNodeCommand): Prepared
 
 function prepareResizeMany(store: RecordStore, command: ResizeManyNodeCommand): PreparedCommand {
   if (command.payload.items.length < 2) {
-    return failure(
-      "INVALID_RESIZE_MANY_ITEMS",
-      "Multi-resize requires at least two unique nodes.",
-    )
+    return failure("INVALID_RESIZE_MANY_ITEMS", "Multi-resize requires at least two unique nodes.")
   }
 
   const ids = new Set<string>()
@@ -346,7 +343,11 @@ function prepareResizeMany(store: RecordStore, command: ResizeManyNodeCommand): 
   let parentId: string | undefined
   for (const item of command.payload.items) {
     if (ids.has(item.id)) {
-      return failure("DUPLICATE_RESIZE_MANY_NODE", `Node ${item.id} appears more than once.`, item.id)
+      return failure(
+        "DUPLICATE_RESIZE_MANY_NODE",
+        `Node ${item.id} appears more than once.`,
+        item.id,
+      )
     }
     ids.add(item.id)
 
