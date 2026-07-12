@@ -1,0 +1,122 @@
+.composeui-editor {
+  --composeui-editor-bg: #e5e7eb;
+  --composeui-panel-bg: #ffffff;
+  --composeui-border: #d4d4d8;
+  --composeui-text: #18181b;
+  --composeui-muted-text: #71717a;
+  --composeui-selection: #2563eb;
+  --composeui-tree-width: 260px;
+  box-sizing: border-box;
+  color: var(--composeui-text);
+  display: grid;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  grid-template-columns: var(--composeui-tree-width) minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  width: 100%;
+}
+
+.composeui-editor *,
+.composeui-editor *::before,
+.composeui-editor *::after {
+  box-sizing: border-box;
+}
+
+.composeui-editor__component-tree {
+  background: var(--composeui-panel-bg);
+  border-right: 1px solid var(--composeui-border);
+  overflow: auto;
+  width: var(--composeui-tree-width);
+}
+
+.composeui-editor__tree {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+}
+
+.composeui-editor__tree-row {
+  align-items: center;
+  display: flex;
+  height: 32px;
+  padding-right: 8px;
+}
+
+.composeui-editor__tree-item[aria-selected="true"] .composeui-editor__tree-row {
+  background: #dbeafe;
+}
+
+.composeui-editor__tree-toggle,
+.composeui-editor__tree-toggle-spacer {
+  flex: 0 0 24px;
+  height: 24px;
+  width: 24px;
+}
+
+.composeui-editor__tree-toggle,
+.composeui-editor__tree-select {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.composeui-editor__tree-toggle {
+  cursor: pointer;
+  padding: 0;
+}
+
+.composeui-editor__tree-select {
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composeui-editor__tree-item[data-visible="false"] .composeui-editor__tree-select {
+  color: var(--composeui-muted-text);
+}
+
+.composeui-editor__workspace {
+  background: var(--composeui-editor-bg);
+  min-width: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.composeui-editor__world {
+  left: 0;
+  position: absolute;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.composeui-editor__page-board {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  outline: 1px solid #a1a1aa;
+  position: relative;
+}
+
+.composeui-editor__node {
+  position: absolute;
+}
+
+.composeui-editor__selection-overlay {
+  height: 100%;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+}
+
+.composeui-editor__selection-overlay rect {
+  fill: none;
+  stroke: var(--composeui-selection);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}

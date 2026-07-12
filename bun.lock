@@ -19,6 +19,7 @@
       "name": "@composeui/playground",
       "dependencies": {
         "@composeui/core": "workspace:*",
+        "@composeui/editor": "workspace:*",
       },
     },
     "packages/core": {
