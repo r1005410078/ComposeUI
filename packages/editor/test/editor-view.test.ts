@@ -370,6 +370,28 @@ describe("mountEditor", () => {
     ).toEqual(["page-1", "node-a", "node-b"])
   })
 
+  it("renders semantic hierarchy icons and active visibility and lock states", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", name: "Node A", locked: true })
+    addRectangle(editor, { id: "node-b", name: "Node B" })
+    editor.dispatch({ id: "node.setVisible", payload: { id: "node-b", visible: false } })
+    mountEditor(root, editor, { pageId: "page-1" })
+
+    expect(root.querySelector("[data-testid='tree-icon-page-1'] svg")).not.toBeNull()
+    expect(root.querySelector("[data-testid='tree-icon-node-a'] svg")).not.toBeNull()
+    expect(root.querySelector("[data-testid='tree-toggle-page-1'] svg")).not.toBeNull()
+    expect(
+      root.querySelector("[data-testid='tree-lock-node-a']")?.getAttribute("aria-pressed"),
+    ).toBe("true")
+    expect(
+      root.querySelector("[data-testid='tree-visibility-node-b']")?.getAttribute("aria-pressed"),
+    ).toBe("false")
+    for (const action of ["visibility", "lock", "move-up", "move-down"]) {
+      expect(root.querySelector(`[data-testid='tree-${action}-node-a'] svg`)).not.toBeNull()
+    }
+  })
+
   it("rejects page-root, cross-parent and locked tree drops with diagnostics", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())
@@ -1048,11 +1070,13 @@ describe("mountEditor", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='tree-parent']")?.click()
     expect(mounted.session.getState().selection).toEqual(["parent"])
     const toggle = root.querySelector<HTMLButtonElement>("[data-testid='tree-toggle-parent']")!
+    expect(toggle.querySelector("svg")).not.toBeNull()
     toggle.focus()
     toggle.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
     expect(mounted.session.getState().selection).toEqual(["parent"])
     expect(root.querySelector("[data-testid='tree-child']")).not.toBeNull()
     expect(document.activeElement?.getAttribute("data-testid")).toBe("tree-toggle-parent")
+    expect(root.querySelector("[data-testid='tree-toggle-parent'] svg")).not.toBeNull()
 
     document.activeElement?.dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),

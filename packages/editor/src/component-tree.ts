@@ -8,6 +8,19 @@ import type {
   TransactionPatch,
   TreeItem,
 } from "@composeui/core"
+import {
+  ArrowDown,
+  ArrowUp,
+  Box,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  File,
+  Lock,
+  Unlock,
+  createElement as createIconElement,
+} from "lucide"
 import { EditorSession } from "./session"
 import type { EditorSessionState } from "./session"
 
@@ -16,6 +29,15 @@ interface FocusTarget {
 }
 
 const TREE_DRAG_TYPE = "application/x-composeui-tree-node"
+
+type TreeIcon = Parameters<typeof createIconElement>[0]
+
+function icon(iconNode: TreeIcon): SVGElement {
+  const element = createIconElement(iconNode)
+  element.setAttribute("aria-hidden", "true")
+  element.setAttribute("focusable", "false")
+  return element
+}
 
 export interface ComponentTreeView {
   element: HTMLElement
@@ -139,7 +161,7 @@ function createExpandControl(item: TreeItem, session: EditorSession, expanded: S
   button.tabIndex = -1
   button.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} ${item.name}`)
   button.setAttribute("aria-expanded", String(isExpanded))
-  button.textContent = isExpanded ? "-" : "+"
+  button.replaceChildren(icon(isExpanded ? ChevronDown : ChevronRight))
   button.addEventListener("click", () => session.toggleExpanded(item.id))
   button.addEventListener("keydown", (event) => handleTreeKeyDown(event, button, session))
   return button
@@ -149,9 +171,10 @@ function createActionButton(
   item: TreeItem,
   action: string,
   label: string,
-  text: string,
+  iconNode: TreeIcon,
   disabled: boolean,
   execute: () => void,
+  pressed?: boolean,
 ): HTMLButtonElement {
   const button = document.createElement("button")
   button.type = "button"
@@ -161,7 +184,8 @@ function createActionButton(
   button.disabled = disabled
   button.title = label
   button.setAttribute("aria-label", label)
-  button.textContent = text
+  if (pressed !== undefined) button.setAttribute("aria-pressed", String(pressed))
+  button.replaceChildren(icon(iconNode))
   button.addEventListener("click", (event) => {
     event.stopPropagation()
     execute()
@@ -352,6 +376,13 @@ function buildTree(
     })
     row.append(createExpandControl(item, session, expanded))
 
+    const typeIcon = document.createElement("span")
+    typeIcon.className = "composeui-editor__tree-type-icon"
+    typeIcon.dataset.testid = `tree-icon-${item.id}`
+    typeIcon.setAttribute("aria-hidden", "true")
+    typeIcon.append(icon(item.typeName === "page" ? File : Box))
+    row.append(typeIcon)
+
     const selectButton = document.createElement("button")
     selectButton.type = "button"
     selectButton.className = "composeui-editor__tree-select"
@@ -381,34 +412,41 @@ function buildTree(
           item,
           "visibility",
           `${item.visible ? "Hide" : "Show"} ${item.name}`,
-          "V",
+          item.visible ? Eye : EyeOff,
           false,
           () =>
             editor.dispatch({
               id: "node.setVisible",
               payload: { id: item.id, visible: !item.visible },
             }),
+          item.visible,
         ),
         createActionButton(
           item,
           "lock",
           `${item.locked ? "Unlock" : "Lock"} ${item.name}`,
-          "L",
+          item.locked ? Lock : Unlock,
           false,
           () =>
             editor.dispatch({
               id: "node.setLocked",
               payload: { id: item.id, locked: !item.locked },
             }),
+          item.locked,
         ),
-        createActionButton(item, "move-up", `Move ${item.name} up`, "^", siblingIndex <= 0, () =>
-          reorderSibling(editor, store, item, -1),
+        createActionButton(
+          item,
+          "move-up",
+          `Move ${item.name} up`,
+          ArrowUp,
+          siblingIndex <= 0,
+          () => reorderSibling(editor, store, item, -1),
         ),
         createActionButton(
           item,
           "move-down",
           `Move ${item.name} down`,
-          "v",
+          ArrowDown,
           siblingIndex < 0 || siblingIndex >= siblings.length - 1,
           () => reorderSibling(editor, store, item, 1),
         ),
