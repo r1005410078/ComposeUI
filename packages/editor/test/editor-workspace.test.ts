@@ -229,6 +229,11 @@ describe("editor workspace", () => {
     const mounted = mountEditorWorkspace(root, createEditorInstance(), {
       pageId: "page-1",
       projectTitle: "新建游戏项目",
+      mountSceneExtras(sceneRoot) {
+        const button = document.createElement("button")
+        button.dataset.testid = "scene-extra"
+        sceneRoot.querySelector(".composeui-editor__component-tree")?.prepend(button)
+      },
       createDockview: fake.factory,
     })
 
@@ -279,6 +284,9 @@ describe("editor workspace", () => {
       fake.panels
         .get("canvas:page-1")
         ?.renderer?.element.querySelector(".composeui-editor__toolbar"),
+    ).not.toBeNull()
+    expect(
+      fake.panels.get("scene")?.renderer?.element.querySelector("[data-testid='scene-extra']"),
     ).not.toBeNull()
   })
 

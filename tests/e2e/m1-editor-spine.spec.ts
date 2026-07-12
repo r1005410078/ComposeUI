@@ -569,6 +569,16 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   expect(toolbarBox.x).toBeGreaterThanOrEqual(sceneBox.x + sceneBox.width - 1)
   expect(toolbarBox.x).toBeGreaterThanOrEqual(canvasBox.x - 1)
   expect(toolbarBox.x + toolbarBox.width).toBeLessThanOrEqual(canvasBox.x + canvasBox.width + 1)
+  const createNodeBox = await page.getByTestId("create-node").boundingBox()
+  if (createNodeBox === null) throw new Error("create node command was not rendered")
+  expect(createNodeBox.x).toBeGreaterThanOrEqual(sceneBox.x - 1)
+  expect(createNodeBox.x + createNodeBox.width).toBeLessThanOrEqual(sceneBox.x + sceneBox.width + 1)
+  await expect(page.locator(".composeui-editor__toolbar")).not.toContainText("Create rectangle")
+  for (const testId of ["toggle-page-overflow", "export-json", "reset-layout"]) {
+    const button = page.getByTestId(testId)
+    await expect(button.locator("svg")).toHaveCount(1)
+    await expect(button).not.toHaveText(/Show outside canvas|Export JSON|Reset layout/)
+  }
 })
 
 test("selects a Scene node, edits its Inspector name, and undoes and redoes the rename", async ({

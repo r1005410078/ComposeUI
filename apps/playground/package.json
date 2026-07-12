@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@composeui/core": "workspace:*",
-    "@composeui/editor": "workspace:*"
+    "@composeui/editor": "workspace:*",
+    "lucide": "^1.24.0"
   }
 }

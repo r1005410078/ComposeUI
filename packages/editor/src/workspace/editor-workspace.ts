@@ -51,6 +51,7 @@ export interface MountEditorWorkspaceOptions {
   pageId: string
   projectTitle?: string
   mountToolbarExtras?: (root: HTMLElement) => void | (() => void) | { destroy(): void }
+  mountSceneExtras?: (root: HTMLElement) => void | (() => void) | { destroy(): void }
   layoutStore?: WorkspaceLayoutStore
   resources?: WorkspaceResourceService
   panelRegistry?: PanelRegistry | WorkspacePanelRegistry
@@ -120,7 +121,12 @@ function toDisposer(mount: ReturnType<WorkspacePanelMount>): (() => void) | unde
 }
 
 function toToolbarExtrasDisposer(
-  mount: ReturnType<NonNullable<MountEditorWorkspaceOptions["mountToolbarExtras"]>>,
+  mount: ReturnType<
+    NonNullable<
+      | MountEditorWorkspaceOptions["mountToolbarExtras"]
+      | MountEditorWorkspaceOptions["mountSceneExtras"]
+    >
+  >,
 ): (() => void) | undefined {
   if (typeof mount === "function") return mount
   if (mount !== undefined) return () => mount.destroy()
@@ -331,6 +337,15 @@ export function mountEditorWorkspace(
                   disposeCanvas?.()
                   disposeToolbarExtras?.()
                   disposeToolbar()
+                }
+              } else if (descriptor.id === "scene") {
+                const disposeScene = toDisposer(descriptor.mount(containerElement, context))
+                const disposeSceneExtras = toToolbarExtrasDisposer(
+                  options.mountSceneExtras?.(containerElement),
+                )
+                panelDisposer = () => {
+                  disposeSceneExtras?.()
+                  disposeScene?.()
                 }
               } else {
                 panelDisposer = toDisposer(descriptor.mount(containerElement, context))

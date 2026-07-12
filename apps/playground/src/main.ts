@@ -3,6 +3,7 @@ import {
   mountEditorWorkspace,
   type StorageLike,
 } from "@composeui/editor"
+import { Eye, FileJson, RefreshCcw, createElement as createIconElement } from "lucide"
 import { createM1Scenario } from "./m1-free-layout-scenario"
 import "./styles.css"
 
@@ -26,6 +27,23 @@ function createCommandButton(
   return button
 }
 
+function createIconCommandButton(
+  testId: string,
+  label: string,
+  icon: Parameters<typeof createIconElement>[0],
+  onClick: () => void,
+): HTMLButtonElement {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "playground-icon-command"
+  button.dataset.testid = testId
+  button.title = label
+  button.setAttribute("aria-label", label)
+  button.append(createIconElement(icon))
+  button.addEventListener("click", onClick)
+  return button
+}
+
 function mountPlayground(app: HTMLElement): void {
   const scenario = createM1Scenario()
   const output = document.createElement("pre")
@@ -42,6 +60,17 @@ function mountPlayground(app: HTMLElement): void {
     pageId: scenario.pageId,
     projectTitle: "新建游戏项目",
     layoutStore,
+    mountSceneExtras(sceneRoot) {
+      const treePanel = sceneRoot.querySelector<HTMLElement>(".composeui-editor__component-tree")
+      if (treePanel === null) throw new Error("PLAYGROUND_SCENE_TREE_MISSING")
+      const commands = document.createElement("div")
+      commands.className = "playground-scene-command-group"
+      commands.append(
+        createCommandButton("create-node", "Create rectangle", () => scenario.createNode()),
+      )
+      treePanel.prepend(commands)
+      return () => commands.remove()
+    },
     mountToolbarExtras(toolbar) {
       const tools = toolbar.querySelector<HTMLElement>(".composeui-editor__toolbar-group")
       if (tools === null) throw new Error("PLAYGROUND_TOOL_GROUP_MISSING")
@@ -54,9 +83,10 @@ function mountPlayground(app: HTMLElement): void {
 
       const commands = document.createElement("div")
       commands.className = "playground-command-group"
-      const overflowButton = createCommandButton(
+      const overflowButton = createIconCommandButton(
         "toggle-page-overflow",
         "Show outside canvas",
+        Eye,
         () => {
           const page = scenario.editor.getRecord(scenario.pageId)
           if (page?.typeName !== "page") return
@@ -78,13 +108,12 @@ function mountPlayground(app: HTMLElement): void {
       }
       overflowButton.setAttribute("aria-pressed", "true")
       commands.append(
-        createCommandButton("create-node", "Create rectangle", () => scenario.createNode()),
         overflowButton,
-        createCommandButton("export-json", "Export JSON", () => {
+        createIconCommandButton("export-json", "Export JSON", FileJson, () => {
           output.textContent = scenario.exportCanonicalJson()
           output.hidden = false
         }),
-        createCommandButton("reset-layout", "Reset layout", () => {
+        createIconCommandButton("reset-layout", "Reset layout", RefreshCcw, () => {
           void mounted.api.resetLayout()
         }),
       )

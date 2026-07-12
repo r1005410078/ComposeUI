@@ -28,6 +28,11 @@ body {
   min-width: 0;
 }
 
+.playground-scene-command-group {
+  border-bottom: 1px solid #d4d4d8;
+  padding: 8px;
+}
+
 .playground-command {
   background: #ffffff;
   border: 1px solid #a1a1aa;
@@ -37,6 +42,34 @@ body {
   font: inherit;
   height: 30px;
   padding: 0 10px;
+}
+
+.playground-scene-command-group .playground-command {
+  width: 100%;
+}
+
+.playground-icon-command {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.playground-icon-command:hover,
+.playground-icon-command[aria-pressed="true"] {
+  background: #3f3f46;
+}
+
+.playground-icon-command svg {
+  height: 16px;
+  width: 16px;
 }
 
 .playground-command:hover,
