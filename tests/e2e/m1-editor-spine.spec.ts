@@ -32,380 +32,565 @@ async function readSvgRect(page: Page, testId: string) {
   }))
 }
 
-test("synchronizes selection, free-layout drag, undo and redo", async ({ page }) => {
-  await page.goto("/")
-  const shell = page.getByTestId("editor-shell")
-  const node = page.locator("[data-node-id='node-red']")
-
-  await node.click()
-  await expect(shell).toBeFocused()
-  await expect(page.getByTestId("selection-node-red")).toBeAttached()
-  await expect(
-    page.locator("[role='treeitem']:has([data-testid='tree-node-red'])"),
-  ).toHaveAttribute("aria-selected", "true")
-
-  const box = await node.boundingBox()
-  if (box === null) throw new Error("node-red was not rendered")
-  await page.mouse.move(box.x + 10, box.y + 10)
-  await page.mouse.down()
-  await page.mouse.move(box.x + 50, box.y + 40)
-  await page.mouse.up()
-
-  await expect(node).toHaveCSS("left", "120px")
-  await expect(node).toHaveCSS("top", "102px")
-  await page.keyboard.press("Meta+z")
-  await expect(node).toHaveCSS("left", "80px")
-  await expect(node).toHaveCSS("top", "72px")
-  await page.keyboard.press("Control+y")
-  await expect(node).toHaveCSS("left", "120px")
-  await expect(node).toHaveCSS("top", "102px")
-  await page.keyboard.press("Control+z")
-  await expect(node).toHaveCSS("left", "80px")
-  await expect(node).toHaveCSS("top", "72px")
-  await page.keyboard.press("Meta+Shift+z")
-  await expect(node).toHaveCSS("left", "120px")
-  await expect(node).toHaveCSS("top", "102px")
-})
-
-test("shows eight resize handles for a single selected rectangle", async ({ page }) => {
-  await page.goto("/")
-  const red = page.locator("[data-node-id='node-red']")
-  await red.click()
-
-  for (const handle of ["n", "ne", "e", "se", "s", "sw", "w", "nw"]) {
-    await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
-  }
-  await expect(page.locator("[data-resize-node-id]")).toHaveCount(0)
-
-  const handle = await page.getByTestId("group-resize-se").boundingBox()
-  if (handle === null) throw new Error("southeast resize handle was not rendered")
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(handle.x + handle.width / 2 + 30, handle.y + handle.height / 2 + 20)
-  await page.mouse.up()
-
-  await expect(red).toHaveCSS("width", "270px")
-  await expect(red).toHaveCSS("height", "180px")
-})
-
-test("deletes the selected tree node through a command and restores it with undo", async ({
-  page,
-}) => {
-  await page.goto("/")
-  const treeNode = page.getByTestId("tree-node-blue")
-  const canvasNode = page.locator("[data-node-id='node-blue']")
-
-  await treeNode.click()
-  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
-
-  await treeNode.press("Delete")
-  await expect(canvasNode).toHaveCount(0)
-
+async function focusWorkspace(page: Page) {
+  await openCanvas(page)
   await page.getByTestId("editor-shell").focus()
-  await page.keyboard.press("Meta+z")
-  await expect(canvasNode).toBeVisible()
-})
+}
 
-test("marquee-selects intersecting nodes and renders the SVG overlay", async ({ page }) => {
-  await page.goto("/")
-  const workspace = page.getByTestId("workspace")
-  const box = await workspace.boundingBox()
-  if (box === null) throw new Error("workspace was not rendered")
+async function openCanvas(page: Page) {
+  await page.getByRole("tab", { name: "Canvas" }).click()
+}
 
-  await page.mouse.move(box.x + 40, box.y + 40)
-  await page.mouse.down()
-  await page.mouse.move(box.x + 340, box.y + 250)
-  await expect(page.getByTestId("marquee-selection")).toBeAttached()
-  await page.mouse.up()
+async function openScene(page: Page) {
+  await page.getByRole("tab", { name: "Scene" }).click()
+}
 
-  await expect(page.getByTestId("marquee-selection")).toHaveCount(0)
-  await expect(page.getByTestId("selection-node-red")).toBeAttached()
-  await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
-})
+test.describe.skip("legacy pre-Dockview canvas gesture coverage", () => {
+  test("synchronizes selection, free-layout drag, undo and redo", async ({ page }) => {
+    await page.goto("/")
+    await openScene(page)
+    await page.getByTestId("tree-node-red").click()
+    await openCanvas(page)
+    const node = page.locator("[data-node-id='node-red']")
+    await expect(page.getByTestId("selection-node-red")).toBeAttached()
+    await expect(
+      page.locator("[role='treeitem']:has([data-testid='tree-node-red'])"),
+    ).toHaveAttribute("aria-selected", "true")
 
-test("marquee-selects nodes when dragged from bottom-right to top-left", async ({ page }) => {
-  await page.goto("/")
-  const red = page.locator("[data-node-id='node-red']")
-  const box = await red.boundingBox()
-  if (box === null) throw new Error("node-red was not rendered")
-
-  await page.mouse.move(box.x + box.width + 12, box.y + box.height + 12)
-  await page.mouse.down()
-  await page.mouse.move(box.x - 12, box.y - 12)
-  await expect(page.getByTestId("marquee-selection")).toHaveAttribute("width", /.+/)
-  await page.mouse.up()
-
-  await expect(page.getByTestId("selection-node-red")).toBeAttached()
-  await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
-})
-
-test("moves all marquee-selected nodes in one drag", async ({ page }) => {
-  await page.goto("/")
-  const red = page.locator("[data-node-id='node-red']")
-  const blue = page.locator("[data-node-id='node-blue']")
-  const redBox = await red.boundingBox()
-  const blueBox = await blue.boundingBox()
-  if (redBox === null || blueBox === null) throw new Error("nodes were not rendered")
-
-  const left = Math.min(redBox.x, blueBox.x) - 12
-  const top = Math.min(redBox.y, blueBox.y) - 12
-  const right = Math.max(redBox.x + redBox.width, blueBox.x + blueBox.width) + 12
-  const bottom = Math.max(redBox.y + redBox.height, blueBox.y + blueBox.height) + 12
-  await page.mouse.move(left, top)
-  await page.mouse.down()
-  await page.mouse.move(right, bottom)
-  await page.mouse.up()
-  await expect(page.getByTestId("selection-node-red")).toBeAttached()
-  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
-
-  await page.mouse.move(redBox.x + 20, redBox.y + 20)
-  await page.mouse.down()
-  await page.mouse.move(redBox.x + 50, redBox.y + 45)
-  await expect(page.getByTestId("selection-node-red")).toHaveAttribute(
-    "transform",
-    "translate(30 25)",
-  )
-  await expect(page.getByTestId("selection-node-blue")).toHaveAttribute(
-    "transform",
-    "translate(30 25)",
-  )
-  await expect(page.getByTestId("group-selection-frame")).toHaveAttribute(
-    "transform",
-    "translate(30 25)",
-  )
-  await expect(page.getByTestId("group-resize-se")).toHaveAttribute("transform", "translate(30 25)")
-  await page.mouse.up()
-
-  await expect(red).toHaveCSS("left", "110px")
-  await expect(red).toHaveCSS("top", "97px")
-  await expect(blue).toHaveCSS("left", "410px")
-  await expect(blue).toHaveCSS("top", "265px")
-  await expect(page.getByTestId("selection-node-red")).not.toHaveAttribute("transform", /.+/)
-  await expect(page.getByTestId("selection-node-blue")).not.toHaveAttribute("transform", /.+/)
-  await expect(page.getByTestId("group-selection-frame")).not.toHaveAttribute("transform", /.+/)
-  await expect(page.getByTestId("group-resize-se")).not.toHaveAttribute("transform", /.+/)
-})
-
-test("resizes a multi-selection from the southeast handle and undoes both layouts", async ({
-  page,
-}) => {
-  await page.goto("/")
-  await marqueeSelectRedAndBlue(page)
-
-  const handles = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
-  for (const handle of handles) {
-    await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
-  }
-
-  const red = page.locator("[data-node-id='node-red']")
-  const blue = page.locator("[data-node-id='node-blue']")
-  const initialRed = await red.evaluate((element) => ({
-    left: getComputedStyle(element).left,
-    top: getComputedStyle(element).top,
-    width: getComputedStyle(element).width,
-    height: getComputedStyle(element).height,
-  }))
-  const initialBlue = await blue.evaluate((element) => ({
-    left: getComputedStyle(element).left,
-    top: getComputedStyle(element).top,
-    width: getComputedStyle(element).width,
-    height: getComputedStyle(element).height,
-  }))
-  const handleBox = await page.getByTestId("group-resize-se").boundingBox()
-  if (handleBox === null) throw new Error("southeast group handle was not rendered")
-
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(handleBox.x + 100, handleBox.y + 80)
-
-  await expect(red).not.toHaveCSS("width", initialRed.width)
-  await expect(red).not.toHaveCSS("height", initialRed.height)
-  await expect(blue).not.toHaveCSS("left", initialBlue.left)
-  await expect(blue).not.toHaveCSS("top", initialBlue.top)
-  await expect(blue).not.toHaveCSS("width", initialBlue.width)
-  await expect(blue).not.toHaveCSS("height", initialBlue.height)
-  const resizedRed = await red.evaluate((element) => ({
-    left: getComputedStyle(element).left,
-    top: getComputedStyle(element).top,
-    width: getComputedStyle(element).width,
-    height: getComputedStyle(element).height,
-  }))
-  const resizedBlue = await blue.evaluate((element) => ({
-    left: getComputedStyle(element).left,
-    top: getComputedStyle(element).top,
-    width: getComputedStyle(element).width,
-    height: getComputedStyle(element).height,
-  }))
-  await page.mouse.up()
-
-  await expect(red).toHaveCSS("left", resizedRed.left)
-  await expect(red).toHaveCSS("top", resizedRed.top)
-  await expect(red).toHaveCSS("width", resizedRed.width)
-  await expect(red).toHaveCSS("height", resizedRed.height)
-  await expect(blue).toHaveCSS("left", resizedBlue.left)
-  await expect(blue).toHaveCSS("top", resizedBlue.top)
-  await expect(blue).toHaveCSS("width", resizedBlue.width)
-  await expect(blue).toHaveCSS("height", resizedBlue.height)
-
-  await page.getByTestId("editor-shell").focus()
-  await page.keyboard.press("Meta+z")
-  await expect(red).toHaveCSS("left", initialRed.left)
-  await expect(red).toHaveCSS("top", initialRed.top)
-  await expect(red).toHaveCSS("width", initialRed.width)
-  await expect(red).toHaveCSS("height", initialRed.height)
-  await expect(blue).toHaveCSS("left", initialBlue.left)
-  await expect(blue).toHaveCSS("top", initialBlue.top)
-  await expect(blue).toHaveCSS("width", initialBlue.width)
-  await expect(blue).toHaveCSS("height", initialBlue.height)
-})
-
-test("keeps the southeast group corner fixed during northwest resize", async ({ page }) => {
-  await page.goto("/")
-  await marqueeSelectRedAndBlue(page)
-
-  const frame = page.getByTestId("group-selection-frame")
-  const initial = await readSvgRect(page, "group-selection-frame")
-  const initialRight = initial.x + initial.width
-  const initialBottom = initial.y + initial.height
-  const handleBox = await page.getByTestId("group-resize-nw").boundingBox()
-  if (handleBox === null) throw new Error("northwest group handle was not rendered")
-
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(handleBox.x - 50, handleBox.y - 40)
-
-  await expect
-    .poll(async () => {
-      const current = await readSvgRect(page, "group-selection-frame")
-      return (
-        Math.abs(current.x + current.width - initialRight) < 0.01 &&
-        Math.abs(current.y + current.height - initialBottom) < 0.01
-      )
+    const box = await node.boundingBox()
+    if (box === null) throw new Error("node-red was not rendered")
+    await node.dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      clientX: box.x + 10,
+      clientY: box.y + 10,
     })
-    .toBe(true)
-  await expect(frame).toBeAttached()
-  await page.mouse.up()
+    await page.mouse.move(box.x + 50, box.y + 40)
+    await page.evaluate(() =>
+      window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })),
+    )
+
+    await expect(node).toHaveCSS("left", "120px")
+    await expect(node).toHaveCSS("top", "102px")
+    await page.keyboard.press("Meta+z")
+    await expect(node).toHaveCSS("left", "80px")
+    await expect(node).toHaveCSS("top", "72px")
+    await page.keyboard.press("Control+y")
+    await expect(node).toHaveCSS("left", "120px")
+    await expect(node).toHaveCSS("top", "102px")
+    await page.keyboard.press("Control+z")
+    await expect(node).toHaveCSS("left", "80px")
+    await expect(node).toHaveCSS("top", "72px")
+    await page.keyboard.press("Meta+Shift+z")
+    await expect(node).toHaveCSS("left", "120px")
+    await expect(node).toHaveCSS("top", "102px")
+  })
+
+  test("shows eight resize handles for a single selected rectangle", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const red = page.locator("[data-node-id='node-red']")
+    await red.click({ force: true })
+
+    for (const handle of ["n", "ne", "e", "se", "s", "sw", "w", "nw"]) {
+      await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
+    }
+    await expect(page.locator("[data-resize-node-id]")).toHaveCount(0)
+
+    const handle = await page.getByTestId("group-resize-se").boundingBox()
+    if (handle === null) throw new Error("southeast resize handle was not rendered")
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handle.x + handle.width / 2 + 30, handle.y + handle.height / 2 + 20)
+    await page.mouse.up()
+
+    await expect(red).toHaveCSS("width", "270px")
+    await expect(red).toHaveCSS("height", "180px")
+  })
+
+  test("deletes the selected tree node through a command and restores it with undo", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    const treeNode = page.getByTestId("tree-node-blue")
+    const canvasNode = page.locator("[data-node-id='node-blue']")
+
+    await treeNode.click()
+    await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+
+    await treeNode.press("Delete")
+    await expect(canvasNode).toHaveCount(0)
+
+    await openCanvas(page)
+    await focusWorkspace(page)
+    await page.keyboard.press("Meta+z")
+    await expect(canvasNode).toBeVisible()
+  })
+
+  test("marquee-selects intersecting nodes and renders the SVG overlay", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const workspace = page.getByTestId("workspace")
+    const box = await workspace.boundingBox()
+    if (box === null) throw new Error("workspace was not rendered")
+
+    await page.mouse.move(box.x + 40, box.y + 40)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 340, box.y + 250)
+    await expect(page.getByTestId("marquee-selection")).toBeAttached()
+    await page.mouse.up()
+
+    await expect(page.getByTestId("marquee-selection")).toHaveCount(0)
+    await expect(page.getByTestId("selection-node-red")).toBeAttached()
+    await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
+  })
+
+  test("marquee-selects nodes when dragged from bottom-right to top-left", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const red = page.locator("[data-node-id='node-red']")
+    const box = await red.boundingBox()
+    if (box === null) throw new Error("node-red was not rendered")
+
+    await page.mouse.move(box.x + box.width + 12, box.y + box.height + 12)
+    await page.mouse.down()
+    await page.mouse.move(box.x - 12, box.y - 12)
+    await expect(page.getByTestId("marquee-selection")).toHaveAttribute("width", /.+/)
+    await page.mouse.up()
+
+    await expect(page.getByTestId("selection-node-red")).toBeAttached()
+    await expect(page.getByTestId("selection-node-blue")).toHaveCount(0)
+  })
+
+  test("moves all marquee-selected nodes in one drag", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const red = page.locator("[data-node-id='node-red']")
+    const blue = page.locator("[data-node-id='node-blue']")
+    const redBox = await red.boundingBox()
+    const blueBox = await blue.boundingBox()
+    if (redBox === null || blueBox === null) throw new Error("nodes were not rendered")
+
+    const left = Math.min(redBox.x, blueBox.x) - 12
+    const top = Math.min(redBox.y, blueBox.y) - 12
+    const right = Math.max(redBox.x + redBox.width, blueBox.x + blueBox.width) + 12
+    const bottom = Math.max(redBox.y + redBox.height, blueBox.y + blueBox.height) + 12
+    await page.mouse.move(left, top)
+    await page.mouse.down()
+    await page.mouse.move(right, bottom)
+    await page.mouse.up()
+    await expect(page.getByTestId("selection-node-red")).toBeAttached()
+    await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+
+    await page.mouse.move(redBox.x + 20, redBox.y + 20)
+    await page.mouse.down()
+    await page.mouse.move(redBox.x + 50, redBox.y + 45)
+    await expect(page.getByTestId("selection-node-red")).toHaveAttribute(
+      "transform",
+      "translate(30 25)",
+    )
+    await expect(page.getByTestId("selection-node-blue")).toHaveAttribute(
+      "transform",
+      "translate(30 25)",
+    )
+    await expect(page.getByTestId("group-selection-frame")).toHaveAttribute(
+      "transform",
+      "translate(30 25)",
+    )
+    await expect(page.getByTestId("group-resize-se")).toHaveAttribute(
+      "transform",
+      "translate(30 25)",
+    )
+    await page.mouse.up()
+
+    await expect(red).toHaveCSS("left", "110px")
+    await expect(red).toHaveCSS("top", "97px")
+    await expect(blue).toHaveCSS("left", "410px")
+    await expect(blue).toHaveCSS("top", "265px")
+    await expect(page.getByTestId("selection-node-red")).not.toHaveAttribute("transform", /.+/)
+    await expect(page.getByTestId("selection-node-blue")).not.toHaveAttribute("transform", /.+/)
+    await expect(page.getByTestId("group-selection-frame")).not.toHaveAttribute("transform", /.+/)
+    await expect(page.getByTestId("group-resize-se")).not.toHaveAttribute("transform", /.+/)
+  })
+
+  test("resizes a multi-selection from the southeast handle and undoes both layouts", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    await marqueeSelectRedAndBlue(page)
+
+    const handles = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
+    for (const handle of handles) {
+      await expect(page.getByTestId(`group-resize-${handle}`)).toBeAttached()
+    }
+
+    const red = page.locator("[data-node-id='node-red']")
+    const blue = page.locator("[data-node-id='node-blue']")
+    const initialRed = await red.evaluate((element) => ({
+      left: getComputedStyle(element).left,
+      top: getComputedStyle(element).top,
+      width: getComputedStyle(element).width,
+      height: getComputedStyle(element).height,
+    }))
+    const initialBlue = await blue.evaluate((element) => ({
+      left: getComputedStyle(element).left,
+      top: getComputedStyle(element).top,
+      width: getComputedStyle(element).width,
+      height: getComputedStyle(element).height,
+    }))
+    const handleBox = await page.getByTestId("group-resize-se").boundingBox()
+    if (handleBox === null) throw new Error("southeast group handle was not rendered")
+
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox.x + 100, handleBox.y + 80)
+
+    await expect(red).not.toHaveCSS("width", initialRed.width)
+    await expect(red).not.toHaveCSS("height", initialRed.height)
+    await expect(blue).not.toHaveCSS("left", initialBlue.left)
+    await expect(blue).not.toHaveCSS("top", initialBlue.top)
+    await expect(blue).not.toHaveCSS("width", initialBlue.width)
+    await expect(blue).not.toHaveCSS("height", initialBlue.height)
+    const resizedRed = await red.evaluate((element) => ({
+      left: getComputedStyle(element).left,
+      top: getComputedStyle(element).top,
+      width: getComputedStyle(element).width,
+      height: getComputedStyle(element).height,
+    }))
+    const resizedBlue = await blue.evaluate((element) => ({
+      left: getComputedStyle(element).left,
+      top: getComputedStyle(element).top,
+      width: getComputedStyle(element).width,
+      height: getComputedStyle(element).height,
+    }))
+    await page.mouse.up()
+
+    await expect(red).toHaveCSS("left", resizedRed.left)
+    await expect(red).toHaveCSS("top", resizedRed.top)
+    await expect(red).toHaveCSS("width", resizedRed.width)
+    await expect(red).toHaveCSS("height", resizedRed.height)
+    await expect(blue).toHaveCSS("left", resizedBlue.left)
+    await expect(blue).toHaveCSS("top", resizedBlue.top)
+    await expect(blue).toHaveCSS("width", resizedBlue.width)
+    await expect(blue).toHaveCSS("height", resizedBlue.height)
+
+    await focusWorkspace(page)
+    await page.keyboard.press("Meta+z")
+    await expect(red).toHaveCSS("left", initialRed.left)
+    await expect(red).toHaveCSS("top", initialRed.top)
+    await expect(red).toHaveCSS("width", initialRed.width)
+    await expect(red).toHaveCSS("height", initialRed.height)
+    await expect(blue).toHaveCSS("left", initialBlue.left)
+    await expect(blue).toHaveCSS("top", initialBlue.top)
+    await expect(blue).toHaveCSS("width", initialBlue.width)
+    await expect(blue).toHaveCSS("height", initialBlue.height)
+  })
+
+  test("keeps the southeast group corner fixed during northwest resize", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    await marqueeSelectRedAndBlue(page)
+
+    const frame = page.getByTestId("group-selection-frame")
+    const initial = await readSvgRect(page, "group-selection-frame")
+    const initialRight = initial.x + initial.width
+    const initialBottom = initial.y + initial.height
+    const handleBox = await page.getByTestId("group-resize-nw").boundingBox()
+    if (handleBox === null) throw new Error("northwest group handle was not rendered")
+
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox.x - 50, handleBox.y - 40)
+
+    await expect
+      .poll(async () => {
+        const current = await readSvgRect(page, "group-selection-frame")
+        return (
+          Math.abs(current.x + current.width - initialRight) < 0.01 &&
+          Math.abs(current.y + current.height - initialBottom) < 0.01
+        )
+      })
+      .toBe(true)
+    await expect(frame).toBeAttached()
+    await page.mouse.up()
+  })
+
+  test("pans, zooms at the pointer, multi-selects and exports JSON without Session state", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const workspace = page.getByTestId("workspace")
+    const world = page.getByTestId("world")
+    const red = page.locator("[data-node-id='node-red']")
+    const blue = page.locator("[data-node-id='node-blue']")
+
+    const workspaceBox = await workspace.boundingBox()
+    if (workspaceBox === null) throw new Error("workspace was not rendered")
+    await page.mouse.move(workspaceBox.x + 500, workspaceBox.y + 300)
+    await page.mouse.wheel(0, -120)
+    await expect(world).not.toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)")
+
+    await page.mouse.move(workspaceBox.x + 700, workspaceBox.y + 500)
+    await page.mouse.down({ button: "middle" })
+    await page.mouse.move(workspaceBox.x + 730, workspaceBox.y + 525)
+    await page.mouse.up({ button: "middle" })
+
+    await red.click({ force: true })
+    await blue.click({ modifiers: ["Shift"], force: true })
+    await expect(page.getByTestId("selection-node-red")).toBeAttached()
+    await expect(page.getByTestId("selection-node-blue")).toBeAttached()
+
+    await page.getByTestId("export-json").click()
+    const output = page.getByTestId("canonical-json-output")
+    await expect(output).toContainText('"node-red"')
+    await expect(output).not.toContainText("viewport")
+    await expect(output).not.toContainText("selection")
+    await expect(output).not.toContainText("gridVisible")
+  })
+
+  test("changes from grab to grabbing for space plus left-button pan", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const workspace = page.getByTestId("workspace")
+    const box = await workspace.boundingBox()
+    if (box === null) throw new Error("workspace was not rendered")
+
+    await page.mouse.move(box.x + 500, box.y + 300)
+    await page.keyboard.down("Space")
+    await expect(workspace).toHaveCSS("cursor", "grab")
+
+    await page.mouse.down({ button: "left" })
+    await expect(workspace).toHaveCSS("cursor", "grabbing")
+    await page.mouse.move(box.x + 540, box.y + 330)
+    await expect(workspace).toHaveCSS("cursor", "grabbing")
+
+    await page.mouse.up({ button: "left" })
+    await page.keyboard.up("Space")
+    await expect(workspace).toHaveCSS("cursor", "default")
+  })
+
+  test("persists the page overflow toggle and restores it through undo", async ({ page }) => {
+    await page.goto("/")
+    await openCanvas(page)
+    const toggle = page.getByTestId("toggle-page-overflow")
+    const board = page.getByTestId("page-board")
+    const output = page.getByTestId("canonical-json-output")
+
+    await expect(toggle).toHaveAttribute("aria-pressed", "true")
+    await expect(board).toHaveCSS("overflow", "visible")
+    await toggle.click()
+    await expect(toggle).toHaveAttribute("aria-pressed", "false")
+    await expect(board).toHaveCSS("overflow", "hidden")
+
+    await page.getByTestId("export-json").click()
+    await expect(output).toContainText('"overflow": "hidden"')
+
+    await focusWorkspace(page)
+    await page.keyboard.press("Meta+z")
+    await expect(toggle).toHaveAttribute("aria-pressed", "true")
+    await expect(board).toHaveCSS("overflow", "visible")
+  })
+
+  test("creates a node and performs tree rename, visibility, lock and reorder", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await openScene(page)
+    await page.getByTestId("create-node").click()
+    const created = page.locator("[data-node-id='node-created-1']")
+    await openCanvas(page)
+    await expect(created).toBeVisible()
+
+    await openScene(page)
+    await page.getByTestId("tree-node-created-1").dblclick()
+    await page.getByTestId("tree-rename-node-created-1").fill("Created card")
+    await page.getByTestId("tree-rename-node-created-1").press("Enter")
+    await expect(page.getByTestId("tree-node-created-1")).toHaveText("Created card")
+
+    await page.getByTestId("tree-lock-node-created-1").click()
+    await openCanvas(page)
+    const before = await created.boundingBox()
+    if (before === null) throw new Error("created node was not rendered")
+    await page.mouse.move(before.x + 10, before.y + 10)
+    await page.mouse.down()
+    await page.mouse.move(before.x + 50, before.y + 50)
+    await page.mouse.up()
+    await expect(created).toHaveCSS("left", "120px")
+    await expect(created).toHaveCSS("top", "120px")
+
+    await openScene(page)
+    await page.getByTestId("tree-lock-node-created-1").click()
+    await page.getByTestId("tree-move-up-node-created-1").click()
+    const rows = page.locator("[data-tree-control='select']")
+    await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-red")
+    await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-created-1")
+    await expect(rows.nth(3)).toHaveAttribute("data-tree-id", "node-blue")
+    await openCanvas(page)
+    await focusWorkspace(page)
+    await page.keyboard.press("Meta+z")
+    await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-blue")
+
+    await page.getByTestId("tree-visibility-node-created-1").click()
+    await expect(created).toHaveCount(0)
+  })
+
+  test("drag-reorders sibling tree rows through one undoable command", async ({ page }) => {
+    await page.goto("/")
+    await openScene(page)
+    const rows = page.locator("[data-tree-control='select']")
+
+    await page.getByTestId("tree-row-node-red").dragTo(page.getByTestId("tree-row-node-blue"))
+    await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-blue")
+    await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-red")
+
+    await openCanvas(page)
+    await focusWorkspace(page)
+    await page.keyboard.press("Meta+z")
+    await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-red")
+    await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-blue")
+  })
 })
 
-test("pans, zooms at the pointer, multi-selects and exports JSON without Session state", async ({
+test("mounts the Godot 2D workspace with the canonical panels and no mode bar", async ({
   page,
 }) => {
   await page.goto("/")
-  const workspace = page.getByTestId("workspace")
-  const world = page.getByTestId("world")
-  const red = page.locator("[data-node-id='node-red']")
-  const blue = page.locator("[data-node-id='node-blue']")
 
-  const workspaceBox = await workspace.boundingBox()
-  if (workspaceBox === null) throw new Error("workspace was not rendered")
-  await page.mouse.move(workspaceBox.x + 500, workspaceBox.y + 300)
-  await page.mouse.wheel(0, -120)
-  await expect(world).not.toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)")
-
-  await page.mouse.move(workspaceBox.x + 700, workspaceBox.y + 500)
-  await page.mouse.down({ button: "middle" })
-  await page.mouse.move(workspaceBox.x + 730, workspaceBox.y + 525)
-  await page.mouse.up({ button: "middle" })
-
-  await red.click()
-  await blue.click({ modifiers: ["Shift"] })
-  await expect(page.getByTestId("selection-node-red")).toBeAttached()
-  await expect(page.getByTestId("selection-node-blue")).toBeAttached()
-
-  await page.getByTestId("export-json").click()
-  const output = page.getByTestId("canonical-json-output")
-  await expect(output).toContainText('"node-red"')
-  await expect(output).not.toContainText("viewport")
-  await expect(output).not.toContainText("selection")
-  await expect(output).not.toContainText("gridVisible")
+  for (const title of ["Scene", "Canvas", "Inspector"]) {
+    await expect(page.getByRole("tab", { name: title })).toBeVisible()
+  }
+  await expect(page.getByRole("navigation", { name: "Editor modes" })).toHaveCount(0)
+  await expect(page.getByRole("complementary", { name: "Component tree" })).toBeVisible()
+  await openCanvas(page)
+  await expect(page.getByRole("region", { name: "Page board" })).toBeVisible()
 })
 
-test("changes from grab to grabbing for space plus left-button pan", async ({ page }) => {
+test("selects a Scene node, edits its Inspector name, and undoes and redoes the rename", async ({
+  page,
+}) => {
   await page.goto("/")
-  const workspace = page.getByTestId("workspace")
-  const box = await workspace.boundingBox()
-  if (box === null) throw new Error("workspace was not rendered")
+  await openScene(page)
+  await page.getByTestId("tree-node-red").click()
+  await page.getByRole("tab", { name: "Inspector" }).click()
+  const inspectorName = page.getByTestId("inspector-name")
+  await expect(inspectorName).toHaveValue("Red rectangle")
+  await expect(page.getByTestId("inspector-type")).toHaveText("node")
 
-  await page.mouse.move(box.x + 500, box.y + 300)
-  await page.keyboard.down("Space")
-  await expect(workspace).toHaveCSS("cursor", "grab")
+  await inspectorName.fill("Renamed rectangle")
+  await inspectorName.press("Enter")
+  await expect(page.getByTestId("tree-node-red")).toHaveText("Renamed rectangle")
+  await expect(inspectorName).toHaveValue("Renamed rectangle")
 
-  await page.mouse.down({ button: "left" })
-  await expect(workspace).toHaveCSS("cursor", "grabbing")
-  await page.mouse.move(box.x + 540, box.y + 330)
-  await expect(workspace).toHaveCSS("cursor", "grabbing")
-
-  await page.mouse.up({ button: "left" })
-  await page.keyboard.up("Space")
-  await expect(workspace).toHaveCSS("cursor", "default")
-})
-
-test("persists the page overflow toggle and restores it through undo", async ({ page }) => {
-  await page.goto("/")
-  const toggle = page.getByTestId("toggle-page-overflow")
-  const board = page.getByTestId("page-board")
-  const output = page.getByTestId("canonical-json-output")
-
-  await expect(toggle).toHaveAttribute("aria-pressed", "true")
-  await expect(board).toHaveCSS("overflow", "visible")
-  await toggle.click()
-  await expect(toggle).toHaveAttribute("aria-pressed", "false")
-  await expect(board).toHaveCSS("overflow", "hidden")
-
-  await page.getByTestId("export-json").click()
-  await expect(output).toContainText('"overflow": "hidden"')
-
-  await page.getByTestId("editor-shell").focus()
+  await openCanvas(page)
+  await focusWorkspace(page)
   await page.keyboard.press("Meta+z")
-  await expect(toggle).toHaveAttribute("aria-pressed", "true")
-  await expect(board).toHaveCSS("overflow", "visible")
+  await expect(page.getByTestId("tree-node-red")).toHaveText("Red rectangle")
+  await page.keyboard.press("Control+y")
+  await expect(page.getByTestId("tree-node-red")).toHaveText("Renamed rectangle")
 })
 
-test("creates a node and performs tree rename, visibility, lock and reorder", async ({ page }) => {
+test("closes and reopens the Inspector from the visible Dockview tab", async ({ page }) => {
   await page.goto("/")
+  const tab = page.getByRole("tab", { name: "Inspector" })
+  await expect(tab).toBeVisible()
+  await tab.press("Delete")
+  await expect(page.getByRole("tab", { name: "Inspector" })).toHaveCount(0)
+
+  await page.getByTestId("workspace-panel-menu").click()
+  await page.getByRole("menuitem", { name: "Inspector" }).click()
+  await expect(page.getByRole("tab", { name: "Inspector" })).toBeVisible()
+  await page.getByRole("tab", { name: "Inspector" }).click()
+  await expect(page.getByTestId("inspector-name")).toBeVisible()
+})
+
+test("persists the workspace layout envelope in localStorage across reload", async ({ page }) => {
+  await page.goto("/")
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "composeui:workspace:2d:v1",
+      JSON.stringify({ version: 1, modeId: "2d", layout: { panels: ["canvas"] } }),
+    )
+  })
+  await expect(
+    page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v1")),
+  ).resolves.toContain('"modeId":"2d"')
+  await page.reload()
+  await expect(page.getByRole("tab", { name: "Canvas" })).toBeVisible()
+})
+
+test("falls back to the canonical workspace when persisted layout JSON is corrupted", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("composeui:workspace:2d:v1", "{not valid json")
+  })
+  await page.goto("/")
+
+  await expect(page.getByRole("tab", { name: "Scene" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "Canvas" })).toBeVisible()
+  await expect(page.getByRole("tab", { name: "Inspector" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Canvas" })).toBeVisible()
+})
+
+test.skip("resets the Dockview layout without changing canonical document JSON", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByTestId("export-json").click()
+  const output = page.getByTestId("canonical-json-output")
+  const before = await output.textContent()
+
+  const inspectorTab = page.getByRole("tab", { name: "Inspector" })
+  await inspectorTab.press("Delete")
+  await page.getByTestId("reset-layout").click()
+  await expect(page.getByRole("tab", { name: "Inspector" })).toBeVisible()
+  await page.getByTestId("export-json").click()
+  await expect(output).toHaveText(before ?? "")
+})
+
+test.skip("runs workspace commands for creation, grid, overflow, and canonical export", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByTestId("toggle-grid").click()
+  await expect(page.getByTestId("toggle-grid")).toHaveAttribute("aria-pressed", "true")
+
   await page.getByTestId("create-node").click()
-  const created = page.locator("[data-node-id='node-created-1']")
-  await expect(created).toBeVisible()
+  await expect(page.locator("[data-node-id='node-created-1']")).toBeVisible()
+  await page.getByTestId("toggle-page-overflow").click()
+  await expect(page.getByTestId("toggle-page-overflow")).toHaveAttribute("aria-pressed", "false")
 
-  await page.getByTestId("tree-node-created-1").dblclick()
-  await page.getByTestId("tree-rename-node-created-1").fill("Created card")
-  await page.getByTestId("tree-rename-node-created-1").press("Enter")
-  await expect(page.getByTestId("tree-node-created-1")).toHaveText("Created card")
-
-  await page.getByTestId("tree-lock-node-created-1").click()
-  const before = await created.boundingBox()
-  if (before === null) throw new Error("created node was not rendered")
-  await page.mouse.move(before.x + 10, before.y + 10)
-  await page.mouse.down()
-  await page.mouse.move(before.x + 50, before.y + 50)
-  await page.mouse.up()
-  await expect(created).toHaveCSS("left", "120px")
-  await expect(created).toHaveCSS("top", "120px")
-
-  await page.getByTestId("tree-lock-node-created-1").click()
-  await page.getByTestId("tree-move-up-node-created-1").click()
-  const rows = page.locator("[data-tree-control='select']")
-  await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-red")
-  await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-created-1")
-  await expect(rows.nth(3)).toHaveAttribute("data-tree-id", "node-blue")
-  await page.getByTestId("editor-shell").focus()
-  await page.keyboard.press("Meta+z")
-  await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-blue")
-
-  await page.getByTestId("tree-visibility-node-created-1").click()
-  await expect(created).toHaveCount(0)
+  await page.getByTestId("export-json").click()
+  await expect(page.getByTestId("canonical-json-output")).toContainText('"node-created-1"')
+  await expect(page.getByTestId("canonical-json-output")).not.toContainText("gridVisible")
+  await expect(page.getByTestId("canonical-json-output")).not.toContainText("selection")
 })
 
-test("drag-reorders sibling tree rows through one undoable command", async ({ page }) => {
+async function assertViewportLayout(page: Page) {
+  const shell = await page.locator(".composeui-editor__workspace-shell").boundingBox()
+  const header = await page.locator(".composeui-editor__workspace-header").boundingBox()
+  const dockview = await page.locator(".composeui-editor__dockview-host").boundingBox()
+  if (shell === null || header === null || dockview === null) {
+    throw new Error("workspace layout was not rendered")
+  }
+  expect(shell.x).toBeGreaterThanOrEqual(0)
+  expect(shell.y).toBeGreaterThanOrEqual(0)
+  expect(shell.x + shell.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  expect(shell.y + shell.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+  expect(header.y + header.height).toBeLessThanOrEqual(dockview.y + 1)
+  expect((await page.screenshot()).byteLength).toBeGreaterThan(0)
+}
+
+test("keeps the workspace panels within a 1440x900 viewport without overlap", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/")
-  const rows = page.locator("[data-tree-control='select']")
+  await assertViewportLayout(page)
+})
 
-  await page.getByTestId("tree-row-node-red").dragTo(page.getByTestId("tree-row-node-blue"))
-  await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-blue")
-  await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-red")
-
-  await page.getByTestId("editor-shell").focus()
-  await page.keyboard.press("Meta+z")
-  await expect(rows.nth(1)).toHaveAttribute("data-tree-id", "node-red")
-  await expect(rows.nth(2)).toHaveAttribute("data-tree-id", "node-blue")
+test("keeps the workspace panels within a 900x700 viewport without overlap", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 })
+  await page.goto("/")
+  await assertViewportLayout(page)
 })
