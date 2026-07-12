@@ -1,4 +1,4 @@
-import type { EditorRecord } from "@composeui/core"
+import type { EditorRecord, HistoryEntry } from "@composeui/core"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
@@ -148,6 +148,64 @@ export function createInspectorPanel(): FirstPartyPanelDescriptor {
   })
 }
 
+export function createHistoryPanel(): FirstPartyPanelDescriptor {
+  return descriptor("history", (root, context) => {
+    const panel = document.createElement("section")
+    panel.className = "composeui-editor__history"
+    panel.setAttribute("aria-label", "History")
+    root.replaceChildren(panel)
+
+    const render = (): void => {
+      const history = context.editor.getHistory()
+      const heading = document.createElement("h2")
+      heading.textContent = "History"
+      const actions = document.createElement("div")
+      actions.className = "composeui-editor__history-actions"
+      const undo = document.createElement("button")
+      undo.type = "button"
+      undo.dataset.testid = "history-undo"
+      undo.setAttribute("aria-label", "Undo history entry")
+      undo.textContent = "Undo"
+      undo.disabled = history.past.length === 0
+      undo.addEventListener("click", () => context.editor.undo())
+      const redo = document.createElement("button")
+      redo.type = "button"
+      redo.dataset.testid = "history-redo"
+      redo.setAttribute("aria-label", "Redo history entry")
+      redo.textContent = "Redo"
+      redo.disabled = history.future.length === 0
+      redo.addEventListener("click", () => context.editor.redo())
+      actions.append(undo, redo)
+
+      const list = document.createElement("ol")
+      list.dataset.testid = "history-list"
+      const entries = history.past.reduceRight<HistoryEntry[]>((reversed, entry) => {
+        reversed.push(entry)
+        return reversed
+      }, [])
+      for (const entry of entries) {
+        const item = document.createElement("li")
+        item.dataset.testid = "history-entry"
+        item.textContent = entry.label
+        list.append(item)
+      }
+      if (history.past.length === 0 && history.future.length > 0) {
+        const future = document.createElement("li")
+        future.dataset.testid = "history-future-entry"
+        future.textContent = `Redo: ${history.future.at(-1)?.label ?? "entry"}`
+        list.append(future)
+      }
+      panel.replaceChildren(heading, actions, list)
+    }
+    render()
+    const unsubscribe = context.editor.subscribe(render)
+    return () => {
+      unsubscribe()
+      root.replaceChildren()
+    }
+  })
+}
+
 export function createResourcesPanel(): FirstPartyPanelDescriptor {
   return descriptor("resources", (root, context) => {
     const panel = document.createElement("section")
@@ -234,7 +292,7 @@ export function createWorkspacePanels(): FirstPartyPanelDescriptor[] {
   return [
     createScenePanel(),
     createResourcesPanel(),
-    createUtilityPanel("history"),
+    createHistoryPanel(),
     createCanvasPanel(),
     createInspectorPanel(),
     createUtilityPanel("signals"),

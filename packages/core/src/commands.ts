@@ -104,6 +104,7 @@ export interface Editor {
   redo(): Result<void>
   canUndo(): boolean
   canRedo(): boolean
+  getHistory(): { past: HistoryEntry[]; future: HistoryEntry[] }
   getDiagnostics(): Diagnostic[]
   subscribe(listener: (event: EditorChangeEvent) => void): () => void
 }
@@ -635,6 +636,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
     redo: () => applyHistory("redo"),
     canUndo: () => history.canUndo(),
     canRedo: () => history.canRedo(),
+    getHistory: () => history.snapshot(),
     getDiagnostics: () => structuredClone(diagnostics),
     subscribe(listener) {
       listeners.add(listener)

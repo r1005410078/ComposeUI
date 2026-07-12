@@ -103,6 +103,13 @@ export class History {
     return this.#future.length > 0
   }
 
+  snapshot(): { past: HistoryEntry[]; future: HistoryEntry[] } {
+    return {
+      past: structuredClone(this.#past),
+      future: structuredClone(this.#future),
+    }
+  }
+
   clear(): void {
     this.#past.length = 0
     this.#future.length = 0

@@ -213,6 +213,20 @@ describe("Editor history", () => {
     })
   })
 
+  it("exposes cloned past and future entries through the editor", () => {
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
+    createNode(editor, "node-1")
+
+    const snapshot = editor.getHistory()
+    expect(snapshot.past.map((entry) => entry.label)).toEqual(["node.create"])
+    snapshot.past[0]!.label = "mutated"
+    expect(editor.getHistory().past[0]?.label).toBe("node.create")
+
+    expect(editor.undo().ok).toBe(true)
+    expect(editor.getHistory().past).toHaveLength(0)
+    expect(editor.getHistory().future.map((entry) => entry.label)).toEqual(["node.create"])
+  })
+
   it("emits changes only for successful commits with typed origins", () => {
     const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
     const events: EditorChangeEvent[] = []

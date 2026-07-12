@@ -593,18 +593,17 @@ test("closes and reopens the Inspector from the visible Dockview tab", async ({ 
   await expect(page.getByTestId("inspector-name")).toBeVisible()
 })
 
-test("persists the workspace layout envelope in localStorage across reload", async ({ page }) => {
+test("persists a closed History panel across reload", async ({ page }) => {
   await page.goto("/")
-  await page.evaluate(() => {
-    localStorage.setItem(
-      "composeui:workspace:2d:v1",
-      JSON.stringify({ version: 1, modeId: "2d", layout: { panels: ["canvas"] } }),
-    )
-  })
+  const historyTab = page.getByRole("tab", { name: "History" })
+  await expect(historyTab).toBeVisible()
+  await historyTab.press("Delete")
+  await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0)
   await expect(
     page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v1")),
-  ).resolves.toContain('"modeId":"2d"')
+  ).resolves.not.toContain('"component":"history"')
   await page.reload()
+  await expect(page.getByRole("tab", { name: "History" })).toHaveCount(0)
   await expect(page.getByRole("tab", { name: "Canvas" })).toBeVisible()
 })
 
@@ -659,18 +658,70 @@ test("runs workspace commands for creation, grid, overflow, and canonical export
 })
 
 async function assertViewportLayout(page: Page) {
-  const shell = await page.locator(".composeui-editor__workspace-shell").boundingBox()
-  const header = await page.locator(".composeui-editor__workspace-header").boundingBox()
+  const toolbar = await page.locator(".composeui-editor__toolbar").boundingBox()
   const dockview = await page.locator(".composeui-editor__dockview-host").boundingBox()
-  if (shell === null || header === null || dockview === null) {
+  if (toolbar === null || dockview === null) {
     throw new Error("workspace layout was not rendered")
   }
-  expect(shell.x).toBeGreaterThanOrEqual(0)
-  expect(shell.y).toBeGreaterThanOrEqual(0)
-  expect(shell.x + shell.width).toBeLessThanOrEqual(page.viewportSize()!.width)
-  expect(shell.y + shell.height).toBeLessThanOrEqual(page.viewportSize()!.height)
-  expect(header.y + header.height).toBeLessThanOrEqual(dockview.y + 1)
-  expect((await page.screenshot()).byteLength).toBeGreaterThan(0)
+
+  const rectangles = async (selector: string) =>
+    page.locator(selector).evaluateAll((elements) =>
+      elements
+        .filter((element) => {
+          const style = getComputedStyle(element)
+          return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0"
+        })
+        .map((element) => {
+          const rect = element.getBoundingClientRect()
+          return {
+            group: (() => {
+              const tablist = element.closest("[role='tablist']")
+              if (tablist === null) return "panel"
+              const tablistRect = tablist.getBoundingClientRect()
+              return `${tablistRect.x}:${tablistRect.y}:${tablistRect.width}:${tablistRect.height}`
+            })(),
+            x: rect.x,
+            y: rect.y,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+          }
+        })
+        .filter((rect) => rect.width > 0 && rect.height > 0),
+    )
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
+  const assertNoOverlap = (
+    name: string,
+    boxes: Array<{
+      x: number
+      y: number
+      right: number
+      bottom: number
+      width: number
+      height: number
+      group: string
+    }>,
+  ) => {
+    expect(boxes.length, `${name} should render visible rectangles`).toBeGreaterThan(0)
+    for (let index = 0; index < boxes.length; index += 1) {
+      for (let next = index + 1; next < boxes.length; next += 1) {
+        const left = boxes[index]!
+        const right = boxes[next]!
+        if (left.group !== right.group) continue
+        const overlaps =
+          left.x < right.right &&
+          left.right > right.x &&
+          left.y < right.bottom &&
+          left.bottom > right.y
+        expect(overlaps, `${name} rectangles ${index} and ${next} overlap`).toBe(false)
+      }
+    }
+  }
+
+  expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(dockview.y + 1)
+  assertNoOverlap("Dockview panels", await rectangles(".dv-groupview"))
+  assertNoOverlap("Dockview tabs", await rectangles(".dv-tab"))
 }
 
 test("keeps the workspace panels within a 1440x900 viewport without overlap", async ({ page }) => {

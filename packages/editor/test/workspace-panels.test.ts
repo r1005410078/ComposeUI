@@ -99,6 +99,37 @@ describe("workspace panel renderers", () => {
     }
   })
 
+  it("renders core history and wires accessible undo and redo actions", () => {
+    const context = createContext()
+    const root = document.createElement("div")
+    const dispose = panel("history").mount(root, context)
+
+    expect(root.querySelector("[aria-label='History']")).not.toBeNull()
+    expect(root.querySelectorAll("[data-testid='history-entry']")).toHaveLength(1)
+    expect(root.querySelector("[data-testid='history-entry']")?.textContent).toBe("node.create")
+
+    const undo = root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")
+    const redo = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
+    expect(undo?.disabled).toBe(false)
+    expect(redo?.disabled).toBe(true)
+    undo!.click()
+    expect(context.editor.getRecord("node-1")).toBeUndefined()
+    const undoAfter = root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")
+    const redoAfter = root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")
+    expect(undoAfter?.disabled).toBe(true)
+    expect(redoAfter?.disabled).toBe(false)
+    redoAfter!.click()
+    expect(context.editor.getRecord("node-1")).toBeDefined()
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='history-undo']")?.disabled).toBe(
+      false,
+    )
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='history-redo']")?.disabled).toBe(
+      true,
+    )
+
+    if (typeof dispose === "function") dispose()
+  })
+
   it("renders resources or an honest empty state", async () => {
     const resources = { list: vi.fn().mockResolvedValue([{ id: "asset-1", name: "Logo" }]) }
     const context = createContext(resources)
@@ -155,7 +186,7 @@ describe("workspace panel renderers", () => {
 
   it("provides named empty states for utility panels", () => {
     const context = createContext()
-    for (const id of ["history", "signals", "output", "debugger", "animation", "shader-editor"]) {
+    for (const id of ["signals", "output", "debugger", "animation", "shader-editor"]) {
       const root = document.createElement("div")
       panel(id).mount(root, context)
       expect(root.querySelector(`[data-testid='empty-${id}']`)).not.toBeNull()
