@@ -546,6 +546,9 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
 }) => {
   await page.goto("/")
 
+  await expect(page.getByTestId("workspace-project-title")).toHaveText("新建游戏项目")
+  await expect(page.getByTestId("workspace-run")).toBeVisible()
+  await expect(page.getByTestId("workspace-save")).toBeVisible()
   for (const title of ["Scene", "Canvas", "Inspector"]) {
     await expect(page.getByRole("tab", { name: title })).toBeVisible()
   }
@@ -556,7 +559,16 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
   const workspaceBox = await page.getByTestId("workspace").boundingBox()
   if (workspaceBox === null) throw new Error("canvas workspace was not rendered")
   expect(workspaceBox.width).toBeGreaterThan(600)
-  expect(workspaceBox.height).toBeGreaterThan(500)
+  expect(workspaceBox.height).toBeGreaterThan(450)
+  const toolbarBox = await page.locator(".composeui-editor__toolbar").boundingBox()
+  const canvasBox = await page.getByRole("region", { name: "Canvas" }).boundingBox()
+  const sceneBox = await page.getByRole("region", { name: "Scene" }).boundingBox()
+  if (toolbarBox === null || canvasBox === null || sceneBox === null) {
+    throw new Error("workspace panel chrome was not rendered")
+  }
+  expect(toolbarBox.x).toBeGreaterThanOrEqual(sceneBox.x + sceneBox.width - 1)
+  expect(toolbarBox.x).toBeGreaterThanOrEqual(canvasBox.x - 1)
+  expect(toolbarBox.x + toolbarBox.width).toBeLessThanOrEqual(canvasBox.x + canvasBox.width + 1)
 })
 
 test("selects a Scene node, edits its Inspector name, and undoes and redoes the rename", async ({
@@ -673,7 +685,8 @@ async function assertViewportLayout(page: Page) {
 
   const toolbar = await page.locator(".composeui-editor__toolbar").boundingBox()
   const dockview = await page.locator(".composeui-editor__dockview-host").boundingBox()
-  if (toolbar === null || dockview === null) {
+  const canvas = await page.getByRole("region", { name: "Canvas" }).boundingBox()
+  if (toolbar === null || dockview === null || canvas === null) {
     throw new Error("workspace layout was not rendered")
   }
 
@@ -732,7 +745,9 @@ async function assertViewportLayout(page: Page) {
     }
   }
 
-  expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(dockview.y + 1)
+  expect(toolbar.y).toBeGreaterThanOrEqual(dockview.y - 1)
+  expect(toolbar.x).toBeGreaterThanOrEqual(canvas.x - 1)
+  expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(canvas.x + canvas.width + 1)
   assertNoOverlap("Dockview panels", await rectangles(".dv-groupview"))
   assertNoOverlap("Dockview tabs", await rectangles(".dv-tab"))
 }

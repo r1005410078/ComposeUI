@@ -4,6 +4,7 @@ import {
   type IContentRenderer,
   type ITabRenderer,
 } from "dockview"
+import { Play, Save, createElement as createIconElement } from "lucide"
 import type { Editor } from "@composeui/core"
 import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
@@ -48,11 +49,15 @@ export type DockviewFactory = (
 
 export interface MountEditorWorkspaceOptions {
   pageId: string
+  projectTitle?: string
+  mountToolbarExtras?: (root: HTMLElement) => void | (() => void) | { destroy(): void }
   layoutStore?: WorkspaceLayoutStore
   resources?: WorkspaceResourceService
   panelRegistry?: PanelRegistry | WorkspacePanelRegistry
   modeRegistry?: ModeRegistry
   createDockview?: DockviewFactory
+  onRun?: () => void
+  onSave?: () => void
   onEvent?: (event: WorkspaceEvent) => void
 }
 
@@ -114,6 +119,14 @@ function toDisposer(mount: ReturnType<WorkspacePanelMount>): (() => void) | unde
   return undefined
 }
 
+function toToolbarExtrasDisposer(
+  mount: ReturnType<NonNullable<MountEditorWorkspaceOptions["mountToolbarExtras"]>>,
+): (() => void) | undefined {
+  if (typeof mount === "function") return mount
+  if (mount !== undefined) return () => mount.destroy()
+  return undefined
+}
+
 function errorPanel(root: HTMLElement, title: string, message: string): void {
   const panel = document.createElement("section")
   panel.setAttribute("role", "alert")
@@ -130,6 +143,21 @@ function preventNonClosableTabDelete(event: KeyboardEvent): void {
   if (event.key !== "Delete" && event.key !== "Backspace") return
   event.preventDefault()
   event.stopPropagation()
+}
+
+function appBarButton(
+  id: string,
+  label: string,
+  icon: Parameters<typeof createIconElement>[0],
+): HTMLButtonElement {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "composeui-editor__app-action"
+  button.dataset.testid = `workspace-${id}`
+  button.title = label
+  button.setAttribute("aria-label", label)
+  button.append(createIconElement(icon))
+  return button
 }
 
 function createNonClosableTab(): ITabRenderer {
@@ -188,9 +216,23 @@ export function mountEditorWorkspace(
   const shell = document.createElement("div")
   shell.className = "composeui-editor__workspace-shell"
   const header = document.createElement("header")
-  header.className = "composeui-editor__workspace-header"
+  header.className = "composeui-editor__workspace-header composeui-editor__app-bar"
+  const title = document.createElement("div")
+  title.className = "composeui-editor__project-title"
+  title.dataset.testid = "workspace-project-title"
+  title.textContent = options.projectTitle ?? "Untitled project"
+  const modeSlot = document.createElement("div")
+  modeSlot.className = "composeui-editor__mode-slot"
+  const actions = document.createElement("div")
+  actions.className = "composeui-editor__app-actions"
+  const run = appBarButton("run", "Run project", Play)
+  run.addEventListener("click", () => options.onRun?.())
+  const save = appBarButton("save", "Save project", Save)
+  save.addEventListener("click", () => options.onSave?.())
+  actions.append(run, save)
   const dockviewHost = document.createElement("div")
   dockviewHost.className = "composeui-editor__dockview-host"
+  header.append(title, modeSlot, actions)
   shell.append(header, dockviewHost)
   root.replaceChildren(shell)
 
@@ -208,23 +250,8 @@ export function mountEditorWorkspace(
       if (mode.id === "2d") button.setAttribute("aria-current", "page")
       modeBar.append(button)
     }
-    header.append(modeBar)
+    modeSlot.append(modeBar)
   }
-
-  const toolbarRoot = document.createElement("nav")
-  header.append(toolbarRoot)
-  const toolbarDispose = mountWorkspaceToolbar(toolbarRoot, {
-    editor,
-    session,
-    api: {
-      undo: () => editor.undo(),
-      redo: () => editor.redo(),
-      openPanel: (id) => {
-        return api.openPanel(id)
-      },
-    },
-    panels: [...registry.values()],
-  })
 
   const dockview = (options.createDockview ?? (createDockview as unknown as DockviewFactory))(
     dockviewHost,
@@ -276,7 +303,38 @@ export function mountEditorWorkspace(
               ...(options.resources === undefined ? {} : { resources: options.resources }),
             }
             try {
-              panelDisposer = toDisposer(descriptor.mount(containerElement, context))
+              if (descriptor.id === CANVAS) {
+                const canvasPanel = document.createElement("div")
+                canvasPanel.className = "composeui-editor__canvas-panel"
+                const toolbarRoot = document.createElement("nav")
+                const canvasRoot = document.createElement("div")
+                canvasRoot.className = "composeui-editor__canvas-panel-body"
+                canvasPanel.append(toolbarRoot, canvasRoot)
+                containerElement.replaceChildren(canvasPanel)
+                const disposeToolbar = mountWorkspaceToolbar(toolbarRoot, {
+                  editor,
+                  session,
+                  api: {
+                    undo: () => editor.undo(),
+                    redo: () => editor.redo(),
+                    openPanel: (id) => {
+                      return api.openPanel(id)
+                    },
+                  },
+                  panels: [...registry.values()],
+                })
+                const disposeToolbarExtras = toToolbarExtrasDisposer(
+                  options.mountToolbarExtras?.(toolbarRoot),
+                )
+                const disposeCanvas = toDisposer(descriptor.mount(canvasRoot, context))
+                panelDisposer = () => {
+                  disposeCanvas?.()
+                  disposeToolbarExtras?.()
+                  disposeToolbar()
+                }
+              } else {
+                panelDisposer = toDisposer(descriptor.mount(containerElement, context))
+              }
               if (panelDisposer !== undefined) disposers.set(name, release)
             } catch (error) {
               if (descriptor.id === CANVAS)
@@ -504,7 +562,6 @@ export function mountEditorWorkspace(
       if (disposed) return
       disposed = true
       layoutSubscription?.dispose()
-      toolbarDispose()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()
       dockview.dispose()

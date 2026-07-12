@@ -228,6 +228,7 @@ describe("editor workspace", () => {
 
     const mounted = mountEditorWorkspace(root, createEditorInstance(), {
       pageId: "page-1",
+      projectTitle: "新建游戏项目",
       createDockview: fake.factory,
     })
 
@@ -266,6 +267,19 @@ describe("editor workspace", () => {
     }
     expect(mounted.api.closePanel("canvas:page-1")).toBe(false)
     expect(root.querySelector("[data-testid='workspace-mode-bar']")).toBeNull()
+    expect(root.querySelector("[data-testid='workspace-project-title']")?.textContent).toBe(
+      "新建游戏项目",
+    )
+    expect(root.querySelector("[data-testid='workspace-run']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='workspace-save']")).not.toBeNull()
+    expect(
+      root.querySelector(".composeui-editor__workspace-header .composeui-editor__toolbar"),
+    ).toBeNull()
+    expect(
+      fake.panels
+        .get("canvas:page-1")
+        ?.renderer?.element.querySelector(".composeui-editor__toolbar"),
+    ).not.toBeNull()
   })
 
   it("reopens auxiliary panels and focuses them through the public API", () => {
@@ -387,8 +401,9 @@ describe("editor workspace", () => {
     expect(mount).toHaveBeenCalledTimes(1)
     expect(mounted.api.closePanel("history")).toBe(true)
     expect(dispose).toHaveBeenCalledTimes(1)
-    root.querySelector<HTMLButtonElement>("[data-testid='workspace-panel-menu']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-panel-id='history']")!.click()
+    const canvas = fake.panels.get("canvas:page-1")?.renderer?.element
+    canvas?.querySelector<HTMLButtonElement>("[data-testid='workspace-panel-menu']")!.click()
+    canvas?.querySelector<HTMLButtonElement>("[data-panel-id='history']")!.click()
     expect(fake.panels.has("history")).toBe(true)
     expect(mount).toHaveBeenCalledTimes(2)
     mounted.dispose()

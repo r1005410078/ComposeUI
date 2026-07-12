@@ -19,13 +19,40 @@
   align-items: center;
   background: #202023;
   border-bottom: 1px solid var(--composeui-workspace-border);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   min-height: 36px;
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .composeui-editor__workspace-header:has(.composeui-editor__mode-bar) {
-  min-height: 68px;
+  min-height: 36px;
+}
+
+.composeui-editor__project-title {
+  color: #e4e4e7;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composeui-editor__mode-slot {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.composeui-editor__app-actions {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+  min-width: 0;
+  padding: 0 8px;
 }
 
 .composeui-editor__mode-bar {
@@ -37,6 +64,7 @@
 }
 
 .composeui-editor__mode-bar button,
+.composeui-editor__app-action,
 .composeui-editor__toolbar-button,
 .composeui-editor__panel-menu-item {
   background: transparent;
@@ -56,6 +84,25 @@
   color: #fff;
 }
 
+.composeui-editor__app-action {
+  align-items: center;
+  border-radius: 4px;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.composeui-editor__app-action:hover {
+  background: #3f3f46;
+}
+
+.composeui-editor__app-action svg {
+  height: 16px;
+  width: 16px;
+}
+
 .composeui-editor__toolbar {
   align-items: center;
   display: flex;
@@ -63,6 +110,7 @@
   gap: 8px;
   justify-content: space-between;
   min-width: 0;
+  overflow-x: auto;
   padding: 4px 8px;
 }
 
@@ -138,6 +186,28 @@
   width: 100%;
 }
 
+.composeui-editor__canvas-panel {
+  background: #202023;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.composeui-editor__canvas-panel > .composeui-editor__toolbar {
+  border-bottom: 1px solid var(--composeui-workspace-border);
+  position: relative;
+  z-index: 30;
+}
+
+.composeui-editor__canvas-panel-body {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 @media (max-width: 640px) {
   .composeui-editor__workspace-shell {
     --composeui-workspace-min-width: 320px;
@@ -145,7 +215,6 @@
 
   .composeui-editor__workspace-header:has(.composeui-editor__mode-bar) {
     align-items: stretch;
-    flex-direction: column;
   }
 
   .composeui-editor__mode-bar {

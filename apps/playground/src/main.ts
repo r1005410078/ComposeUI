@@ -40,58 +40,63 @@ function mountPlayground(app: HTMLElement): void {
   const layoutStore = createPlaygroundLayoutStore(window.localStorage)
   const mounted = mountEditorWorkspace(editorHost, scenario.editor, {
     pageId: scenario.pageId,
+    projectTitle: "新建游戏项目",
     layoutStore,
+    mountToolbarExtras(toolbar) {
+      const tools = toolbar.querySelector<HTMLElement>(".composeui-editor__toolbar-group")
+      if (tools === null) throw new Error("PLAYGROUND_TOOL_GROUP_MISSING")
+
+      const gridButton = toolbar.querySelector<HTMLButtonElement>(
+        "[data-testid='workspace-tool-grid']",
+      )
+      if (gridButton === null) throw new Error("PLAYGROUND_GRID_BUTTON_MISSING")
+      gridButton.dataset.testid = "toggle-grid"
+
+      const commands = document.createElement("div")
+      commands.className = "playground-command-group"
+      const overflowButton = createCommandButton(
+        "toggle-page-overflow",
+        "Show outside canvas",
+        () => {
+          const page = scenario.editor.getRecord(scenario.pageId)
+          if (page?.typeName !== "page") return
+          scenario.editor.dispatch({
+            id: "page.setOverflow",
+            payload: {
+              id: page.id,
+              overflow: page.overflow === "visible" ? "hidden" : "visible",
+            },
+          })
+        },
+      )
+      const syncOverflowButton = (): void => {
+        const page = scenario.editor.getRecord(scenario.pageId)
+        overflowButton.setAttribute(
+          "aria-pressed",
+          String(page?.typeName === "page" && page.overflow === "visible"),
+        )
+      }
+      overflowButton.setAttribute("aria-pressed", "true")
+      commands.append(
+        createCommandButton("create-node", "Create rectangle", () => scenario.createNode()),
+        overflowButton,
+        createCommandButton("export-json", "Export JSON", () => {
+          output.textContent = scenario.exportCanonicalJson()
+          output.hidden = false
+        }),
+        createCommandButton("reset-layout", "Reset layout", () => {
+          void mounted.api.resetLayout()
+        }),
+      )
+      tools.append(commands)
+      const unsubscribe = scenario.editor.subscribe(syncOverflowButton)
+      syncOverflowButton()
+      return () => {
+        unsubscribe()
+        commands.remove()
+      }
+    },
   })
-
-  const toolbar = editorHost.querySelector<HTMLElement>(".composeui-editor__toolbar")
-  if (toolbar === null) throw new Error("PLAYGROUND_TOOLBAR_MISSING")
-  const tools = toolbar.querySelector<HTMLElement>(".composeui-editor__toolbar-group")
-  if (tools === null) throw new Error("PLAYGROUND_TOOL_GROUP_MISSING")
-
-  const gridButton = toolbar.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-grid']")
-  if (gridButton === null) throw new Error("PLAYGROUND_GRID_BUTTON_MISSING")
-  gridButton.dataset.testid = "toggle-grid"
-
-  const commands = document.createElement("div")
-  commands.className = "playground-command-group"
-  const syncOverflowButton = (): void => {
-    const page = scenario.editor.getRecord(scenario.pageId)
-    overflowButton.setAttribute(
-      "aria-pressed",
-      String(page?.typeName === "page" && page.overflow === "visible"),
-    )
-  }
-  const overflowButton = createCommandButton("toggle-page-overflow", "Show outside canvas", () => {
-    const page = scenario.editor.getRecord(scenario.pageId)
-    if (page?.typeName !== "page") return
-    scenario.editor.dispatch({
-      id: "page.setOverflow",
-      payload: {
-        id: page.id,
-        overflow: page.overflow === "visible" ? "hidden" : "visible",
-      },
-    })
-  })
-  overflowButton.setAttribute("aria-pressed", "true")
-  commands.append(
-    createCommandButton("create-node", "Create rectangle", () => scenario.createNode()),
-    overflowButton,
-    createCommandButton("export-json", "Export JSON", () => {
-      output.textContent = scenario.exportCanonicalJson()
-      output.hidden = false
-    }),
-    createCommandButton("reset-layout", "Reset layout", () => {
-      void mounted.api.resetLayout()
-    }),
-  )
-  const panelMenu = toolbar.querySelector<HTMLElement>(".composeui-editor__panel-menu")
-  if (panelMenu === null) throw new Error("PLAYGROUND_PANEL_MENU_MISSING")
-  window.setTimeout(() => {
-    tools.append(commands)
-  }, 0)
-
-  scenario.editor.subscribe(syncOverflowButton)
-  syncOverflowButton()
 
   if (import.meta.env.DEV) {
     Object.assign(window, { __composeuiM1: { editor: scenario.editor, mounted } })
