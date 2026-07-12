@@ -1,10 +1,15 @@
 import type { Diagnostic, Result } from "./diagnostics"
 import { History } from "./history"
 import type { HistoryEntry } from "./history"
-import type { NodeRecord, PageDocument, PersistentRecord } from "./schema"
+import type { NodeRecord, PageDocument } from "./schema"
 import { RecordStore } from "./store"
 import { transact } from "./transaction"
-import type { TransactionDraft, TransactionOrigin, TransactionResult } from "./transaction"
+import type {
+  TransactionDraft,
+  TransactionOrigin,
+  TransactionPatch,
+  TransactionResult,
+} from "./transaction"
 
 export interface CreateNodeCommand {
   id: "node.create"
@@ -71,6 +76,10 @@ export interface EditorChangeEvent {
   origin: TransactionOrigin
 }
 
+export interface EditorOptions {
+  onDiagnostic?: (diagnostic: Diagnostic) => void
+}
+
 export interface Editor {
   readonly store: RecordStore
   dispatch(command: EditorCommand): Result<void>
@@ -81,6 +90,7 @@ export interface Editor {
   redo(): Result<void>
   canUndo(): boolean
   canRedo(): boolean
+  getDiagnostics(): Diagnostic[]
   subscribe(listener: (event: EditorChangeEvent) => void): () => void
 }
 
@@ -94,6 +104,10 @@ function failure(code: string, message: string, recordId?: string): PreparedComm
 
 function success(execute: (draft: TransactionDraft) => void): PreparedCommand {
   return { ok: true, value: execute, diagnostics: [] }
+}
+
+function isEmptyPatch(patch: TransactionPatch): boolean {
+  return patch.created.length === 0 && patch.updated.length === 0 && patch.removed.length === 0
 }
 
 function nodeResult(store: RecordStore, id: string): Result<NodeRecord> {
@@ -258,18 +272,16 @@ function prepareResize(store: RecordStore, command: ResizeNodeCommand): Prepared
   )
 }
 
-function nodeDepth(records: ReadonlyMap<string, PersistentRecord>, id: string): number {
-  let depth = 0
-  let current = records.get(id)
-  while (current?.typeName === "node") {
-    depth += 1
-    current = records.get(current.parentId)
-  }
-  return depth
-}
-
 function prepareDelete(store: RecordStore, command: DeleteNodeCommand): PreparedCommand {
   const records = new Map(store.all().map((record) => [record.id, record]))
+  const childrenByParent = new Map<string, string[]>()
+  for (const record of records.values()) {
+    if (record.typeName !== "node") continue
+    const children = childrenByParent.get(record.parentId) ?? []
+    children.push(record.id)
+    childrenByParent.set(record.parentId, children)
+  }
+
   const selected = new Set<string>()
   for (const id of command.payload.ids) {
     const record = records.get(id)
@@ -281,22 +293,35 @@ function prepareDelete(store: RecordStore, command: DeleteNodeCommand): Prepared
     selected.add(id)
   }
 
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const record of records.values()) {
-      if (record.typeName === "node" && selected.has(record.parentId) && !selected.has(record.id)) {
-        selected.add(record.id)
-        changed = true
+  const roots = [...selected].filter((id) => {
+    let parent = records.get(id)
+    if (parent?.typeName === "node") parent = records.get(parent.parentId)
+    while (parent?.typeName === "node") {
+      if (selected.has(parent.id)) return false
+      parent = records.get(parent.parentId)
+    }
+    return true
+  })
+  const subtree: Array<{ id: string; depth: number }> = []
+  for (const root of roots) {
+    const pending = [{ id: root, depth: 0 }]
+    while (pending.length > 0) {
+      const current = pending.pop()!
+      subtree.push(current)
+      for (const childId of childrenByParent.get(current.id) ?? []) {
+        pending.push({ id: childId, depth: current.depth + 1 })
       }
     }
   }
+
   // This is a fresh array; sorting it cannot mutate Store or command input.
-  // oxlint-disable-next-line unicorn/no-array-sort
-  const ids = [...selected].sort((left, right) => {
-    const difference = nodeDepth(records, right) - nodeDepth(records, left)
-    return difference === 0 ? left.localeCompare(right) : difference
-  })
+  const ids = subtree
+    // oxlint-disable-next-line unicorn/no-array-sort
+    .sort((left, right) => {
+      const difference = right.depth - left.depth
+      return difference === 0 ? left.id.localeCompare(right.id) : difference
+    })
+    .map((item) => item.id)
   return success((draft) => {
     for (const id of ids) draft.remove(id)
   })
@@ -358,19 +383,42 @@ function runCommand(store: RecordStore, command: EditorCommand): TransactionResu
   return transact(store, { kind: "local-command", commandId: command.id }, prepared.value)
 }
 
-export function createEditor(document: PageDocument): Editor {
+export function createEditor(document: PageDocument, options: EditorOptions = {}): Editor {
   let store = RecordStore.fromDocument(document)
   const history = new History()
   const listeners = new Set<(event: EditorChangeEvent) => void>()
+  const diagnostics: Diagnostic[] = []
   let transactionSequence = 0
+
+  const reportDiagnostic = (diagnostic: Diagnostic): void => {
+    diagnostics.push(structuredClone(diagnostic))
+    if (options.onDiagnostic === undefined) return
+    try {
+      options.onDiagnostic(structuredClone(diagnostic))
+    } catch (error) {
+      diagnostics.push({
+        code: "EDITOR_DIAGNOSTIC_HOOK_ERROR",
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   const emit = (event: EditorChangeEvent): void => {
     for (const listener of listeners) {
-      listener({
-        store: event.store,
-        transaction: structuredClone(event.transaction),
-        origin: structuredClone(event.origin),
-      })
+      try {
+        listener({
+          store: event.store,
+          transaction: structuredClone(event.transaction),
+          origin: structuredClone(event.origin),
+        })
+      } catch (error) {
+        reportDiagnostic({
+          code: "EDITOR_LISTENER_ERROR",
+          severity: "error",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
   }
 
@@ -391,6 +439,7 @@ export function createEditor(document: PageDocument): Editor {
     if (!result.ok) return { ok: false, diagnostics: result.diagnostics }
 
     store = result.store
+    if (isEmptyPatch(result.patch)) return { ok: true, value: undefined, diagnostics: [] }
     const entry: HistoryEntry = {
       transactionId: `transaction-${++transactionSequence}`,
       label: command.id,
@@ -414,6 +463,7 @@ export function createEditor(document: PageDocument): Editor {
     redo: () => applyHistory("redo"),
     canUndo: () => history.canUndo(),
     canRedo: () => history.canRedo(),
+    getDiagnostics: () => structuredClone(diagnostics),
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)

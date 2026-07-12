@@ -20,6 +20,10 @@ function cloneEntry(entry: HistoryEntry): HistoryEntry {
   return structuredClone(entry)
 }
 
+function isEmptyPatch(patch: TransactionPatch): boolean {
+  return patch.created.length === 0 && patch.updated.length === 0 && patch.removed.length === 0
+}
+
 function emptyHistory(code: "HISTORY_UNDO_EMPTY" | "HISTORY_REDO_EMPTY"): Result<HistoryChange> {
   return {
     ok: false,
@@ -45,6 +49,7 @@ export class History {
   }
 
   record(entry: HistoryEntry): void {
+    if (isEmptyPatch(entry.forward)) return
     this.#past.push(cloneEntry(entry))
     if (this.#past.length > this.#limit) this.#past.shift()
     this.#future.length = 0

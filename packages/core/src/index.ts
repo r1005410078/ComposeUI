@@ -6,6 +6,7 @@ export type {
   Editor,
   EditorChangeEvent,
   EditorCommand,
+  EditorOptions,
   MoveNodeCommand,
   RenameNodeCommand,
   ReorderNodeCommand,
