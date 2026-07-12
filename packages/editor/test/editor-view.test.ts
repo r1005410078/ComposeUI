@@ -641,6 +641,50 @@ describe("mountEditor", () => {
     root.remove()
   })
 
+  it("converts group resize pointers from workspace-local coordinates", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-a", x: 20, y: 30 })
+    addRectangle(editor, { id: "node-b", x: 200, y: 160 })
+    const dispatch = vi.spyOn(editor, "dispatch")
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
+    workspace.getBoundingClientRect = () =>
+      ({ left: 50, top: 40, right: 1050, bottom: 840, width: 1000, height: 800 }) as DOMRect
+    mounted.session.setViewport({ x: 0, y: 0, zoom: 2 })
+    mounted.session.setSelection(["node-a", "node-b"])
+
+    const startClient = { x: 50 + 320 * 2, y: 40 + 240 * 2 }
+    let handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
+    handle.dispatchEvent(pointerEvent("pointerdown", startClient.x, startClient.y, 21))
+    window.dispatchEvent(pointerEvent("pointerup", startClient.x, startClient.y, 21))
+
+    expect(dispatch).not.toHaveBeenCalled()
+
+    handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
+    handle.dispatchEvent(pointerEvent("pointerdown", startClient.x, startClient.y, 22))
+    window.dispatchEvent(pointerEvent("pointermove", startClient.x + 40, startClient.y, 22))
+    window.dispatchEvent(pointerEvent("pointerup", startClient.x + 40, startClient.y, 22))
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    const command = dispatch.mock.calls[0]?.[0]
+    expect(command).toMatchObject({ id: "node.resizeMany" })
+    if (command?.id !== "node.resizeMany") throw new Error("Expected node.resizeMany")
+    expect(command.payload.items).toHaveLength(2)
+    expect(command.payload.items[0]).toMatchObject({ id: "node-a", x: 20, y: 30 })
+    expect(command.payload.items[0]?.width).toBeCloseTo(128)
+    expect(command.payload.items[0]?.height).toBeCloseTo(80)
+    expect(command.payload.items[1]).toMatchObject({ id: "node-b", y: 160 })
+    expect(command.payload.items[1]?.x).toBeCloseTo(212)
+    expect(command.payload.items[1]?.width).toBeCloseTo(128)
+    expect(command.payload.items[1]?.height).toBeCloseTo(80)
+    expect(editor.getRecord("node-a")).toMatchObject({ layout: { x: 20, y: 30, width: 128 } })
+    expect(editor.getRecord("node-b")).toMatchObject({ layout: { x: 212, y: 160, width: 128 } })
+    mounted.destroy()
+    root.remove()
+  })
+
   it.each([
     "one selected node",
     "same-parent selection containing a locked node",

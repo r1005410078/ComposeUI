@@ -707,21 +707,15 @@ export function mountEditor(
 
     const initialItems = group.items.map((item) => ({ ...item }))
     const initialBounds = selectionBounds(initialItems)
-    const pointerWorld = screenToWorld(
-      { x: event.clientX, y: event.clientY },
-      sessionState.viewport,
-    )
+    const startScreen = workspacePoint(event, workspace)
+    const pointerWorld = screenToWorld(startScreen, sessionState.viewport)
     const startLocal = {
       x: pointerWorld.x - group.parentWorldX,
       y: pointerWorld.y - group.parentWorldY,
     }
     let pointerSession: PointerMoveSession
     try {
-      pointerSession = createPointerMoveSession(
-        { x: event.clientX, y: event.clientY },
-        startLocal,
-        sessionState.viewport.zoom,
-      )
+      pointerSession = createPointerMoveSession(startScreen, startLocal, sessionState.viewport.zoom)
     } catch {
       return
     }
@@ -766,7 +760,7 @@ export function mountEditor(
     const updatePreview = (nextEvent: PointerEvent): boolean => {
       if (!matchesPointer(nextEvent)) return false
       try {
-        pointerSession.update({ x: nextEvent.clientX, y: nextEvent.clientY })
+        pointerSession.update(workspacePoint(nextEvent, workspace))
         const resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
         for (const item of resized.items) {
           const element = canvas.nodeElements.get(item.id)
