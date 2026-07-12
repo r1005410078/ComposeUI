@@ -92,12 +92,22 @@ test("moves all marquee-selected nodes in one drag", async ({ page }) => {
   await page.mouse.move(redBox.x + 20, redBox.y + 20)
   await page.mouse.down()
   await page.mouse.move(redBox.x + 50, redBox.y + 45)
+  await expect(page.getByTestId("selection-node-red")).toHaveAttribute(
+    "transform",
+    "translate(30 25)",
+  )
+  await expect(page.getByTestId("selection-node-blue")).toHaveAttribute(
+    "transform",
+    "translate(30 25)",
+  )
   await page.mouse.up()
 
   await expect(red).toHaveCSS("left", "110px")
   await expect(red).toHaveCSS("top", "97px")
   await expect(blue).toHaveCSS("left", "410px")
   await expect(blue).toHaveCSS("top", "265px")
+  await expect(page.getByTestId("selection-node-red")).not.toHaveAttribute("transform", /.+/)
+  await expect(page.getByTestId("selection-node-blue")).not.toHaveAttribute("transform", /.+/)
 })
 
 test("pans, zooms at the pointer, multi-selects and exports JSON without Session state", async ({

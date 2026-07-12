@@ -373,10 +373,12 @@ describe("mountEditor", () => {
 
     node.dispatchEvent(pointerEvent("pointerdown", 100, 50))
     window.dispatchEvent(pointerEvent("pointermove", 140, 90))
+    const outline = root.querySelector<SVGRectElement>("[data-testid='selection-node-1']")!
 
     expect(document.activeElement).toBe(shell)
     expect(mounted.session.getState().selection).toEqual(["node-1"])
     expect(node.style.transform).toBe("translate(20px, 20px)")
+    expect(outline.getAttribute("transform")).toBe("translate(40 40)")
     expect(dispatch).not.toHaveBeenCalled()
 
     window.dispatchEvent(pointerEvent("pointerup", 140, 90))
@@ -387,6 +389,9 @@ describe("mountEditor", () => {
       payload: { ids: ["node-1"], delta: { x: 20, y: 20 } },
     })
     expect(node.style.transform).toBe("")
+    expect(
+      root.querySelector("[data-testid='selection-node-1']")?.getAttribute("transform"),
+    ).toBeNull()
     expect(editor.getRecord("node-1")).toMatchObject({ layout: { x: 40, y: 50 } })
     root.remove()
   })
@@ -402,12 +407,16 @@ describe("mountEditor", () => {
     mounted.session.setSelection(["node-a", "node-b"])
     const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
     const second = root.querySelector<HTMLElement>("[data-node-id='node-b']")!
+    const firstOutline = root.querySelector<SVGRectElement>("[data-testid='selection-node-a']")!
+    const secondOutline = root.querySelector<SVGRectElement>("[data-testid='selection-node-b']")!
 
     first.dispatchEvent(pointerEvent("pointerdown", 100, 50))
     window.dispatchEvent(pointerEvent("pointermove", 140, 90))
 
     expect(first.style.transform).toBe("translate(40px, 40px)")
     expect(second.style.transform).toBe("translate(40px, 40px)")
+    expect(firstOutline.getAttribute("transform")).toBe("translate(40 40)")
+    expect(secondOutline.getAttribute("transform")).toBe("translate(40 40)")
     expect(dispatch).not.toHaveBeenCalled()
 
     window.dispatchEvent(pointerEvent("pointerup", 140, 90))
@@ -419,6 +428,12 @@ describe("mountEditor", () => {
     })
     expect(first.style.transform).toBe("")
     expect(second.style.transform).toBe("")
+    expect(
+      root.querySelector("[data-testid='selection-node-a']")?.getAttribute("transform"),
+    ).toBeNull()
+    expect(
+      root.querySelector("[data-testid='selection-node-b']")?.getAttribute("transform"),
+    ).toBeNull()
     expect(editor.getRecord("node-a")).toMatchObject({ layout: { x: 60, y: 70 } })
     expect(editor.getRecord("node-b")).toMatchObject({ layout: { x: 240, y: 200 } })
     root.remove()

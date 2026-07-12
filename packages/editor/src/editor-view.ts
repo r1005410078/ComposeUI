@@ -201,6 +201,16 @@ function renderSelectionOverlay(
   overlay.append(fragment)
 }
 
+function setSelectionOutlinePreview(
+  overlay: SVGSVGElement,
+  offset: { x: number; y: number } | undefined,
+): void {
+  for (const outline of overlay.querySelectorAll<SVGRectElement>("[data-selection-outline]")) {
+    if (offset === undefined) outline.removeAttribute("transform")
+    else outline.setAttribute("transform", `translate(${offset.x} ${offset.y})`)
+  }
+}
+
 function hasSelectionModifier(
   event: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey">,
 ): boolean {
@@ -468,6 +478,7 @@ export function mountEditor(
         for (const previewElement of previewElements) {
           previewElement.style.removeProperty("transform")
         }
+        setSelectionOutlinePreview(overlay, undefined)
       } else {
         element.style.width = `${node.layout.width}px`
         element.style.height = `${node.layout.height}px`
@@ -501,10 +512,15 @@ export function mountEditor(
         pointerSession.update({ x: nextEvent.clientX, y: nextEvent.clientY })
         const preview = pointerSession.preview()
         if (kind === "move") {
-          const transform = `translate(${preview.x - node.layout.x}px, ${preview.y - node.layout.y}px)`
+          const offset = { x: preview.x - node.layout.x, y: preview.y - node.layout.y }
+          const transform = `translate(${offset.x}px, ${offset.y}px)`
           for (const previewElement of previewElements) {
             previewElement.style.transform = transform
           }
+          setSelectionOutlinePreview(overlay, {
+            x: offset.x * sessionState.viewport.zoom,
+            y: offset.y * sessionState.viewport.zoom,
+          })
         } else {
           element.style.width = `${Math.max(1, preview.x)}px`
           element.style.height = `${Math.max(1, preview.y)}px`
