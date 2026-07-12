@@ -73,8 +73,8 @@ export function resizeGroup(
       id: item.id,
       x: bounds.left + (item.x - initial.left) * scaleX,
       y: bounds.top + (item.y - initial.top) * scaleY,
-      width: item.width * scaleX,
-      height: item.height * scaleY,
+      width: Math.max(1, item.width * scaleX),
+      height: Math.max(1, item.height * scaleY),
     })),
   }
 }

@@ -56,9 +56,24 @@ describe("group resize geometry", () => {
     const result = resizeGroup(items, initial, "nw", { x: 999, y: -100 })
 
     expect(result.bounds).toEqual({ left: 309, top: -100, right: 310, bottom: 140 })
+    expect(result.items.every((item) => item.width >= 1 && item.height >= 1)).toBe(true)
+  })
+
+  it("clamps each scaled item to the core minimum size", () => {
+    const smallItems = [
+      { id: "small", x: 0, y: 0, width: 10, height: 10 },
+      { id: "large", x: 100, y: 100, width: 100, height: 100 },
+    ]
+    const result = resizeGroup(
+      smallItems,
+      { left: 0, top: 0, right: 200, bottom: 200 },
+      "nw",
+      { x: 199, y: 199 },
+    )
+
     expect(result.items).toEqual([
-      { id: "first", x: 309, y: -100, width: 0.33333333333333337, height: 160 },
-      { id: "second", x: 309.6666666666667, y: -20, width: 0.33333333333333337, height: 160 },
+      { id: "small", x: 199, y: 199, width: 1, height: 1 },
+      { id: "large", x: 199.5, y: 199.5, width: 1, height: 1 },
     ])
   })
 })
