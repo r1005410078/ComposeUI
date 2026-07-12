@@ -592,6 +592,23 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
     await expect(page.getByRole("tab", { name: title })).toHaveCount(0)
   }
   await expect(page.getByRole("complementary", { name: "节点树" })).toBeVisible()
+  const pageRow = page.getByTestId("tree-row-page-1")
+  const redRow = page.getByTestId("tree-row-node-red")
+  await expect(pageRow.locator("svg")).toHaveCount(2)
+  await expect(redRow.locator("svg")).toHaveCount(5)
+  const pageBox = await pageRow.boundingBox()
+  const redBox = await redRow.boundingBox()
+  expect(pageBox?.height).toBeLessThanOrEqual(30)
+  expect(redBox?.height).toBeLessThanOrEqual(30)
+
+  await page.getByRole("tab", { name: "历史" }).click()
+  await expect(page.getByTestId("history-toolbar")).toBeVisible()
+  await expect(page.locator(".composeui-editor__history > h2")).toHaveCount(0)
+
+  await page.getByRole("tab", { name: "输出" }).click()
+  await expect(page.locator(".composeui-editor__output > h2")).toHaveCount(0)
+  await expect(page.getByTestId("empty-output")).toBeVisible()
+
   await openCanvas(page)
   await expect(page.getByRole("tab", { name: "画布" })).toHaveAttribute("aria-selected", "true")
   await expect(page.getByRole("region", { name: "页面画布" })).toBeVisible()
