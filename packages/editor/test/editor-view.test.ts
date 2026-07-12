@@ -117,6 +117,37 @@ describe("mountEditor", () => {
     expect(root.querySelector("[data-testid='tree-child']")).not.toBeNull()
   })
 
+  it("keeps expand controls out of the tab order and in the roving keyboard model", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "parent", name: "Parent" })
+    addRectangle(editor, { id: "child", parentId: "parent", name: "Child" })
+    const mounted = mountEditor(root, editor, { pageId: "page-1" })
+
+    expect(
+      [...root.querySelectorAll<HTMLButtonElement>("[data-tree-control='toggle']")].every(
+        (button) => button.tabIndex === -1,
+      ),
+    ).toBe(true)
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='tree-page-1']")?.tabIndex).toBe(0)
+
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-parent']")?.click()
+    expect(mounted.session.getState().selection).toEqual(["parent"])
+    const toggle = root.querySelector<HTMLButtonElement>("[data-testid='tree-toggle-parent']")!
+    toggle.focus()
+    toggle.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+    expect(mounted.session.getState().selection).toEqual(["parent"])
+    expect(root.querySelector("[data-testid='tree-child']")).not.toBeNull()
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("tree-toggle-parent")
+
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    )
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("tree-child")
+    root.remove()
+  })
+
   it("keeps tree focus and supports keyboard navigation and selection", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

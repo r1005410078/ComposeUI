@@ -22,6 +22,7 @@ test("supports keyboard navigation and selection in the component tree", async (
   await page.goto("/")
 
   const red = page.getByTestId("tree-node-red")
+  await expect(page.getByTestId("tree-toggle-page-1")).toHaveAttribute("tabindex", "-1")
   await red.focus()
   await red.press("ArrowDown")
   await expect(page.getByTestId("tree-node-blue")).toBeFocused()

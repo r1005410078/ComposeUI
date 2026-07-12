@@ -41,8 +41,9 @@ function handleTreeKeyDown(
   button: HTMLButtonElement,
   session: EditorSession,
 ): void {
-  const buttons = treeButtons(button.closest("[role='tree']") as HTMLElement)
-  const index = buttons.indexOf(button)
+  const tree = button.closest("[role='tree']") as HTMLElement
+  const buttons = treeButtons(tree)
+  const index = buttons.findIndex((candidate) => candidate.dataset.treeId === button.dataset.treeId)
   if (index < 0) return
 
   let nextIndex: number | undefined
@@ -63,7 +64,11 @@ function handleTreeKeyDown(
     case " ":
     case "Spacebar":
       event.preventDefault()
-      selectItem(session, button.dataset.treeId ?? "")
+      if (button.dataset.treeControl === "toggle") {
+        session.toggleExpanded(button.dataset.treeId ?? "")
+      } else {
+        selectItem(session, button.dataset.treeId ?? "")
+      }
       return
     default:
       return
@@ -87,10 +92,13 @@ function createExpandControl(item: TreeItem, session: EditorSession, expanded: S
   button.className = "composeui-editor__tree-toggle"
   button.dataset.testid = `tree-toggle-${item.id}`
   button.dataset.treeControl = "toggle"
+  button.dataset.treeId = item.id
+  button.tabIndex = -1
   button.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} ${item.name}`)
   button.setAttribute("aria-expanded", String(isExpanded))
   button.textContent = isExpanded ? "-" : "+"
   button.addEventListener("click", () => session.toggleExpanded(item.id))
+  button.addEventListener("keydown", (event) => handleTreeKeyDown(event, button, session))
   return button
 }
 
