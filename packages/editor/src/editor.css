@@ -3,13 +3,12 @@
 .composeui-editor,
 .composeui-editor__component-tree,
 .composeui-editor__workspace-host {
-  --composeui-tree-width: 260px;
   box-sizing: border-box;
   color: var(--composeui-text-primary);
   display: grid;
   font-family: var(--composeui-font-family);
   font-size: var(--composeui-font-size);
-  grid-template-columns: var(--composeui-tree-width) minmax(0, 1fr);
+  grid-template-columns: var(--composeui-component-tree-width) minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
   width: 100%;
@@ -62,14 +61,14 @@
 .composeui-editor__tree {
   list-style: none;
   margin: 0;
-  padding: 8px 0;
+  padding: var(--composeui-space-2) 0;
 }
 
 .composeui-editor__tree-row {
   align-items: center;
   display: flex;
   height: var(--composeui-tree-row-height);
-  padding-right: 8px;
+  padding-right: var(--composeui-space-2);
 }
 
 .composeui-editor__tree-item[aria-selected="true"] .composeui-editor__tree-row {
@@ -121,7 +120,7 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  padding: 4px;
+  padding: var(--composeui-space-1);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -133,6 +132,7 @@
 
 .composeui-editor__workspace {
   background: var(--composeui-surface-canvas);
+  border-radius: var(--composeui-radius-panel);
   cursor: default;
   min-width: 0;
   overflow: auto;

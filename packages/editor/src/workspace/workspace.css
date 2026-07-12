@@ -6,7 +6,7 @@
   font-family: var(--composeui-font-family);
   font-size: var(--composeui-font-size);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: var(--composeui-app-bar-height) minmax(0, 1fr);
   height: 100%;
   min-height: var(--composeui-workspace-min-height);
   min-width: min(480px, 100%);
@@ -20,12 +20,12 @@
   border-bottom: 1px solid var(--composeui-border-default);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  min-height: 36px;
+  min-height: var(--composeui-app-bar-height);
   overflow: hidden;
 }
 
 .composeui-editor__workspace-header:has(.composeui-editor__mode-bar) {
-  min-height: 36px;
+  min-height: var(--composeui-app-bar-height);
 }
 
 .composeui-editor__project-title {
@@ -33,7 +33,7 @@
   font-weight: var(--composeui-font-weight-semibold);
   min-width: 0;
   overflow: hidden;
-  padding: 0 12px;
+  padding: 0 var(--composeui-space-3);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -51,7 +51,7 @@
   gap: 2px;
   justify-content: flex-end;
   min-width: 0;
-  padding: 0 8px;
+  padding: 0 var(--composeui-space-2);
 }
 
 .composeui-editor__mode-bar {
@@ -59,7 +59,7 @@
   border-right: 1px solid var(--composeui-border-default);
   display: flex;
   gap: 2px;
-  padding: 4px 8px;
+  padding: var(--composeui-space-1) var(--composeui-space-2);
 }
 
 .composeui-editor__mode-bar button,
@@ -109,11 +109,12 @@
   align-items: center;
   display: flex;
   flex: 1 1 auto;
-  gap: 8px;
+  gap: var(--composeui-space-2);
   justify-content: space-between;
+  min-height: var(--composeui-toolbar-height);
   min-width: 0;
   overflow-x: auto;
-  padding: 4px 8px;
+  padding: var(--composeui-space-1) var(--composeui-space-2);
 }
 
 .composeui-editor__toolbar-group {
@@ -165,8 +166,9 @@
 
 .composeui-editor__canvas-panel {
   background: var(--composeui-surface-panel);
+  border-radius: var(--composeui-radius-panel);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: var(--composeui-toolbar-height) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   min-width: 0;
@@ -184,6 +186,7 @@
 .composeui-editor__history,
 .composeui-editor__resources {
   background: var(--composeui-surface-panel);
+  border-radius: var(--composeui-radius-panel);
   color: var(--composeui-text-primary);
   font-family: var(--composeui-font-family);
   min-height: 100%;

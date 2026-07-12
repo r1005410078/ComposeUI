@@ -19,7 +19,11 @@ describe("editor theme contract", () => {
       "--composeui-accent-primary",
       "--composeui-canvas-grid-minor",
       "--composeui-control-height",
+      "--composeui-component-tree-width",
+      "--composeui-app-bar-height",
+      "--composeui-toolbar-height",
       "--composeui-radius-control",
+      "--composeui-radius-panel",
       "--composeui-font-family",
     ]) {
       expect(theme).toContain(`${token}:`)
@@ -96,5 +100,26 @@ describe("editor theme contract", () => {
     expect(indicator).toContain("width: 100%")
     expect(indicator).toContain("height: 2px")
     expect(indicator).toContain("background: var(--composeui-accent-primary)")
+  })
+
+  it("references shared dimension, radius, and spacing tokens in structural styles", () => {
+    const editorCss = readEditorFile("src/editor.css")
+    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+
+    expect(editorCss).toContain("var(--composeui-component-tree-width)")
+    expect(editorCss).toContain("var(--composeui-radius-panel)")
+    for (const token of [
+      "--composeui-app-bar-height",
+      "--composeui-toolbar-height",
+      "--composeui-radius-panel",
+      "--composeui-space-1",
+      "--composeui-space-2",
+      "--composeui-space-3",
+    ]) {
+      expect(workspaceCss, token).toContain(`var(${token})`)
+    }
+    for (const token of ["--composeui-space-1", "--composeui-space-2"]) {
+      expect(editorCss, token).toContain(`var(${token})`)
+    }
   })
 })
