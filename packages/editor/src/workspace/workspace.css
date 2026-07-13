@@ -337,7 +337,7 @@
 
 .composeui-editor__output {
   display: grid;
-  grid-template-rows: var(--composeui-panel-toolbar-height) minmax(0, 1fr);
+  grid-template-rows: var(--composeui-panel-toolbar-height) auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   position: relative;
@@ -451,21 +451,21 @@
   background: var(--composeui-surface-panel-raised);
   border-bottom: 1px solid var(--composeui-output-error);
   color: var(--composeui-output-error);
+  grid-column: 1 / -1;
+  grid-row: 2;
   margin: 0;
   max-width: 100%;
   overflow: hidden;
   padding: var(--composeui-space-1) var(--composeui-space-2);
-  position: absolute;
-  right: 0;
   text-overflow: ellipsis;
-  top: var(--composeui-panel-toolbar-height);
   white-space: nowrap;
-  z-index: 1;
 }
 
 .composeui-editor__output-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--composeui-output-details-width));
+  grid-column: 1 / -1;
+  grid-row: 3;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
@@ -514,6 +514,7 @@
   gap: var(--composeui-space-2);
   grid-template-columns: 36px var(--composeui-output-time-width) 76px minmax(0, 1fr);
   min-height: var(--composeui-output-row-height);
+  min-width: 360px;
   padding: 0 var(--composeui-space-2);
   text-align: left;
   width: 100%;
@@ -728,5 +729,15 @@
   .composeui-editor__mode-bar {
     border-bottom: 1px solid var(--composeui-border-default);
     border-right: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .composeui-editor__output-body {
+    grid-template-columns: minmax(var(--composeui-workspace-min-width-compact), 1fr);
+  }
+
+  .composeui-editor__output-details-host {
+    display: none;
   }
 }
