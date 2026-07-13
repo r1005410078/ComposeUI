@@ -5,8 +5,13 @@ import { createEditor, createEmptyDocument } from "@composeui/core"
 import { EditorSession } from "../src/index"
 import type { WorkspaceContext } from "../src/workspace/types"
 import { createWorkspacePanels, type PanelId } from "../src/workspace/panels"
+import type { OperationLogControllerPort } from "../src/operation-log-controller-port"
+import type { OperationEvent } from "@composeui/operation-log"
 
-function createContext(resources?: WorkspaceContext["resources"]): WorkspaceContext {
+function createContext(
+  resources?: WorkspaceContext["resources"],
+  operationLog?: WorkspaceContext["operationLog"],
+): WorkspaceContext {
   const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }))
   editor.dispatch({
     id: "node.create",
@@ -26,6 +31,7 @@ function createContext(resources?: WorkspaceContext["resources"]): WorkspaceCont
     session: new EditorSession(),
     pageId: "page-1",
     resources,
+    operationLog,
     api: {
       execute: vi.fn(),
       undo: vi.fn(),
@@ -36,6 +42,49 @@ function createContext(resources?: WorkspaceContext["resources"]): WorkspaceCont
     },
     emit: vi.fn(),
   }
+}
+
+function operationEvent(overrides: Partial<OperationEvent> = {}): OperationEvent {
+  return {
+    schemaVersion: 1,
+    eventId: "event-1",
+    sessionId: "session-1",
+    projectId: "project-1",
+    sequence: 1,
+    timestamp: "2026-07-13T00:00:00.000Z",
+    category: "document",
+    type: "document.command",
+    status: "succeeded",
+    payload: {
+      command: {
+        id: "node.move",
+        payload: { id: "node-1", delta: { x: 10, y: 20 } },
+      },
+    },
+    ...overrides,
+  }
+}
+
+function fakeOperationLogController(events: readonly OperationEvent[]): OperationLogControllerPort {
+  const listeners = new Set<() => void>()
+  const controller: OperationLogControllerPort = {
+    query: vi.fn(async (query) =>
+      events.filter(
+        (event) =>
+          (query.levels.length === 0 || query.levels.includes(event.status)) &&
+          (query.categories.length === 0 || query.categories.includes(event.category)),
+      ),
+    ),
+    subscribe: vi.fn((listener: () => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }),
+    exportSession: vi.fn(async () => "bundle"),
+    importBundle: vi.fn(async () => undefined),
+    startReplay: vi.fn(),
+  }
+  void listeners
+  return controller
 }
 
 function panel(id: PanelId) {
@@ -252,8 +301,68 @@ describe("workspace panel renderers", () => {
     const outputRoot = document.createElement("div")
     panel("output").mount(outputRoot, context)
     expect(outputRoot.querySelector(".composeui-editor__output > h2")).toBeNull()
-    expect(outputRoot.querySelector("[data-testid='output-messages']")).not.toBeNull()
+    expect(outputRoot.querySelector("[role='log']")).not.toBeNull()
     expect(outputRoot.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
+  })
+
+  it("renders filtered operation rows and structured details", async () => {
+    const events = [
+      operationEvent(),
+      operationEvent({
+        eventId: "event-2",
+        sequence: 2,
+        category: "diagnostic",
+        type: "diagnostic.reported",
+        status: "failed",
+        diagnostics: [{ code: "NODE_LOCKED", message: "节点已锁定", severity: "error" }],
+        payload: { reason: "locked" },
+      }),
+    ] satisfies OperationEvent[]
+    const operationLog = fakeOperationLogController(events)
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
+    })
+    expect(root.querySelector("[role='log']")).not.toBeNull()
+    expect(root.querySelector("input[aria-label='搜索操作日志']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='output-entry']")?.getAttribute("data-level")).toBe(
+      "succeeded",
+    )
+    expect(root.querySelector("[data-testid='output-entry']")?.getAttribute("data-category")).toBe(
+      "document",
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-level-error']")!.click()
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    })
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
+      "NODE_LOCKED",
+    )
+    expect(root.querySelector("[data-testid='output-entry']")?.getAttribute("aria-selected")).toBe(
+      "true",
+    )
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("keeps clear local and does not delete persisted events", async () => {
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
+    expect(operationLog.query).toHaveBeenCalledTimes(1)
+    expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
+
+    if (typeof dispose === "function") dispose()
   })
 
   it("returns all first-party panel descriptors with stable ids", () => {

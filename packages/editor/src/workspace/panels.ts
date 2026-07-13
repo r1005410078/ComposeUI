@@ -2,6 +2,7 @@ import type { EditorRecord, HistoryEntry } from "@composeui/core"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
+import { createOutputPanelMount } from "./output-panel"
 
 export type PanelId =
   | "scene"
@@ -217,26 +218,7 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
 }
 
 function createOutputPanel(): FirstPartyPanelDescriptor {
-  return descriptor("output", (root) => {
-    const panel = document.createElement("section")
-    panel.className = "composeui-editor__output"
-    panel.setAttribute("aria-label", "输出")
-    const messages = document.createElement("div")
-    messages.className = "composeui-editor__output-messages"
-    messages.dataset.testid = "output-messages"
-    const empty = document.createElement("p")
-    empty.dataset.testid = "empty-output"
-    empty.textContent = "暂无输出。"
-    messages.append(empty)
-    panel.append(messages)
-    root.replaceChildren(panel)
-    let disposed = false
-    return () => {
-      if (disposed) return
-      disposed = true
-      root.replaceChildren()
-    }
-  })
+  return descriptor("output", createOutputPanelMount())
 }
 
 export function createResourcesPanel(): FirstPartyPanelDescriptor {
