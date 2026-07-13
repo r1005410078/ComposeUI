@@ -35,3 +35,9 @@ export type {
   OperationRecoveryOptions,
   OperationSnapshot,
 } from "./coordinator"
+export {
+  DEFAULT_RETENTION_MAX_AGE_MS,
+  DEFAULT_RETENTION_MAX_BYTES,
+  enforceRetention,
+} from "./retention"
+export type { OperationRetentionOptions, OperationRetentionResult } from "./retention"
