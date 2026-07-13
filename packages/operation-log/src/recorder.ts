@@ -36,6 +36,14 @@ export class OperationRecorder {
   #sequence = 0
   #pending: Promise<void> = Promise.resolve()
 
+  get sessionId(): string {
+    return this.#sessionId
+  }
+
+  get projectId(): string {
+    return this.#projectId
+  }
+
   constructor(options: OperationRecorderOptions) {
     this.#sessionId = options.sessionId
     this.#projectId = options.projectId

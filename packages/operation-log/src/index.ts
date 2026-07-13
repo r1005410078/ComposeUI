@@ -27,3 +27,11 @@ export type {
 export { createCoreOperationObserver } from "./adapters/core-observer"
 export { IndexedDbOperationLogStore } from "./indexeddb-store"
 export type { IndexedDbOperationLogStoreOptions } from "./indexeddb-store"
+export { OperationLogCoordinator } from "./coordinator"
+export type {
+  OperationCoordinatorClock,
+  OperationCoordinatorLifecycle,
+  OperationLogCoordinatorOptions,
+  OperationRecoveryOptions,
+  OperationSnapshot,
+} from "./coordinator"

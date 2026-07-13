@@ -117,7 +117,7 @@ export class IndexedDbOperationLogStore implements OperationLifecycleStore {
     return session === undefined ? undefined : structuredClone(session)
   }
 
-  async listSessions(projectId: string): Promise<OperationSession[]> {
+  async listSessions(projectId?: string): Promise<OperationSession[]> {
     const database = this.#requireDatabase()
     const transaction = database.transaction(STORE_SESSIONS, "readonly")
     const sessions = await request<OperationSession[]>(
@@ -126,7 +126,7 @@ export class IndexedDbOperationLogStore implements OperationLifecycleStore {
     await transactionComplete(transaction)
     return structuredClone(
       sessions
-        .filter((session) => session.projectId === projectId)
+        .filter((session) => projectId === undefined || session.projectId === projectId)
         // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted.
         .sort((left, right) =>
           left.startedAt < right.startedAt

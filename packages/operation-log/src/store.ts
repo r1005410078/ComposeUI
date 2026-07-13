@@ -11,7 +11,7 @@ export interface OperationLogStore {
 export interface OperationLifecycleStore extends OperationLogStore {
   putSession(session: OperationSession): Promise<void>
   getSession(sessionId: string): Promise<OperationSession | undefined>
-  listSessions(projectId: string): Promise<OperationSession[]>
+  listSessions(projectId?: string): Promise<OperationSession[]>
   deleteSession(sessionId: string): Promise<void>
   putCheckpoint(checkpoint: OperationCheckpoint): Promise<void>
   getNearestCheckpoint(
@@ -91,9 +91,9 @@ export class MemoryOperationLogStore implements OperationLifecycleStore {
     return session === undefined ? undefined : structuredClone(session)
   }
 
-  async listSessions(projectId: string): Promise<OperationSession[]> {
+  async listSessions(projectId?: string): Promise<OperationSession[]> {
     const sessions = [...this.#sessions.values()]
-      .filter((session) => session.projectId === projectId)
+      .filter((session) => projectId === undefined || session.projectId === projectId)
       // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted.
       .sort((left, right) => {
         const byStartedAt = compareStrings(left.startedAt, right.startedAt)
