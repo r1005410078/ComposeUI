@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { canonicalJson, hashCanonical } from "@composeui/operation-log"
 
 describe("canonicalJson", () => {
@@ -45,6 +45,13 @@ describe("canonicalJson", () => {
     sparse.length = 2
     expect(() => canonicalJson(sparse)).toThrow("UNSUPPORTED_CANONICAL_VALUE")
   })
+
+  it("rejects arrays with extra ordinary properties", () => {
+    const array = [1] as number[] & { metadata?: number }
+    array.metadata = 2
+
+    expect(() => canonicalJson(array)).toThrow("UNSUPPORTED_CANONICAL_VALUE")
+  })
 })
 
 describe("hashCanonical", () => {
@@ -56,5 +63,17 @@ describe("hashCanonical", () => {
     expect(first).toMatch(/^[0-9a-f]{64}$/)
     expect(first).toBe(same)
     expect(first).not.toBe(different)
+  })
+
+  it("works when no global crypto provider is available", async () => {
+    const value = { stable: true }
+    const expected = await hashCanonical(value)
+
+    vi.stubGlobal("crypto", undefined)
+    try {
+      await expect(hashCanonical(value)).resolves.toBe(expected)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

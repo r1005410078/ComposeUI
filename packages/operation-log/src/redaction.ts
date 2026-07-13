@@ -1,11 +1,13 @@
 const SENSITIVE_KEY = /authorization|token|password|secret/i
 
 const isUrlLike = (value: string): boolean =>
+  value.startsWith("?") ||
   value.startsWith("/") ||
   value.startsWith("./") ||
   value.startsWith("../") ||
   value.startsWith("#") ||
-  /^[a-z][a-z\d+.-]*:\/\//i.test(value)
+  /^[a-z][a-z\d+.-]*:/i.test(value) ||
+  /^[^/?#\s]+\/[^\s?#]*/.test(value)
 
 const redactUrl = (value: string): string => {
   if (!isUrlLike(value)) return value
@@ -24,7 +26,14 @@ export const defaultRedactor = <T>(value: T): T => {
 
     active.add(current)
     try {
-      if (Array.isArray(current)) return current.map((item) => redact(item))
+      if (Array.isArray(current)) {
+        for (let index = 0; index < current.length; index += 1) {
+          if (!Object.hasOwn(current, index)) {
+            throw new Error("UNSERIALIZABLE_OPERATION_PAYLOAD")
+          }
+        }
+        return current.map((item) => redact(item))
+      }
       const prototype = Object.getPrototypeOf(current)
       if (prototype !== Object.prototype && prototype !== null) {
         throw new Error("UNSERIALIZABLE_OPERATION_PAYLOAD")

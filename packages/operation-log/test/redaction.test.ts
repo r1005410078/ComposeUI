@@ -47,6 +47,31 @@ describe("defaultRedactor", () => {
     })
   })
 
+  it("strips query-bearing mailto, data, query-only, and bare host/path values", () => {
+    expect(
+      defaultRedactor({
+        queryOnly: "?token=secret",
+        mailto: "mailto:person@example.test?subject=hello#section",
+        data: "data:text/plain,hello?token=secret#section",
+        barePath: "cdn.example.test/assets/icon.svg?token=secret#section",
+        ordinary: "hello?world#section",
+      }),
+    ).toEqual({
+      queryOnly: "",
+      mailto: "mailto:person@example.test",
+      data: "data:text/plain,hello",
+      barePath: "cdn.example.test/assets/icon.svg",
+      ordinary: "hello?world#section",
+    })
+  })
+
+  it("rejects sparse arrays", () => {
+    const sparse: unknown[] = []
+    sparse.length = 2
+
+    expect(() => defaultRedactor(sparse)).toThrow("UNSERIALIZABLE_OPERATION_PAYLOAD")
+  })
+
   it("rejects cyclic payloads with a stable error", () => {
     const cyclic: { self?: unknown } = {}
     cyclic.self = cyclic
