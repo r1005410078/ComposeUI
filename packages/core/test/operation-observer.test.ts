@@ -19,10 +19,9 @@ const createNodeCommand = (id: string) => ({
 describe("editor operation observer", () => {
   it("reports command attempts, success, failure and history operations", () => {
     const operations: EditorOperation[] = []
-    const editor = createEditor(
-      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-      { operationObserver: { observe: (operation) => operations.push(operation) } },
-    )
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }), {
+      operationObserver: { observe: (operation) => operations.push(operation) },
+    })
 
     editor.dispatch(createNodeCommand("node-1"))
     editor.dispatch(createNodeCommand("node-1"))
@@ -43,10 +42,9 @@ describe("editor operation observer", () => {
 
   it("reports failed empty history operations and clones command/document snapshots", () => {
     const operations: EditorOperation[] = []
-    const editor = createEditor(
-      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-      { operationObserver: { observe: (operation) => operations.push(operation) } },
-    )
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }), {
+      operationObserver: { observe: (operation) => operations.push(operation) },
+    })
 
     expect(editor.undo().ok).toBe(false)
     expect(editor.redo().ok).toBe(false)
@@ -57,7 +55,9 @@ describe("editor operation observer", () => {
     command.payload.name = "mutated after dispatch"
 
     const success = operations.find(
-      (operation): operation is Extract<EditorOperation, { type: "document.command"; status: "succeeded" }> =>
+      (
+        operation,
+      ): operation is Extract<EditorOperation, { type: "document.command"; status: "succeeded" }> =>
         operation.type === "document.command" && operation.status === "succeeded",
     )
     expect(success?.command.payload.name).toBe("node-2")
@@ -75,13 +75,14 @@ describe("editor operation observer", () => {
 
   it("isolates observer failures and reports a diagnostic", () => {
     const diagnostics: string[] = []
-    const editor = createEditor(
-      createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
-      {
-        operationObserver: { observe: () => { throw new Error("observer exploded") } },
-        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }), {
+      operationObserver: {
+        observe: () => {
+          throw new Error("observer exploded")
+        },
       },
-    )
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    })
 
     expect(editor.dispatch(createNodeCommand("node-1")).ok).toBe(true)
     expect(editor.getRecord("node-1")).toBeDefined()
