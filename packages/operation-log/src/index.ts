@@ -25,3 +25,5 @@ export type {
   RecordOperationInput,
 } from "./recorder"
 export { createCoreOperationObserver } from "./adapters/core-observer"
+export { IndexedDbOperationLogStore } from "./indexeddb-store"
+export type { IndexedDbOperationLogStoreOptions } from "./indexeddb-store"
