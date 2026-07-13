@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { OperationEvent, OperationSession } from "../src/index"
+import type { OperationEvent, OperationSession, OperationLifecycleStore } from "../src/index"
 import { MemoryOperationLogStore, exportLogBundle, importLogBundle } from "../src/index"
 
 const session: OperationSession = {
@@ -9,7 +9,7 @@ const session: OperationSession = {
   startedAt: "2026-07-13T00:00:00.000Z",
   endedAt: "2026-07-13T00:01:00.000Z",
   eventCount: 2,
-  finalHash: "final",
+  finalHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 }
 
 const event = (sequence: number, eventId = `e${sequence}`): OperationEvent => ({
@@ -35,8 +35,8 @@ async function seededStore(): Promise<MemoryOperationLogStore> {
     createdAt: "2026-07-13T00:01:00.000Z",
     document: { schemaVersion: 1, rootPageId: "page-1", records: [] },
     sessionState: { selection: { nodeId: "node-1" } },
-    documentHash: "document",
-    sessionHash: "session",
+    documentHash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    sessionHash: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   })
   return store
 }
@@ -53,6 +53,9 @@ describe("log bundles", () => {
 
     expect(bundle.manifest.schemaVersion).toBe(1)
     expect(bundle.manifest.productVersion).toBe("0.0.0")
+    expect(bundle.manifest.canonicalization).toEqual({ algorithm: "canonical-json", version: 1 })
+    expect(bundle.manifest.redaction).toEqual({ policy: "default-v1", version: 1 })
+    expect(bundle.manifest.integrity).toMatchObject({ eventCount: 2, checkpointCount: 1 })
     expect(bundle.events).toHaveLength(2)
     expect(bundle.events[0]?.payload).toMatchObject({ token: "[REDACTED]" })
   })
@@ -104,5 +107,31 @@ describe("log bundles", () => {
     await expect(importLogBundle(encoded, { maxBytes: 1 })).rejects.toThrow(
       "LOG_BUNDLE_INTEGRITY_FAILED",
     )
+  })
+
+  it("rejects malformed source session and event schemas before export", async () => {
+    const malformedEvent = { ...event(1), timestamp: "yesterday" }
+    const store = {
+      getSession: async () => ({ ...session, eventCount: 1 }),
+      query: async () => [malformedEvent],
+      getNearestCheckpoint: async () => undefined,
+    } as unknown as OperationLifecycleStore
+
+    await expect(
+      exportLogBundle(store, { sessionId: "s1", productVersion: "0.0.0" }),
+    ).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
+  })
+
+  it("rejects bundles with missing required runtime schema fields", async () => {
+    await expect(
+      importLogBundle(
+        JSON.stringify({
+          manifest: { schemaVersion: 1, bundleVersion: 1, hashAlgorithm: "SHA-256" },
+          session: {},
+          checkpoints: [],
+          events: [],
+        }),
+      ),
+    ).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
   })
 })
