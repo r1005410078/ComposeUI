@@ -45,6 +45,40 @@ describe("IndexedDbOperationLogStore", () => {
     await store.close()
   })
 
+  it("deletes a session's events and checkpoints in one transaction", async () => {
+    const store = await openStore()
+    await store.putSession({
+      sessionId: "s1",
+      projectId: "p1",
+      status: "ended",
+      startedAt: "2026-07-13T00:00:00.000Z",
+      endedAt: "2026-07-13T00:00:02.000Z",
+      eventCount: 2,
+    })
+    await store.append([
+      event({ sequence: 1, eventId: "e1" }),
+      event({ sequence: 2, eventId: "e2" }),
+    ])
+    await store.putCheckpoint({
+      sessionId: "s1",
+      sequence: 2,
+      createdAt: "2026-07-13T00:00:02.000Z",
+      document: { pages: [] },
+      sessionState: {},
+      documentHash: "doc-hash",
+      sessionHash: "session-hash",
+    })
+
+    await store.deleteSession("s1")
+    expect(await store.query({ sessionId: "s1" })).toEqual([])
+    expect(await store.getSession("s1")).toBeUndefined()
+    expect(await store.getNearestCheckpoint("s1", 2)).toBeUndefined()
+
+    await store.append([event({ sequence: 1, eventId: "e1" })])
+    expect(await store.query({ sessionId: "s1" })).toHaveLength(1)
+    await store.close()
+  })
+
   it("persists sessions and checkpoints and exposes the version 1 schema", async () => {
     const name = databaseName()
     const store = await IndexedDbOperationLogStore.open({ databaseName: name })

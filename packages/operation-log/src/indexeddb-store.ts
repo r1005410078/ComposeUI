@@ -47,33 +47,39 @@ export class IndexedDbOperationLogStore implements OperationLifecycleStore {
     const database = this.#requireDatabase()
     const transaction = database.transaction(STORE_EVENTS, "readwrite")
     const store = transaction.objectStore(STORE_EVENTS)
-    const existing = await request<OperationEvent[]>(store.getAll())
-    const eventIds = new Set(existing.map((event) => event.eventId))
-    const lastSequences = new Map<string, number>()
-
-    for (const event of existing) {
-      const last = lastSequences.get(event.sessionId) ?? 0
-      if (event.sequence > last) lastSequences.set(event.sessionId, event.sequence)
-    }
-
     const batch = structuredClone(events)
-    for (const event of batch) {
-      if (eventIds.has(event.eventId)) {
-        transaction.abort()
-        throw new Error("DUPLICATE_OPERATION_EVENT")
-      }
-      eventIds.add(event.eventId)
-      const expected = (lastSequences.get(event.sessionId) ?? 0) + 1
-      if (event.sequence !== expected) {
-        transaction.abort()
-        throw new Error("NON_CONTIGUOUS_OPERATION_SEQUENCE")
-      }
-      lastSequences.set(event.sessionId, event.sequence)
-    }
+    return new Promise((resolve, reject) => {
+      let failure: unknown
+      transaction.addEventListener("complete", () => {
+        if (failure === undefined) {
+          this.#notify()
+          resolve()
+        } else {
+          reject(failure)
+        }
+      })
+      transaction.addEventListener("error", () =>
+        reject(failure ?? transaction.error ?? new Error("INDEXEDDB_TRANSACTION_FAILED")),
+      )
+      transaction.addEventListener("abort", () =>
+        reject(failure ?? transaction.error ?? new Error("INDEXEDDB_TRANSACTION_ABORTED")),
+      )
 
-    for (const event of batch) store.put(event)
-    await transactionComplete(transaction)
-    this.#notify()
+      const readRequest = store.getAll()
+      readRequest.addEventListener("error", () => {
+        failure = readRequest.error ?? new Error("INDEXEDDB_REQUEST_FAILED")
+        transaction.abort()
+      })
+      readRequest.addEventListener("success", () => {
+        try {
+          validateAppendBatch(readRequest.result, batch)
+          for (const event of batch) store.put(event)
+        } catch (error) {
+          failure = error
+          transaction.abort()
+        }
+      })
+    })
   }
 
   async query(query: OperationLogQuery): Promise<OperationEvent[]> {
@@ -142,11 +148,33 @@ export class IndexedDbOperationLogStore implements OperationLifecycleStore {
       [STORE_SESSIONS, STORE_EVENTS, STORE_CHECKPOINTS],
       "readwrite",
     )
-    transaction.objectStore(STORE_SESSIONS).delete(sessionId)
-    await deleteBySession(transaction.objectStore(STORE_EVENTS), sessionId)
-    await deleteBySession(transaction.objectStore(STORE_CHECKPOINTS), sessionId)
-    await transactionComplete(transaction)
-    this.#notify()
+    return new Promise((resolve, reject) => {
+      let failure: unknown
+      transaction.addEventListener("complete", () => {
+        if (failure === undefined) {
+          this.#notify()
+          resolve()
+        } else {
+          reject(failure)
+        }
+      })
+      transaction.addEventListener("error", () =>
+        reject(failure ?? transaction.error ?? new Error("INDEXEDDB_TRANSACTION_FAILED")),
+      )
+      transaction.addEventListener("abort", () =>
+        reject(failure ?? transaction.error ?? new Error("INDEXEDDB_TRANSACTION_ABORTED")),
+      )
+
+      transaction.objectStore(STORE_SESSIONS).delete(sessionId)
+      registerSessionDeletes(transaction.objectStore(STORE_EVENTS), sessionId, () => {
+        failure = new Error("INDEXEDDB_REQUEST_FAILED")
+        transaction.abort()
+      })
+      registerSessionDeletes(transaction.objectStore(STORE_CHECKPOINTS), sessionId, () => {
+        failure = new Error("INDEXEDDB_REQUEST_FAILED")
+        transaction.abort()
+      })
+    })
   }
 
   async putCheckpoint(checkpoint: OperationCheckpoint): Promise<void> {
@@ -272,11 +300,38 @@ function ensureIndex(
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options)
 }
 
-async function deleteBySession(store: IDBObjectStore, sessionId: string): Promise<void> {
-  const values = await request<unknown[]>(store.getAll())
-  for (const value of values) {
-    if (isSessionValue(value, sessionId)) store.delete(storeKey(value))
+function validateAppendBatch(
+  existing: readonly OperationEvent[],
+  batch: readonly OperationEvent[],
+): void {
+  const eventIds = new Set(existing.map((event) => event.eventId))
+  const lastSequences = new Map<string, number>()
+  for (const event of existing) {
+    const last = lastSequences.get(event.sessionId) ?? 0
+    if (event.sequence > last) lastSequences.set(event.sessionId, event.sequence)
   }
+
+  for (const event of batch) {
+    if (eventIds.has(event.eventId)) throw new Error("DUPLICATE_OPERATION_EVENT")
+    eventIds.add(event.eventId)
+    const expected = (lastSequences.get(event.sessionId) ?? 0) + 1
+    if (event.sequence !== expected) throw new Error("NON_CONTIGUOUS_OPERATION_SEQUENCE")
+    lastSequences.set(event.sessionId, event.sequence)
+  }
+}
+
+function registerSessionDeletes(
+  store: IDBObjectStore,
+  sessionId: string,
+  onError: () => void,
+): void {
+  const readRequest = store.getAll()
+  readRequest.addEventListener("error", onError)
+  readRequest.addEventListener("success", () => {
+    for (const value of readRequest.result as unknown[]) {
+      if (isSessionValue(value, sessionId)) store.delete(storeKey(value))
+    }
+  })
 }
 
 function isSessionValue(value: unknown, sessionId: string): value is SessionKeyedValue {
