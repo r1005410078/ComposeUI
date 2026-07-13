@@ -19,6 +19,14 @@ export type {
   Viewport,
 } from "./session"
 export { createSessionOperationObserver } from "./operation-log-adapter"
+export { OperationLogController } from "./operation-log-controller"
+export type {
+  OperationLogControllerListener,
+  OperationLogControllerOptions,
+  OperationLogControllerState,
+  OperationLogFilter,
+  OperationLogFilterValue,
+} from "./operation-log-controller"
 
 export {
   PanelRegistry,
