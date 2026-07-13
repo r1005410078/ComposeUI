@@ -44,6 +44,10 @@ export class OperationRecorder {
     return this.#projectId
   }
 
+  get sequence(): number {
+    return this.#sequence
+  }
+
   constructor(options: OperationRecorderOptions) {
     this.#sessionId = options.sessionId
     this.#projectId = options.projectId

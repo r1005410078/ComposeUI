@@ -134,9 +134,11 @@ export class OperationLogCoordinator {
   documentEvent(sequence?: number): Promise<void> {
     const task = this.#pending.then(async () => {
       if (this.#ended) return
+      if (sequence !== undefined && sequence !== this.#recorder.sequence) {
+        throw new Error("OPERATION_SEQUENCE_OUT_OF_SYNC")
+      }
       this.#documentEventsSinceCheckpoint += 1
-      if (sequence !== undefined)
-        this.#session.eventCount = Math.max(this.#session.eventCount, sequence)
+      this.#session.eventCount = this.#recorder.sequence
       const now = this.#clock.now()
       const elapsed = Date.parse(now) - Date.parse(this.#lastCheckpointAt)
       await this.#store.putSession(this.#session)
@@ -144,29 +146,37 @@ export class OperationLogCoordinator {
         this.#documentEventsSinceCheckpoint >= this.#checkpointEveryEvents ||
         elapsed >= this.#checkpointEveryMs
       ) {
-        await this.#writeCheckpoint(sequence ?? this.#session.eventCount, now)
+        await this.#writeCheckpoint(now)
       }
     })
     this.#pending = task.catch(() => undefined)
     return task
   }
 
-  async #writeCheckpoint(sequence: number, createdAt: string): Promise<void> {
+  async #writeCheckpoint(createdAt: string): Promise<void> {
     const snapshot = await this.#snapshot()
-    const checkpoint: OperationCheckpoint = {
-      sessionId: this.#sessionId,
-      sequence,
-      createdAt,
-      ...structuredClone(snapshot),
-    }
-    await this.#store.putCheckpoint(checkpoint)
+    const checkpointSequence = this.#recorder.sequence + 1
     const event = await this.#recorder.record({
       category: "system",
       type: "system.checkpoint",
       status: "observed",
-      payload: { sequence, documentHash: snapshot.documentHash, sessionHash: snapshot.sessionHash },
+      payload: {
+        sequence: checkpointSequence,
+        documentHash: snapshot.documentHash,
+        sessionHash: snapshot.sessionHash,
+      },
     })
-    this.#session.eventCount = Math.max(this.#session.eventCount, event.sequence)
+    if (event.sequence !== checkpointSequence) {
+      throw new Error("OPERATION_SEQUENCE_OUT_OF_SYNC")
+    }
+    const checkpoint: OperationCheckpoint = {
+      sessionId: this.#sessionId,
+      sequence: event.sequence,
+      createdAt,
+      ...structuredClone(snapshot),
+    }
+    await this.#store.putCheckpoint(checkpoint)
+    this.#session.eventCount = event.sequence
     this.#documentEventsSinceCheckpoint = 0
     this.#lastCheckpointAt = createdAt
     await this.#store.putSession(this.#session)

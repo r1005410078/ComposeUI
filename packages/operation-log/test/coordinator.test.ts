@@ -63,7 +63,7 @@ describe("OperationLogCoordinator", () => {
     await coordinator.end()
   })
 
-  it("writes the first event-count checkpoint and does not checkpoint early", async () => {
+  it("uses recorder sequence for the first no-argument checkpoint", async () => {
     const { store, recorder } = create()
     const coordinator = await OperationLogCoordinator.start({
       store,
@@ -73,12 +73,12 @@ describe("OperationLogCoordinator", () => {
       checkpointEveryMs: 30_000,
     })
 
-    await coordinator.documentEvent(2)
+    await coordinator.documentEvent()
     expect(await store.getNearestCheckpoint("s1", 2)).toBeUndefined()
-    await coordinator.documentEvent(3)
+    await coordinator.documentEvent()
 
-    expect(await store.getNearestCheckpoint("s1", 3)).toMatchObject({
-      sequence: 3,
+    expect(await store.getNearestCheckpoint("s1", 2)).toMatchObject({
+      sequence: 2,
       documentHash: "document-hash",
     })
     expect(await store.query({ sessionId: "s1" })).toMatchObject([
@@ -101,9 +101,56 @@ describe("OperationLogCoordinator", () => {
     })
 
     time.advance("2026-07-13T00:00:31.000Z")
-    await coordinator.documentEvent(2)
+    await coordinator.documentEvent()
 
     expect(await store.getNearestCheckpoint("s1", 2)).toMatchObject({ sequence: 2 })
+    await coordinator.end()
+  })
+
+  it("keeps an explicit recorder sequence aligned across interleaved events", async () => {
+    const { store, recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({
+      store,
+      recorder,
+      snapshot,
+      checkpointEveryEvents: 2,
+      checkpointEveryMs: 30_000,
+    })
+
+    await recorder.record({
+      category: "document",
+      type: "document.command",
+      status: "observed",
+      payload: { step: 1 },
+    })
+    await coordinator.documentEvent(2)
+    await recorder.record({
+      category: "document",
+      type: "document.command",
+      status: "observed",
+      payload: { step: 2 },
+    })
+    await coordinator.documentEvent(3)
+
+    expect(await store.getNearestCheckpoint("s1", 4)).toMatchObject({ sequence: 4 })
+    expect(await store.query({ sessionId: "s1" })).toMatchObject([
+      { sequence: 1, type: "system.sessionStarted" },
+      { sequence: 2, type: "document.command" },
+      { sequence: 3, type: "document.command" },
+      { sequence: 4, type: "system.checkpoint", payload: { sequence: 4 } },
+    ])
+    await coordinator.end()
+  })
+
+  it("rejects an explicit sequence that is not the recorder sequence", async () => {
+    const { recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({
+      store: new MemoryOperationLogStore(),
+      recorder,
+      snapshot,
+    })
+
+    await expect(coordinator.documentEvent(99)).rejects.toThrow("OPERATION_SEQUENCE_OUT_OF_SYNC")
     await coordinator.end()
   })
 
