@@ -79,7 +79,9 @@ describe("log bundles", () => {
 
     const bundle = await importLogBundle(encoded)
 
-    expect(bundle.manifest.schemaVersion).toBe(1)
+    expect(bundle.manifest.bundleVersion).toBe(2)
+    if (bundle.manifest.bundleVersion !== 2) throw new Error("expected v2 bundle")
+    expect(bundle.manifest.schemaVersion).toBe(2)
     expect(bundle.manifest.productVersion).toBe("0.0.0")
     expect(bundle.manifest.canonicalization).toEqual({ algorithm: "canonical-json", version: 1 })
     expect(bundle.manifest.redaction).toEqual({ policy: "default-v1", version: 1 })
@@ -87,6 +89,72 @@ describe("log bundles", () => {
     expect(bundle.events).toHaveLength(2)
     expect(bundle.events[0]?.payload).toMatchObject({ token: "[REDACTED]" })
     expect(bundle.manifest.integrity.chainHash).not.toBe(bundle.manifest.sectionHashes.events)
+  })
+
+  it("imports the legacy V1 bundle emitted before the V2 manifest", async () => {
+    const legacySession = {
+      sessionId: "legacy-session",
+      projectId: "legacy-project",
+      status: "ended",
+      startedAt: "2026-07-13T00:00:00.000Z",
+      endedAt: "2026-07-13T00:01:00.000Z",
+      eventCount: 1,
+      finalHash: "final",
+    }
+    const legacyEvents = [
+      {
+        schemaVersion: 1,
+        eventId: "legacy-event",
+        sessionId: "legacy-session",
+        projectId: "legacy-project",
+        sequence: 1,
+        timestamp: "2026-07-13T00:00:01.000Z",
+        category: "document",
+        type: "node.create",
+        status: "succeeded",
+        payload: {},
+      },
+    ]
+    const legacyCheckpoints = [
+      {
+        sessionId: "legacy-session",
+        sequence: 1,
+        createdAt: "2026-07-13T00:01:00.000Z",
+        document: { schemaVersion: 1, rootPageId: "page-1", records: [] },
+        sessionState: {},
+        documentHash: "document",
+        sessionHash: "session",
+      },
+    ]
+    const sectionHashes = {
+      session: await hashCanonical(legacySession),
+      checkpoints: await hashCanonical(legacyCheckpoints),
+      events: await hashCanonical(legacyEvents),
+    }
+    const manifestWithoutHash = {
+      bundleVersion: 1 as const,
+      schemaVersion: 1 as const,
+      hashAlgorithm: "SHA-256" as const,
+      sessionId: "legacy-session",
+      productVersion: "0.0.0",
+      exportedAt: "2026-07-13T00:02:00.000Z",
+      sectionHashes,
+    }
+    const legacy = canonicalJson({
+      manifest: {
+        ...manifestWithoutHash,
+        manifestHash: await hashCanonical(manifestWithoutHash),
+      },
+      session: legacySession,
+      checkpoints: legacyCheckpoints,
+      events: legacyEvents,
+    })
+
+    const bundle = await importLogBundle(legacy)
+
+    expect(bundle.manifest.bundleVersion).toBe(1)
+    if (bundle.manifest.bundleVersion !== 1) throw new Error("expected legacy bundle")
+    expect(bundle.manifest.sectionHashes.events).toBe(sectionHashes.events)
   })
 
   it("rejects tampering with section contents", async () => {

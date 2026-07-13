@@ -17,6 +17,28 @@ export interface LogBundleManifestV1 {
   sessionId: string
   productVersion: string
   exportedAt: string
+  sectionHashes: {
+    session: string
+    checkpoints: string
+    events: string
+  }
+  manifestHash: string
+}
+
+export interface LogBundleV1 {
+  manifest: LogBundleManifestV1
+  session: OperationSession
+  checkpoints: OperationCheckpoint[]
+  events: OperationEvent[]
+}
+
+export interface LogBundleManifestV2 {
+  bundleVersion: 2
+  schemaVersion: 2
+  hashAlgorithm: "SHA-256"
+  sessionId: string
+  productVersion: string
+  exportedAt: string
   canonicalization: {
     algorithm: "canonical-json"
     version: 1
@@ -47,8 +69,8 @@ export interface LogBundleManifestV1 {
   manifestHash: string
 }
 
-export interface LogBundleV1 {
-  manifest: LogBundleManifestV1
+export interface LogBundleV2 {
+  manifest: LogBundleManifestV2
   session: OperationSession
   checkpoints: OperationCheckpoint[]
   events: OperationEvent[]
@@ -113,8 +135,8 @@ export async function exportLogBundle(
     events: await hashCanonical(redactedEvents),
   }
   const manifestWithoutHash = {
-    bundleVersion: 1 as const,
-    schemaVersion: 1 as const,
+    bundleVersion: 2 as const,
+    schemaVersion: 2 as const,
     hashAlgorithm: "SHA-256" as const,
     sessionId: options.sessionId,
     productVersion: options.productVersion,
@@ -162,7 +184,7 @@ export async function exportLogBundle(
 export async function importLogBundle(
   encoded: string,
   options: ImportLogBundleOptions = {},
-): Promise<LogBundleV1> {
+): Promise<LogBundleV1 | LogBundleV2> {
   enforceByteLimit(encoded, options.maxBytes ?? DEFAULT_LOG_BUNDLE_MAX_BYTES)
   try {
     const parsed: unknown = JSON.parse(encoded)
@@ -170,12 +192,11 @@ export async function importLogBundle(
     if (canonicalJson(parsed) !== encoded) throw integrityError()
     const manifest = parsed.manifest
     if (!isRecord(manifest)) throw integrityError()
-    if (
-      manifest.bundleVersion !== 1 ||
-      manifest.schemaVersion !== 1 ||
-      manifest.hashAlgorithm !== "SHA-256" ||
-      typeof manifest.manifestHash !== "string"
-    ) {
+    if (manifest.bundleVersion === 1 && manifest.schemaVersion === 1) {
+      return importLegacyBundle(parsed)
+    }
+    if (manifest.bundleVersion !== 2 || manifest.schemaVersion !== 2) throw integrityError()
+    if (manifest.hashAlgorithm !== "SHA-256" || typeof manifest.manifestHash !== "string") {
       throw integrityError()
     }
     const { manifestHash, ...manifestWithoutHash } = manifest
@@ -209,11 +230,70 @@ export async function importLogBundle(
       manifest,
     )
     await validateManifest(manifest, session as Record<string, unknown>, checkpoints, events)
-    return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV1
+    return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV2
   } catch (error) {
     if (error instanceof Error && error.message === "LOG_BUNDLE_INTEGRITY_FAILED") throw error
     throw integrityError()
   }
+}
+
+async function importLegacyBundle(parsed: Record<string, unknown>): Promise<LogBundleV1> {
+  const manifest = parsed.manifest
+  const session = parsed.session
+  const checkpoints = parsed.checkpoints
+  const events = parsed.events
+  if (
+    !isRecord(manifest) ||
+    !isRecord(session) ||
+    !Array.isArray(checkpoints) ||
+    !Array.isArray(events) ||
+    !isLegacyManifest(manifest) ||
+    !isHash(manifest.manifestHash)
+  ) {
+    throw integrityError()
+  }
+  const { manifestHash, ...manifestWithoutHash } = manifest
+  if ((await hashCanonical(manifestWithoutHash)) !== manifestHash) throw integrityError()
+  const sectionHashes = manifest.sectionHashes as Record<string, unknown>
+  if (
+    (await hashCanonical(session)) !== sectionHashes.session ||
+    (await hashCanonical(checkpoints)) !== sectionHashes.checkpoints ||
+    (await hashCanonical(events)) !== sectionHashes.events
+  ) {
+    throw integrityError()
+  }
+  validateBundleContents(session, checkpoints, events, manifest, false)
+  return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV1
+}
+
+function isLegacyManifest(value: Record<string, unknown>): boolean {
+  if (
+    !hasOnlyKeys(value, [
+      "bundleVersion",
+      "schemaVersion",
+      "hashAlgorithm",
+      "sessionId",
+      "productVersion",
+      "exportedAt",
+      "sectionHashes",
+      "manifestHash",
+    ]) ||
+    value.bundleVersion !== 1 ||
+    value.schemaVersion !== 1 ||
+    value.hashAlgorithm !== "SHA-256" ||
+    !isId(value.sessionId) ||
+    !isNonEmptyString(value.productVersion) ||
+    !isTimestamp(value.exportedAt) ||
+    !isRecord(value.sectionHashes) ||
+    !hasOnlyKeys(value.sectionHashes, ["session", "checkpoints", "events"])
+  ) {
+    return false
+  }
+  return (
+    isHash(value.sectionHashes.session) &&
+    isHash(value.sectionHashes.checkpoints) &&
+    isHash(value.sectionHashes.events)
+  )
 }
 
 function validateBundleContents(
@@ -221,8 +301,9 @@ function validateBundleContents(
   checkpoints: unknown,
   events: unknown,
   manifest: Record<string, unknown>,
+  strictHashes = true,
 ): void {
-  if (!isSession(session) || !Array.isArray(checkpoints) || !Array.isArray(events)) {
+  if (!isSession(session, strictHashes) || !Array.isArray(checkpoints) || !Array.isArray(events)) {
     throw integrityError()
   }
   if (manifest.sessionId !== session.sessionId || session.eventCount !== events.length)
@@ -230,7 +311,7 @@ function validateBundleContents(
   const ids = new Set<string>()
   events.forEach((event: unknown, index) => {
     if (
-      !isEvent(event) ||
+      !isEvent(event, strictHashes) ||
       event.schemaVersion !== 1 ||
       event.sessionId !== session.sessionId ||
       event.projectId !== session.projectId ||
@@ -245,7 +326,7 @@ function validateBundleContents(
   const checkpointSequences = new Set<number>()
   for (const checkpoint of checkpoints) {
     if (
-      !isCheckpoint(checkpoint) ||
+      !isCheckpoint(checkpoint, strictHashes) ||
       checkpoint.sessionId !== session.sessionId ||
       !Number.isInteger(checkpoint.sequence) ||
       checkpoint.sequence < 0 ||
@@ -265,6 +346,20 @@ async function validateManifest(
   events: unknown[],
 ): Promise<void> {
   if (
+    !hasOnlyKeys(manifest, [
+      "bundleVersion",
+      "schemaVersion",
+      "hashAlgorithm",
+      "sessionId",
+      "productVersion",
+      "exportedAt",
+      "canonicalization",
+      "redaction",
+      "runtime",
+      "integrity",
+      "sectionHashes",
+      "manifestHash",
+    ]) ||
     !isId(manifest.sessionId) ||
     !isNonEmptyString(manifest.productVersion) ||
     !isTimestamp(manifest.exportedAt) ||
@@ -278,7 +373,23 @@ async function validateManifest(
     !isRecord(manifest.integrity) ||
     manifest.integrity.eventCount !== events.length ||
     manifest.integrity.checkpointCount !== checkpoints.length ||
-    !isHash(manifest.integrity.chainHash)
+    !isHash(manifest.integrity.chainHash) ||
+    !hasOnlyKeys(manifest.canonicalization, ["algorithm", "version"]) ||
+    !hasOnlyKeys(manifest.redaction, ["policy", "version"]) ||
+    !hasOnlyKeys(manifest.runtime, ["platform", "browser", "plugins", "features"]) ||
+    !hasOnlyKeys(manifest.integrity, [
+      "eventCount",
+      "checkpointCount",
+      "chainHash",
+      "initialSnapshotHash",
+      "firstEventId",
+      "lastEventId",
+    ]) ||
+    !hasOnlyKeys(manifest.sectionHashes as Record<string, unknown>, [
+      "session",
+      "checkpoints",
+      "events",
+    ])
   ) {
     throw integrityError()
   }
@@ -378,9 +489,18 @@ function validateMetadataRecord(value: Record<string, unknown>, allowUndefined: 
   }
 }
 
-function isSession(value: unknown): value is OperationSession {
+function isSession(value: unknown, strictHashes = true): value is OperationSession {
   if (!isRecord(value)) return false
   return (
+    hasOnlyKeys(value, [
+      "sessionId",
+      "projectId",
+      "status",
+      "startedAt",
+      "endedAt",
+      "eventCount",
+      "finalHash",
+    ]) &&
     isId(value.sessionId) &&
     isId(value.projectId) &&
     (value.status === "active" || value.status === "ended" || value.status === "abnormal") &&
@@ -391,13 +511,31 @@ function isSession(value: unknown): value is OperationSession {
     typeof value.eventCount === "number" &&
     Number.isSafeInteger(value.eventCount) &&
     value.eventCount >= 0 &&
-    (value.finalHash === undefined || isHash(value.finalHash))
+    (value.finalHash === undefined ||
+      (strictHashes ? isHash(value.finalHash) : isNonEmptyString(value.finalHash)))
   )
 }
 
-function isEvent(value: unknown): value is OperationEvent {
+function isEvent(value: unknown, strictHashes = true): value is OperationEvent {
   if (!isRecord(value)) return false
   return (
+    hasOnlyKeys(value, [
+      "schemaVersion",
+      "eventId",
+      "sessionId",
+      "projectId",
+      "sequence",
+      "timestamp",
+      "category",
+      "type",
+      "status",
+      "transactionId",
+      "causationId",
+      "payload",
+      "diagnostics",
+      "beforeHash",
+      "afterHash",
+    ]) &&
     value.schemaVersion === 1 &&
     isId(value.eventId) &&
     isId(value.sessionId) &&
@@ -413,26 +551,37 @@ function isEvent(value: unknown): value is OperationEvent {
     Object.hasOwn(value, "payload") &&
     (value.transactionId === undefined || isId(value.transactionId)) &&
     (value.causationId === undefined || isId(value.causationId)) &&
-    (value.beforeHash === undefined || isHash(value.beforeHash)) &&
-    (value.afterHash === undefined || isHash(value.afterHash)) &&
+    (value.beforeHash === undefined ||
+      (strictHashes ? isHash(value.beforeHash) : isNonEmptyString(value.beforeHash))) &&
+    (value.afterHash === undefined ||
+      (strictHashes ? isHash(value.afterHash) : isNonEmptyString(value.afterHash))) &&
     (value.diagnostics === undefined ||
       (Array.isArray(value.diagnostics) && value.diagnostics.every(isDiagnostic)))
   )
 }
 
-function isCheckpoint(value: unknown): value is OperationCheckpoint {
+function isCheckpoint(value: unknown, strictHashes = true): value is OperationCheckpoint {
   if (!isRecord(value)) return false
   return (
+    hasOnlyKeys(value, [
+      "sessionId",
+      "sequence",
+      "createdAt",
+      "document",
+      "sessionState",
+      "documentHash",
+      "sessionHash",
+    ]) &&
     isId(value.sessionId) &&
     typeof value.sequence === "number" &&
     Number.isSafeInteger(value.sequence) &&
     value.sequence >= 0 &&
     isTimestamp(value.createdAt) &&
-    isPageDocument(value.document) &&
+    isPageDocument(value.document, strictHashes) &&
     Object.hasOwn(value, "sessionState") &&
     isSessionState(value.sessionState) &&
-    isHash(value.documentHash) &&
-    isHash(value.sessionHash)
+    (strictHashes ? isHash(value.documentHash) : isNonEmptyString(value.documentHash)) &&
+    (strictHashes ? isHash(value.sessionHash) : isNonEmptyString(value.sessionHash))
   )
 }
 
@@ -452,9 +601,16 @@ function isDiagnostic(value: unknown): boolean {
   )
 }
 
-function isPageDocument(value: unknown): boolean {
-  if (!isRecord(value) || value.schemaVersion !== 1 || !isId(value.rootPageId)) return false
+function isPageDocument(value: unknown, strictSchema = true): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["schemaVersion", "rootPageId", "records"]) ||
+    value.schemaVersion !== 1 ||
+    !isId(value.rootPageId)
+  )
+    return false
   if (!Array.isArray(value.records)) return false
+  if (!strictSchema) return value.records.every(isJsonValue)
   const records = value.records
   const ids = new Set<string>()
   let documentCount = 0

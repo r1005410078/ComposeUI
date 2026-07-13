@@ -45,6 +45,8 @@ export { DEFAULT_LOG_BUNDLE_MAX_BYTES, exportLogBundle, importLogBundle } from "
 export type {
   ExportLogBundleOptions,
   ImportLogBundleOptions,
+  LogBundleManifestV2,
+  LogBundleV2,
   LogBundleManifestV1,
   LogBundleV1,
 } from "./bundle"
