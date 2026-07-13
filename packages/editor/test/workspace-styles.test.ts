@@ -31,13 +31,19 @@ describe("operation output workspace styles", () => {
   })
 
   it("removes the details column when the output panel is narrow", () => {
-    expect(workspaceCss).toContain("@media (max-width: 720px)")
+    expect(workspaceCss).toContain("container-type: inline-size")
+    expect(workspaceCss).toContain("@container (max-width: 720px)")
     expect(workspaceCss).toContain(".composeui-editor__output-details-host")
     expect(workspaceCss).toContain("display: none")
+    expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr)")
+    expect(workspaceCss).toContain("min-width: 0")
+  })
+
+  it("keeps the viewport fallback separate from container-driven output layout", () => {
+    expect(workspaceCss).toContain("@media (max-width: 720px)")
     expect(workspaceCss).toContain(
-      "grid-template-columns: minmax(var(--composeui-workspace-min-width-compact), 1fr)",
+      ".composeui-editor__output-body {\n    grid-template-columns: minmax(0, 1fr);",
     )
-    expect(workspaceCss).toContain("min-width: 360px")
   })
 
   it("styles output rows by level using semantic state tokens", () => {

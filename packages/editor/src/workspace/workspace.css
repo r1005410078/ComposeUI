@@ -336,6 +336,7 @@
 }
 
 .composeui-editor__output {
+  container-type: inline-size;
   display: grid;
   grid-template-rows: var(--composeui-panel-toolbar-height) auto minmax(0, 1fr);
   min-height: 0;
@@ -514,7 +515,7 @@
   gap: var(--composeui-space-2);
   grid-template-columns: 36px var(--composeui-output-time-width) 76px minmax(0, 1fr);
   min-height: var(--composeui-output-row-height);
-  min-width: 360px;
+  min-width: 0;
   padding: 0 var(--composeui-space-2);
   text-align: left;
   width: 100%;
@@ -732,9 +733,19 @@
   }
 }
 
+@container (max-width: 720px) {
+  .composeui-editor__output-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .composeui-editor__output-details-host {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
   .composeui-editor__output-body {
-    grid-template-columns: minmax(var(--composeui-workspace-min-width-compact), 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .composeui-editor__output-details-host {
