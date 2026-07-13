@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 import type { PageDocument } from "@composeui/core"
-import type { OperationCheckpoint, OperationSession } from "@composeui/operation-log"
+import type {
+  OperationCheckpoint,
+  OperationLogStore,
+  OperationSession,
+} from "@composeui/operation-log"
 import { MemoryOperationLogStore } from "@composeui/operation-log"
 
 const document = (): PageDocument => ({
@@ -29,7 +33,17 @@ const checkpoint = (overrides: Partial<OperationCheckpoint> = {}): OperationChec
   ...overrides,
 })
 
+const eventStore: OperationLogStore = {
+  append: async () => undefined,
+  query: async () => [],
+  subscribe: () => () => undefined,
+}
+
 describe("MemoryOperationLogStore lifecycle storage", () => {
+  it("keeps event stores compatible without lifecycle methods", () => {
+    expect(eventStore.subscribe(() => undefined)).toBeTypeOf("function")
+  })
+
   it("stores cloned session metadata and checkpoints", async () => {
     const store = new MemoryOperationLogStore()
     const metadata = session({ status: "active" })
@@ -100,5 +114,15 @@ describe("MemoryOperationLogStore lifecycle storage", () => {
 
     expect(await store.getSession("s1")).toEqual(first)
     expect(await store.estimateUsage()).toBe(before)
+  })
+
+  it("estimates usage for structured-cloneable BigInt and cyclic state", async () => {
+    const store = new MemoryOperationLogStore()
+    const cyclicState: { count: bigint; self?: unknown } = { count: 1n }
+    cyclicState.self = cyclicState
+
+    await store.putCheckpoint(checkpoint({ sessionState: cyclicState }))
+
+    await expect(store.estimateUsage()).resolves.toBeGreaterThan(0)
   })
 })

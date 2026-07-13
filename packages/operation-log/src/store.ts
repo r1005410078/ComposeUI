@@ -6,6 +6,9 @@ export interface OperationLogStore {
   append(events: readonly OperationEvent[]): Promise<void>
   query(query: OperationLogQuery): Promise<OperationEvent[]>
   subscribe(listener: () => void): () => void
+}
+
+export interface OperationLifecycleStore extends OperationLogStore {
   putSession(session: OperationSession): Promise<void>
   getSession(sessionId: string): Promise<OperationSession | undefined>
   listSessions(projectId: string): Promise<OperationSession[]>
@@ -22,7 +25,7 @@ export interface MemoryOperationLogStoreOptions {
   onListenerError?: (error: unknown) => void
 }
 
-export class MemoryOperationLogStore implements OperationLogStore {
+export class MemoryOperationLogStore implements OperationLifecycleStore {
   #eventsBySession = new Map<string, OperationEvent[]>()
   #eventIds = new Set<string>()
   #sessions = new Map<string, OperationSession>()
@@ -137,12 +140,11 @@ export class MemoryOperationLogStore implements OperationLogStore {
   }
 
   async estimateUsage(): Promise<number> {
-    const data = {
-      sessions: [...this.#sessions.values()],
-      events: [...this.#eventsBySession.values()].flat(),
-      checkpoints: [...this.#checkpointsBySession.values()].flat(),
-    }
-    return new TextEncoder().encode(JSON.stringify(data)).byteLength
+    return estimateValueBytes([
+      [...this.#sessions.values()],
+      [...this.#eventsBySession.values()],
+      [...this.#checkpointsBySession.values()],
+    ])
   }
 
   async query(query: OperationLogQuery): Promise<OperationEvent[]> {
@@ -199,4 +201,83 @@ function validateCheckpoint(checkpoint: OperationCheckpoint): void {
 
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
+}
+
+function estimateValueBytes(root: unknown): number {
+  const seen = new WeakSet<object>()
+  const pending: unknown[] = [root]
+  let bytes = 0
+
+  while (pending.length > 0) {
+    const value = pending.pop()
+    switch (typeof value) {
+      case "undefined":
+        bytes += 1
+        continue
+      case "boolean":
+        bytes += 4
+        continue
+      case "number":
+        bytes += 8
+        continue
+      case "bigint":
+        bytes += encodedLength(value.toString(10))
+        continue
+      case "string":
+        bytes += encodedLength(value)
+        continue
+      case "symbol":
+        bytes += encodedLength(String(value))
+        continue
+      case "function":
+        bytes += 8
+        continue
+      case "object":
+        if (value === null || seen.has(value)) continue
+        seen.add(value)
+        bytes += 16
+
+        if (value instanceof Date) {
+          bytes += 8
+          continue
+        }
+        if (value instanceof RegExp) {
+          bytes += encodedLength(value.source) + encodedLength(value.flags)
+          continue
+        }
+        if (value instanceof ArrayBuffer) {
+          bytes += value.byteLength
+          continue
+        }
+        if (ArrayBuffer.isView(value)) {
+          bytes += value.byteLength
+          continue
+        }
+        if (value instanceof Map) {
+          for (const [key, mapValue] of value) {
+            pending.push(key, mapValue)
+          }
+          continue
+        }
+        if (value instanceof Set) {
+          for (const item of value) pending.push(item)
+          continue
+        }
+
+        for (const key of Reflect.ownKeys(value)) {
+          bytes += encodedLength(typeof key === "symbol" ? String(key) : key)
+          const descriptor = Object.getOwnPropertyDescriptor(value, key)
+          if (descriptor && "value" in descriptor) pending.push(descriptor.value)
+        }
+        continue
+      default:
+        continue
+    }
+  }
+
+  return bytes
+}
+
+function encodedLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength
 }
