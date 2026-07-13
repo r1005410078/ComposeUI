@@ -1,5 +1,6 @@
 import type { Editor } from "@composeui/core"
 import type { EditorSession } from "../session"
+import type { OperationLogController } from "../operation-log-controller"
 
 export interface WorkspaceContext {
   editor: Editor
@@ -7,6 +8,7 @@ export interface WorkspaceContext {
   pageId: string
   api: WorkspaceCommandApi
   resources?: WorkspaceResourceService
+  operationLog?: OperationLogController
   emit: (event: WorkspaceEvent) => void
 }
 

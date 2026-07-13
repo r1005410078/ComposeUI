@@ -6,6 +6,7 @@ import {
 } from "dockview"
 import { Play, Save, createElement as createIconElement } from "lucide"
 import type { Editor } from "@composeui/core"
+import type { OperationLogController } from "../operation-log-controller"
 import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
@@ -54,6 +55,7 @@ export interface MountEditorWorkspaceOptions {
   mountSceneExtras?: (root: HTMLElement) => void | (() => void) | { destroy(): void }
   layoutStore?: WorkspaceLayoutStore
   resources?: WorkspaceResourceService
+  operationLog?: OperationLogController
   panelRegistry?: PanelRegistry | WorkspacePanelRegistry
   modeRegistry?: ModeRegistry
   createDockview?: DockviewFactory
@@ -307,6 +309,7 @@ export function mountEditorWorkspace(
               api: contextApi,
               emit: events,
               ...(options.resources === undefined ? {} : { resources: options.resources }),
+              ...(options.operationLog === undefined ? {} : { operationLog: options.operationLog }),
             }
             try {
               if (descriptor.id === CANVAS) {

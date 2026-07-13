@@ -10,9 +10,11 @@ import {
 } from "../src/index"
 import type {
   StoredWorkspaceLayout,
+  WorkspaceContext,
   WorkspacePanelDescriptor,
   WorkspacePanelRegistry,
 } from "../src/index"
+import type { OperationLogController } from "../src/index"
 
 type FakePanel = {
   id: string
@@ -222,6 +224,34 @@ function createEditorInstance() {
 }
 
 describe("editor workspace", () => {
+  it("passes the operation log controller unchanged to first-party panels", () => {
+    let capturedContext: WorkspaceContext | undefined
+    const operationLog = {} as OperationLogController
+    const registry: WorkspacePanelRegistry = {
+      all: () => [
+        {
+          id: "context-probe",
+          title: "Context Probe",
+          closable: true,
+          defaultPosition: "bottom",
+          mount: (_root, context) => {
+            capturedContext = context
+          },
+        } satisfies WorkspacePanelDescriptor,
+      ],
+    }
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      operationLog,
+      panelRegistry: registry,
+      createDockview: createDockviewFake().factory,
+    })
+
+    expect(mounted.api.openPanel("context-probe")).toBe(true)
+    expect(capturedContext?.operationLog).toBe(operationLog)
+    mounted.dispose()
+  })
+
   it("creates the deterministic seven-panel 2D shell and protects 画布", () => {
     const fake = createDockviewFake()
     const root = document.createElement("div")
@@ -269,9 +299,7 @@ describe("editor workspace", () => {
     }
     expect(mounted.api.closePanel("canvas:page-1")).toBe(false)
     expect(root.querySelector("[data-testid='workspace-mode-bar']")).toBeNull()
-    expect(root.querySelector("[data-testid='workspace-project-title']")?.textContent).toBe(
-      "BMS",
-    )
+    expect(root.querySelector("[data-testid='workspace-project-title']")?.textContent).toBe("BMS")
     expect(root.querySelector("[data-testid='workspace-run']")).not.toBeNull()
     expect(root.querySelector("[data-testid='workspace-save']")).not.toBeNull()
     expect(

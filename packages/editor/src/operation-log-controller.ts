@@ -7,6 +7,14 @@ import type {
 
 export type OperationLogFilterValue<T extends string> = T | readonly T[]
 
+export type OperationLogLevel = OperationStatus
+
+export interface OperationLogViewQuery {
+  levels: readonly OperationLogLevel[]
+  categories: readonly OperationCategory[]
+  search: string
+}
+
 export interface OperationLogFilter {
   category?: OperationLogFilterValue<OperationCategory>
   status?: OperationLogFilterValue<OperationStatus>
@@ -15,6 +23,7 @@ export interface OperationLogFilter {
 
 export interface OperationLogControllerState {
   readonly rows: readonly OperationEvent[]
+  readonly query: OperationLogViewQuery
   readonly filter: OperationLogFilter
   readonly selection?: OperationEvent
   readonly detail?: OperationEvent
@@ -23,6 +32,9 @@ export interface OperationLogControllerState {
 export interface OperationLogControllerOptions {
   store: OperationLogStore
   sessionId: string
+  exportSession?: () => Promise<string>
+  importBundle?: (serialized: string) => Promise<void>
+  startReplay?: (sequence: number) => void | Promise<void>
 }
 
 export type OperationLogControllerListener = (state: OperationLogControllerState) => void
@@ -30,10 +42,14 @@ export type OperationLogControllerListener = (state: OperationLogControllerState
 export class OperationLogController {
   readonly #store: OperationLogStore
   readonly #sessionId: string
+  readonly #exportSession: () => Promise<string>
+  readonly #importBundle: (serialized: string) => Promise<void>
+  readonly #startReplay: (sequence: number) => void | Promise<void>
   readonly #listeners = new Set<OperationLogControllerListener>()
   readonly #unsubscribeStore: () => void
   #rows: readonly OperationEvent[] = []
   #filter: OperationLogFilter = {}
+  #viewQuery: OperationLogViewQuery = { levels: [], categories: [], search: "" }
   #selectedEventId: string | undefined
   #refreshGeneration = 0
   #disposed = false
@@ -41,6 +57,9 @@ export class OperationLogController {
   constructor(options: OperationLogControllerOptions) {
     this.#store = options.store
     this.#sessionId = options.sessionId
+    this.#exportSession = options.exportSession ?? (async () => "")
+    this.#importBundle = options.importBundle ?? (async () => undefined)
+    this.#startReplay = options.startReplay ?? (() => undefined)
     this.#unsubscribeStore = options.store.subscribe(() => {
       void this.#refresh().catch(() => undefined)
     })
@@ -52,6 +71,10 @@ export class OperationLogController {
 
   get filter(): OperationLogFilter {
     return cloneFilter(this.#filter)
+  }
+
+  get viewQuery(): OperationLogViewQuery {
+    return cloneViewQuery(this.#viewQuery)
   }
 
   get selection(): OperationEvent | undefined {
@@ -68,11 +91,34 @@ export class OperationLogController {
     return () => this.#listeners.delete(listener)
   }
 
-  async query(filter: OperationLogFilter = {}): Promise<readonly OperationEvent[]> {
+  async query(
+    query: OperationLogViewQuery | OperationLogFilter = {},
+  ): Promise<readonly OperationEvent[]> {
     this.#assertActive()
-    this.#filter = normalizeFilter(filter)
+    if (isViewQuery(query)) {
+      this.#viewQuery = normalizeViewQuery(query)
+      this.#filter = legacyFilter(this.#viewQuery)
+    } else {
+      this.#filter = normalizeFilter(query)
+      this.#viewQuery = viewQueryFromFilter(this.#filter)
+    }
     await this.#refresh()
     return this.rows
+  }
+
+  exportSession(): Promise<string> {
+    this.#assertActive()
+    return this.#exportSession()
+  }
+
+  importBundle(serialized: string): Promise<void> {
+    this.#assertActive()
+    return this.#importBundle(serialized)
+  }
+
+  startReplay(sequence: number): void | Promise<void> {
+    this.#assertActive()
+    return this.#startReplay(sequence)
   }
 
   select(eventId: string | undefined): void {
@@ -102,7 +148,7 @@ export class OperationLogController {
     if (this.#disposed || generation !== this.#refreshGeneration) return
 
     this.#rows = events
-      .filter((event) => matchesFilter(event, this.#filter))
+      .filter((event) => matchesViewQuery(event, this.#viewQuery))
       .map((event) => structuredClone(event))
     if (this.#selectedEventId !== undefined && !this.#selectedEvent()) {
       this.#selectedEventId = undefined
@@ -116,13 +162,20 @@ export class OperationLogController {
 
   #notify(): void {
     const state = this.#state()
-    for (const listener of this.#listeners) listener(state)
+    for (const listener of this.#listeners) {
+      try {
+        listener(structuredClone(state))
+      } catch {
+        // A view listener must not interrupt log refreshes or editing commands.
+      }
+    }
   }
 
   #state(): OperationLogControllerState {
     const selection = this.#selectedEvent()
     return {
       rows: structuredClone(this.#rows),
+      query: cloneViewQuery(this.#viewQuery),
       filter: cloneFilter(this.#filter),
       ...(selection === undefined
         ? {}
@@ -143,6 +196,44 @@ function normalizeFilter(filter: OperationLogFilter): OperationLogFilter {
   }
 }
 
+function isViewQuery(
+  query: OperationLogViewQuery | OperationLogFilter,
+): query is OperationLogViewQuery {
+  return "levels" in query || "categories" in query || "search" in query
+}
+
+function normalizeViewQuery(query: OperationLogViewQuery): OperationLogViewQuery {
+  return {
+    levels: [...query.levels],
+    categories: [...query.categories],
+    search: query.search.trim(),
+  }
+}
+
+function cloneViewQuery(query: OperationLogViewQuery): OperationLogViewQuery {
+  return normalizeViewQuery(query)
+}
+
+function legacyFilter(query: OperationLogViewQuery): OperationLogFilter {
+  return {
+    ...(query.categories.length === 1 ? { category: query.categories[0] } : {}),
+    ...(query.levels.length === 1 ? { status: query.levels[0] } : {}),
+    ...(query.search.length > 0 ? { text: query.search } : {}),
+  }
+}
+
+function viewQueryFromFilter(filter: OperationLogFilter): OperationLogViewQuery {
+  return {
+    levels: filter.status === undefined ? [] : toArray(filter.status),
+    categories: filter.category === undefined ? [] : toArray(filter.category),
+    search: filter.text ?? "",
+  }
+}
+
+function toArray<T extends string>(value: T | readonly T[]): readonly T[] {
+  return typeof value === "string" ? [value] : [...value]
+}
+
 function cloneFilter(filter: OperationLogFilter): OperationLogFilter {
   return normalizeFilter(filter)
 }
@@ -153,27 +244,78 @@ function cloneFilterValue<T extends string>(
   return Array.isArray(value) ? [...value] : value
 }
 
-function matchesFilter(event: OperationEvent, filter: OperationLogFilter): boolean {
-  if (!matchesValue(event.category, filter.category)) return false
-  if (!matchesValue(event.status, filter.status)) return false
-  if (filter.text === undefined || filter.text.length === 0) return true
-
-  const searchable = JSON.stringify({
+function matchesViewQuery(event: OperationEvent, query: OperationLogViewQuery): boolean {
+  if (query.levels.length > 0 && !query.levels.includes(event.status)) return false
+  if (query.categories.length > 0 && !query.categories.includes(event.category)) return false
+  if (query.search.length === 0) return true
+  return searchableText({
     category: event.category,
     diagnostics: event.diagnostics,
     payload: event.payload,
     status: event.status,
     type: event.type,
-  })
-  return searchable.toLowerCase().includes(filter.text.toLowerCase())
+  }).includes(query.search.toLowerCase())
 }
 
-function matchesValue<T extends string>(
-  value: T,
-  filter: OperationLogFilterValue<T> | undefined,
-): boolean {
-  if (filter === undefined) return true
-  return Array.isArray(filter) ? filter.includes(value) : filter === value
+function searchableText(root: unknown): string {
+  const seen = new WeakSet<object>()
+  const chunks: string[] = []
+
+  const visit = (value: unknown): void => {
+    try {
+      if (value === null) {
+        chunks.push("null")
+        return
+      }
+      switch (typeof value) {
+        case "undefined":
+        case "boolean":
+        case "number":
+        case "bigint":
+        case "string":
+        case "symbol":
+          chunks.push(String(value).toLowerCase())
+          return
+        case "function":
+          chunks.push("function")
+          return
+        case "object":
+          if (seen.has(value)) {
+            chunks.push("[circular]")
+            return
+          }
+          seen.add(value)
+          if (value instanceof Date) {
+            chunks.push(value.toISOString().toLowerCase())
+            return
+          }
+          if (value instanceof Map) {
+            for (const [key, item] of value) {
+              visit(key)
+              visit(item)
+            }
+            return
+          }
+          if (value instanceof Set) {
+            for (const item of value) visit(item)
+            return
+          }
+          for (const key of Reflect.ownKeys(value)) {
+            chunks.push(String(key).toLowerCase())
+            const descriptor = Object.getOwnPropertyDescriptor(value, key)
+            if (descriptor !== undefined && "value" in descriptor) visit(descriptor.value)
+          }
+          return
+        default:
+          return
+      }
+    } catch {
+      chunks.push("[unavailable]")
+    }
+  }
+
+  visit(root)
+  return chunks.join(" ")
 }
 
 function cloneEvent(event: OperationEvent | undefined): OperationEvent | undefined {

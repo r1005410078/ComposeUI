@@ -26,6 +26,8 @@ export type {
   OperationLogControllerState,
   OperationLogFilter,
   OperationLogFilterValue,
+  OperationLogLevel,
+  OperationLogViewQuery,
 } from "./operation-log-controller"
 
 export {
