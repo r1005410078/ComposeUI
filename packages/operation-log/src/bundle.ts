@@ -262,7 +262,7 @@ async function importLegacyBundle(parsed: Record<string, unknown>): Promise<LogB
   ) {
     throw integrityError()
   }
-  validateBundleContents(session, checkpoints, events, manifest, false)
+  validateBundleContents(session, checkpoints, events, manifest, { strictHashes: false })
   return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV1
 }
 
@@ -301,8 +301,9 @@ function validateBundleContents(
   checkpoints: unknown,
   events: unknown,
   manifest: Record<string, unknown>,
-  strictHashes = true,
+  options: { strictHashes?: boolean } = {},
 ): void {
+  const strictHashes = options.strictHashes ?? true
   if (!isSession(session, strictHashes) || !Array.isArray(checkpoints) || !Array.isArray(events)) {
     throw integrityError()
   }
@@ -577,7 +578,7 @@ function isCheckpoint(value: unknown, strictHashes = true): value is OperationCh
     Number.isSafeInteger(value.sequence) &&
     value.sequence >= 0 &&
     isTimestamp(value.createdAt) &&
-    isPageDocument(value.document, strictHashes) &&
+    isPageDocument(value.document) &&
     Object.hasOwn(value, "sessionState") &&
     isSessionState(value.sessionState) &&
     (strictHashes ? isHash(value.documentHash) : isNonEmptyString(value.documentHash)) &&

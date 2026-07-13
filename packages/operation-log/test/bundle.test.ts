@@ -115,12 +115,13 @@ describe("log bundles", () => {
         payload: {},
       },
     ]
+    const legacyDocument = createEmptyDocument({ documentId: "document-1", pageId: "page-1" })
     const legacyCheckpoints = [
       {
         sessionId: "legacy-session",
         sequence: 1,
         createdAt: "2026-07-13T00:01:00.000Z",
-        document: { schemaVersion: 1, rootPageId: "page-1", records: [] },
+        document: legacyDocument,
         sessionState: {},
         documentHash: "document",
         sessionHash: "session",
@@ -155,6 +156,21 @@ describe("log bundles", () => {
     expect(bundle.manifest.bundleVersion).toBe(1)
     if (bundle.manifest.bundleVersion !== 1) throw new Error("expected legacy bundle")
     expect(bundle.manifest.sectionHashes.events).toBe(sectionHashes.events)
+
+    const unknownFieldBundle = JSON.parse(legacy) as Record<string, any>
+    unknownFieldBundle.session.unexpected = true
+    unknownFieldBundle.manifest.sectionHashes.session = await hashCanonical(
+      unknownFieldBundle.session,
+    )
+    const unknownManifestWithoutHash = {
+      ...unknownFieldBundle.manifest,
+      manifestHash: undefined,
+    }
+    delete unknownManifestWithoutHash.manifestHash
+    unknownFieldBundle.manifest.manifestHash = await hashCanonical(unknownManifestWithoutHash)
+    await expect(importLogBundle(canonicalJson(unknownFieldBundle))).rejects.toThrow(
+      "LOG_BUNDLE_INTEGRITY_FAILED",
+    )
   })
 
   it("rejects tampering with section contents", async () => {
