@@ -46,7 +46,7 @@ export class OperationRecorder {
     this.#degraded = options.onDegraded ?? options.degraded
   }
 
-  async record<T>(input: RecordOperationInput<T>): Promise<OperationEvent<T>> {
+  async #append<T>(input: RecordOperationInput<T>): Promise<OperationEvent<T>> {
     const event: OperationEvent<T> = {
       ...input,
       schemaVersion: 1,
@@ -57,21 +57,41 @@ export class OperationRecorder {
       timestamp: this.#clock(),
       payload: this.#redactor(structuredClone(input.payload)) as T,
     }
-
-    this.#pending = this.#pending.then(async () => {
+    try {
+      await this.#store.append([structuredClone(event)])
+    } catch (error) {
       try {
-        await this.#store.append([structuredClone(event)])
-      } catch (error) {
-        try {
-          this.#degraded?.(error, event)
-        } catch {
-          // A diagnostics hook must not break operation recording.
-        }
+        this.#degraded?.(error, event)
+      } catch {
+        // A diagnostics hook must not break operation recording.
       }
-    })
+    }
+    return event
+  }
 
-    await this.#pending
-    return structuredClone(event)
+  async record<T>(input: RecordOperationInput<T>): Promise<OperationEvent<T>> {
+    let event: OperationEvent<T> | undefined
+    const task = this.#pending.then(async () => {
+      event = await this.#append(input)
+    })
+    this.#pending = task.then(
+      () => undefined,
+      () => undefined,
+    )
+    await task
+    return structuredClone(event!)
+  }
+
+  /** Queue input generation as part of the recorder chain for async adapters. */
+  recordDeferred<T>(factory: () => Promise<RecordOperationInput<T>>): Promise<void> {
+    const task = this.#pending.then(async () => {
+      await this.#append(await factory())
+    })
+    this.#pending = task.then(
+      () => undefined,
+      () => undefined,
+    )
+    return task
   }
 
   async flush(): Promise<void> {

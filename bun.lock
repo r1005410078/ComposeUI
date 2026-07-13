@@ -33,6 +33,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@composeui/core": "workspace:*",
+        "@composeui/operation-log": "workspace:*",
         "dockview": "^7.0.2",
         "lucide": "^1.24.0",
       },

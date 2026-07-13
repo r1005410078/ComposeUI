@@ -18,3 +18,4 @@ export type {
   OperationRedactor,
   RecordOperationInput,
 } from "./recorder"
+export { createCoreOperationObserver } from "./adapters/core-observer"

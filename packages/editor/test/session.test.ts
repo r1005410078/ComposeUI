@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
-import { EditorSession } from "@composeui/editor"
+import { createSessionOperationObserver, EditorSession } from "@composeui/editor"
+import type { SessionOperation } from "@composeui/editor"
+import { MemoryOperationLogStore, OperationRecorder } from "@composeui/operation-log"
 
 describe("EditorSession", () => {
   it("returns immutable state snapshots and deduplicates selection", () => {
@@ -87,5 +89,59 @@ describe("EditorSession", () => {
 
     expect(() => session.setSelection(["node-1"])).not.toThrow()
     expect(events).toEqual(["first:node-1", "last:node-1", "first:node-2", "last:node-2"])
+  })
+
+  it("emits only changed fields", () => {
+    const events: SessionOperation[] = []
+    const session = new EditorSession({
+      operationObserver: { observe: (event) => events.push(event) },
+    })
+
+    session.setSelection([])
+    session.setSelection(["node-1"])
+    session.setSelection(["node-1"])
+    session.setViewport({ x: 1, y: 2, zoom: 1 })
+    session.setViewport({ x: 3, y: 4, zoom: 2 })
+    session.setGridVisible(false)
+
+    expect(events).toEqual([
+      { type: "session.selection", selection: ["node-1"] },
+      { type: "session.viewport", viewport: { x: 1, y: 2, zoom: 1 } },
+      { type: "session.viewport", viewport: { x: 3, y: 4, zoom: 2 } },
+      { type: "session.gridVisibility", gridVisible: false },
+    ])
+  })
+
+  it("coalesces viewport events in the recorder adapter", async () => {
+    const store = new MemoryOperationLogStore()
+    const recorder = new OperationRecorder({ sessionId: "s1", projectId: "p1", store })
+    const session = new EditorSession({
+      operationObserver: createSessionOperationObserver(recorder),
+    })
+
+    session.setViewport({ x: 1, y: 2, zoom: 1 })
+    session.setViewport({ x: 3, y: 4, zoom: 2 })
+    await recorder.flush()
+
+    expect((await store.query({ sessionId: "s1" })).map((event) => event.payload)).toEqual([
+      { type: "session.viewport", viewport: { x: 3, y: 4, zoom: 2 } },
+    ])
+  })
+
+  it("emits expanded tree, interaction mode, and hovered id changes", () => {
+    const events: SessionOperation[] = []
+    const session = new EditorSession({
+      operationObserver: { observe: (event) => events.push(event) },
+    })
+
+    session.toggleExpanded("page-1")
+    session.setInteractionMode("pan")
+    session.setHoveredId("node-1")
+
+    expect(events.map((event) => event.type)).toEqual([
+      "session.expandedTree",
+      "session.interactionMode",
+      "session.hoveredId",
+    ])
   })
 })

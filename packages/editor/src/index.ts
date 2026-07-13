@@ -10,7 +10,15 @@ export type { MountedEditor, MountEditorOptions } from "./editor-view"
 export { mountComponentTree } from "./component-tree"
 export type { MountComponentTreeOptions, MountedComponentTree } from "./component-tree"
 export { EditorSession } from "./session"
-export type { EditorSessionState, InteractionMode, Viewport } from "./session"
+export type {
+  EditorSessionOperationObserver,
+  EditorSessionOptions,
+  EditorSessionState,
+  InteractionMode,
+  SessionOperation,
+  Viewport,
+} from "./session"
+export { createSessionOperationObserver } from "./operation-log-adapter"
 
 export {
   PanelRegistry,
