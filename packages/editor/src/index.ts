@@ -19,6 +19,8 @@ export type {
   Viewport,
 } from "./session"
 export { createSessionOperationObserver } from "./operation-log-adapter"
+export { formatOperation, registerOperationFormatter } from "./workspace/operation-formatters"
+export type { OperationFormatter } from "./workspace/operation-formatters"
 export { OperationLogController } from "./operation-log-controller"
 export type {
   OperationLogControllerListener,
