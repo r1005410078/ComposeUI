@@ -6,10 +6,19 @@ export interface OperationLogStore {
   subscribe(listener: () => void): () => void
 }
 
+export interface MemoryOperationLogStoreOptions {
+  onListenerError?: (error: unknown) => void
+}
+
 export class MemoryOperationLogStore implements OperationLogStore {
   #eventsBySession = new Map<string, OperationEvent[]>()
   #eventIds = new Set<string>()
   #listeners = new Set<() => void>()
+  #onListenerError: ((error: unknown) => void) | undefined
+
+  constructor(options: MemoryOperationLogStoreOptions = {}) {
+    this.#onListenerError = options.onListenerError
+  }
 
   async append(events: readonly OperationEvent[]): Promise<void> {
     const batch = structuredClone(events)
@@ -39,7 +48,17 @@ export class MemoryOperationLogStore implements OperationLogStore {
     }
 
     if (batch.length > 0) {
-      for (const listener of this.#listeners) listener()
+      for (const listener of this.#listeners) {
+        try {
+          listener()
+        } catch (error) {
+          try {
+            this.#onListenerError?.(error)
+          } catch {
+            // Error reporting must not break append or later listeners.
+          }
+        }
+      }
     }
   }
 
@@ -50,6 +69,8 @@ export class MemoryOperationLogStore implements OperationLogStore {
         .filter(
           (event) => query.afterSequence === undefined || event.sequence > query.afterSequence,
         )
+        // filter creates a new array, so sorting here does not mutate stored events.
+        // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted.
         .sort((left, right) => left.sequence - right.sequence),
     )
   }

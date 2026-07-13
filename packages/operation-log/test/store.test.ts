@@ -116,4 +116,26 @@ describe("MemoryOperationLogStore", () => {
       expect.objectContaining({ eventId: "e1", sequence: 1 }),
     ])
   })
+
+  it("isolates listener errors, reports them, and still notifies later listeners with committed data", async () => {
+    const listenerError = new Error("listener failed")
+    const onListenerError = vi.fn()
+    const store = new MemoryOperationLogStore({ onListenerError })
+    const laterListenerSnapshots: Promise<OperationEvent[]>[] = []
+    const laterListener = vi.fn(() => {
+      laterListenerSnapshots.push(store.query({ sessionId: "s1" }))
+    })
+    store.subscribe(() => {
+      throw listenerError
+    })
+    store.subscribe(laterListener)
+
+    await expect(store.append([event()])).resolves.toBeUndefined()
+
+    expect(onListenerError).toHaveBeenCalledWith(listenerError)
+    expect(laterListener).toHaveBeenCalledTimes(1)
+    expect(await laterListenerSnapshots[0]).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
+  })
 })
