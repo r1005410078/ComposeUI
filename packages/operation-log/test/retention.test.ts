@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { OperationSession } from "@composeui/operation-log"
+import type { OperationEvent, OperationSession } from "@composeui/operation-log"
 import { enforceRetention, MemoryOperationLogStore } from "@composeui/operation-log"
 
 const session = (overrides: Partial<OperationSession>): OperationSession => ({
@@ -62,17 +62,31 @@ describe("enforceRetention", () => {
       session({ sessionId: "p1-new", projectId: "p1", endedAt: "2026-07-12T00:00:00.000Z" }),
     )
     await store.putSession(session({ sessionId: "p2-old", projectId: "p2" }))
+    const otherProjectEvent: OperationEvent = {
+      schemaVersion: 1,
+      eventId: "p2-event",
+      sessionId: "p2-old",
+      projectId: "p2",
+      sequence: 1,
+      timestamp: "2026-07-01T00:00:00.000Z",
+      category: "document",
+      type: "document.snapshot",
+      status: "observed",
+      payload: { content: "x".repeat(2_000) },
+    }
+    await store.append([otherProjectEvent])
 
-    const before = await store.estimateUsage()
+    const projectUsage = await store.estimateUsage("p1")
     const result = await enforceRetention(store, {
       projectId: "p1",
       now: new Date("2026-07-13T00:00:00.000Z"),
       maxAgeMs: Number.POSITIVE_INFINITY,
-      maxBytes: before - 1,
+      maxBytes: projectUsage,
     })
 
-    expect(result.usageBytes).toBe(await store.estimateUsage())
-    expect(await store.getSession("p1-old")).toBeUndefined()
+    expect(result.deletedSessionIds).toEqual([])
+    expect(result.usageBytes).toBe(projectUsage)
+    expect(await store.getSession("p1-old")).toBeDefined()
     expect(await store.getSession("p2-old")).toBeDefined()
   })
 })

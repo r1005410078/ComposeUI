@@ -18,7 +18,7 @@ export interface OperationLifecycleStore extends OperationLogStore {
     sessionId: string,
     sequence: number,
   ): Promise<OperationCheckpoint | undefined>
-  estimateUsage(): Promise<number>
+  estimateUsage(projectId?: string): Promise<number>
 }
 
 export interface MemoryOperationLogStoreOptions {
@@ -139,11 +139,26 @@ export class MemoryOperationLogStore implements OperationLifecycleStore {
     return nearest === undefined ? undefined : structuredClone(nearest)
   }
 
-  async estimateUsage(): Promise<number> {
+  async estimateUsage(projectId?: string): Promise<number> {
+    if (projectId === undefined) {
+      return estimateValueBytes([
+        [...this.#sessions.values()],
+        [...this.#eventsBySession.values()],
+        [...this.#checkpointsBySession.values()],
+      ])
+    }
+
+    const sessionIds = new Set(
+      [...this.#sessions.values()]
+        .filter((session) => session.projectId === projectId)
+        .map((session) => session.sessionId),
+    )
     return estimateValueBytes([
-      [...this.#sessions.values()],
-      [...this.#eventsBySession.values()],
-      [...this.#checkpointsBySession.values()],
+      [...this.#sessions.values()].filter((session) => sessionIds.has(session.sessionId)),
+      [...this.#eventsBySession.values()].flat().filter((event) => sessionIds.has(event.sessionId)),
+      [...this.#checkpointsBySession.values()]
+        .flat()
+        .filter((checkpoint) => sessionIds.has(checkpoint.sessionId)),
     ])
   }
 

@@ -202,7 +202,7 @@ export class IndexedDbOperationLogStore implements OperationLifecycleStore {
     return nearest === undefined ? undefined : structuredClone(nearest)
   }
 
-  async estimateUsage(): Promise<number> {
+  async estimateUsage(projectId?: string): Promise<number> {
     const database = this.#requireDatabase()
     const transaction = database.transaction(
       [STORE_SESSIONS, STORE_EVENTS, STORE_CHECKPOINTS],
@@ -214,7 +214,18 @@ export class IndexedDbOperationLogStore implements OperationLifecycleStore {
       request(transaction.objectStore(STORE_CHECKPOINTS).getAll()),
     ])
     await transactionComplete(transaction)
-    return estimateBytes([sessions, events, checkpoints])
+    if (projectId === undefined) return estimateBytes([sessions, events, checkpoints])
+
+    const sessionIds = new Set(
+      sessions
+        .filter((session) => session.projectId === projectId)
+        .map((session) => session.sessionId),
+    )
+    return estimateBytes([
+      sessions.filter((session) => sessionIds.has(session.sessionId)),
+      events.filter((event) => sessionIds.has(event.sessionId)),
+      checkpoints.filter((checkpoint) => sessionIds.has(checkpoint.sessionId)),
+    ])
   }
 
   subscribe(listener: () => void): () => void {

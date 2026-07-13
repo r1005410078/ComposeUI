@@ -35,7 +35,7 @@ export async function enforceRetention(
     })
   const newestCompleteSessionId = completed.at(-1)?.sessionId
   const cutoff = now - maxAgeMs
-  let usageBytes = await store.estimateUsage()
+  let usageBytes = await store.estimateUsage(options.projectId)
   const deletedSessionIds: string[] = []
 
   for (const session of completed) {
@@ -47,7 +47,7 @@ export async function enforceRetention(
 
     await store.deleteSession(session.sessionId)
     deletedSessionIds.push(session.sessionId)
-    usageBytes = await store.estimateUsage()
+    usageBytes = await store.estimateUsage(options.projectId)
   }
 
   return { deletedSessionIds, usageBytes }
