@@ -1,9 +1,21 @@
 import type { OperationEvent, OperationLogQuery } from "./events"
+import type { OperationCheckpoint } from "./checkpoints"
+import type { OperationSession } from "./sessions"
 
 export interface OperationLogStore {
   append(events: readonly OperationEvent[]): Promise<void>
   query(query: OperationLogQuery): Promise<OperationEvent[]>
   subscribe(listener: () => void): () => void
+  putSession(session: OperationSession): Promise<void>
+  getSession(sessionId: string): Promise<OperationSession | undefined>
+  listSessions(projectId: string): Promise<OperationSession[]>
+  deleteSession(sessionId: string): Promise<void>
+  putCheckpoint(checkpoint: OperationCheckpoint): Promise<void>
+  getNearestCheckpoint(
+    sessionId: string,
+    sequence: number,
+  ): Promise<OperationCheckpoint | undefined>
+  estimateUsage(): Promise<number>
 }
 
 export interface MemoryOperationLogStoreOptions {
@@ -13,6 +25,8 @@ export interface MemoryOperationLogStoreOptions {
 export class MemoryOperationLogStore implements OperationLogStore {
   #eventsBySession = new Map<string, OperationEvent[]>()
   #eventIds = new Set<string>()
+  #sessions = new Map<string, OperationSession>()
+  #checkpointsBySession = new Map<string, OperationCheckpoint[]>()
   #listeners = new Set<() => void>()
   #onListenerError: ((error: unknown) => void) | undefined
 
@@ -62,6 +76,75 @@ export class MemoryOperationLogStore implements OperationLogStore {
     }
   }
 
+  async putSession(session: OperationSession): Promise<void> {
+    const next = structuredClone(session)
+    validateSession(next)
+    this.#sessions.set(next.sessionId, next)
+    this.#notifyListeners()
+  }
+
+  async getSession(sessionId: string): Promise<OperationSession | undefined> {
+    const session = this.#sessions.get(sessionId)
+    return session === undefined ? undefined : structuredClone(session)
+  }
+
+  async listSessions(projectId: string): Promise<OperationSession[]> {
+    const sessions = [...this.#sessions.values()]
+      .filter((session) => session.projectId === projectId)
+      // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted.
+      .sort((left, right) => {
+        const byStartedAt = compareStrings(left.startedAt, right.startedAt)
+        return byStartedAt || compareStrings(left.sessionId, right.sessionId)
+      })
+    return structuredClone(sessions)
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    const events = this.#eventsBySession.get(sessionId) ?? []
+    for (const event of events) this.#eventIds.delete(event.eventId)
+    this.#eventsBySession.delete(sessionId)
+    this.#sessions.delete(sessionId)
+    this.#checkpointsBySession.delete(sessionId)
+    this.#notifyListeners()
+  }
+
+  async putCheckpoint(checkpoint: OperationCheckpoint): Promise<void> {
+    const next = structuredClone(checkpoint)
+    validateCheckpoint(next)
+    const checkpoints = this.#checkpointsBySession.get(next.sessionId) ?? []
+    const replacementIndex = checkpoints.findIndex((item) => item.sequence === next.sequence)
+    if (replacementIndex === -1) {
+      checkpoints.push(next)
+    } else {
+      checkpoints[replacementIndex] = next
+    }
+    checkpoints.sort((left, right) => left.sequence - right.sequence)
+    this.#checkpointsBySession.set(next.sessionId, checkpoints)
+    this.#notifyListeners()
+  }
+
+  async getNearestCheckpoint(
+    sessionId: string,
+    sequence: number,
+  ): Promise<OperationCheckpoint | undefined> {
+    const checkpoints = this.#checkpointsBySession.get(sessionId) ?? []
+    let nearest: OperationCheckpoint | undefined
+    for (const checkpoint of checkpoints) {
+      if (checkpoint.sequence > sequence) break
+      nearest = checkpoint
+    }
+    return nearest === undefined ? undefined : structuredClone(nearest)
+  }
+
+  async estimateUsage(): Promise<number> {
+    const data = {
+      sessions: [...this.#sessions.values()],
+      events: [...this.#eventsBySession.values()].flat(),
+      checkpoints: [...this.#checkpointsBySession.values()].flat(),
+    }
+    return new TextEncoder().encode(JSON.stringify(data)).byteLength
+  }
+
   async query(query: OperationLogQuery): Promise<OperationEvent[]> {
     const events = this.#eventsBySession.get(query.sessionId) ?? []
     return structuredClone(
@@ -79,4 +162,41 @@ export class MemoryOperationLogStore implements OperationLogStore {
     this.#listeners.add(listener)
     return () => this.#listeners.delete(listener)
   }
+
+  #notifyListeners(): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener()
+      } catch (error) {
+        try {
+          this.#onListenerError?.(error)
+        } catch {
+          // Error reporting must not break a committed lifecycle update.
+        }
+      }
+    }
+  }
+}
+
+function validateSession(session: OperationSession): void {
+  if (session.sessionId.length === 0 || session.projectId.length === 0) {
+    throw new Error("INVALID_OPERATION_SESSION")
+  }
+  if (!Number.isInteger(session.eventCount) || session.eventCount < 0) {
+    throw new Error("INVALID_OPERATION_SESSION")
+  }
+}
+
+function validateCheckpoint(checkpoint: OperationCheckpoint): void {
+  if (
+    checkpoint.sessionId.length === 0 ||
+    !Number.isInteger(checkpoint.sequence) ||
+    checkpoint.sequence < 0
+  ) {
+    throw new Error("INVALID_OPERATION_CHECKPOINT")
+  }
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }

@@ -10,6 +10,8 @@ export { canonicalJson, hashCanonical } from "./canonical"
 export { defaultRedactor } from "./redaction"
 export { createOperationId } from "./id"
 export { OperationRecorder } from "./recorder"
+export type { OperationCheckpoint } from "./checkpoints"
+export type { OperationSession, OperationSessionStatus } from "./sessions"
 export type {
   OperationClock,
   OperationDegradedHandler,
