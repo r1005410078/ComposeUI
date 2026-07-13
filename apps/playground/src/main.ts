@@ -3,7 +3,14 @@ import {
   mountEditorWorkspace,
   type StorageLike,
 } from "@composeui/editor"
-import { Eye, FileJson, RefreshCcw, createElement as createIconElement } from "lucide"
+import {
+  ChevronsDownUp,
+  Eye,
+  FileJson,
+  Plus,
+  RefreshCcw,
+  createElement as createIconElement,
+} from "lucide"
 import { createM1Scenario } from "./m1-free-layout-scenario"
 import "./styles.css"
 
@@ -11,20 +18,6 @@ const PLAYGROUND_LAYOUT_KEY = "composeui:workspace:2d:v2"
 
 export function createPlaygroundLayoutStore(storage: StorageLike) {
   return createLocalStorageLayoutStore(storage, PLAYGROUND_LAYOUT_KEY)
-}
-
-function createCommandButton(
-  testId: string,
-  label: string,
-  onClick: () => void,
-): HTMLButtonElement {
-  const button = document.createElement("button")
-  button.type = "button"
-  button.className = "playground-command"
-  button.dataset.testid = testId
-  button.textContent = label
-  button.addEventListener("click", onClick)
-  return button
 }
 
 function createIconCommandButton(
@@ -65,9 +58,56 @@ function mountPlayground(app: HTMLElement): void {
       if (treePanel === null) throw new Error("PLAYGROUND_SCENE_TREE_MISSING")
       const commands = document.createElement("div")
       commands.className = "playground-scene-command-group"
-      commands.append(createCommandButton("create-node", "创建矩形", () => scenario.createNode()))
+      const createNode = createIconCommandButton("create-node", "创建节点", Plus, () => {
+        scenario.createNode()
+      })
+      const search = document.createElement("input")
+      search.type = "search"
+      search.className = "playground-node-search"
+      search.dataset.testid = "node-search"
+      search.placeholder = "检索节点"
+      search.setAttribute("aria-label", "检索节点")
+      const collapseAll = createIconCommandButton(
+        "collapse-all",
+        "全部折叠",
+        ChevronsDownUp,
+        () => {
+          const expanded = treePanel.querySelector<HTMLButtonElement>(
+            "[data-tree-control='toggle'][aria-expanded='true']",
+          )
+          const selector =
+            expanded === null
+              ? "[data-tree-control='toggle'][aria-expanded='false']"
+              : "[data-tree-control='toggle'][aria-expanded='true']"
+          while (true) {
+            const toggle = treePanel.querySelector<HTMLButtonElement>(selector)
+            if (toggle === null) break
+            toggle.click()
+          }
+          const nextLabel = expanded === null ? "全部折叠" : "全部展开"
+          collapseAll.title = nextLabel
+          collapseAll.setAttribute("aria-label", nextLabel)
+        },
+      )
+      const applySearch = (): void => {
+        const query = search.value.trim().toLocaleLowerCase()
+        for (const row of treePanel.querySelectorAll<HTMLElement>("[data-testid^='tree-row-']")) {
+          const item = row.closest<HTMLElement>("[role='treeitem']")
+          const select = row.querySelector<HTMLElement>("[data-tree-control='select']")
+          if (item === null || select === null) continue
+          const isPage = row.dataset.treeId === scenario.pageId
+          item.hidden = !isPage && !select.textContent?.toLocaleLowerCase().includes(query)
+        }
+      }
+      search.addEventListener("input", applySearch)
+      const unsubscribeSearch = scenario.editor.subscribe(applySearch)
+      commands.append(createNode, search, collapseAll)
       treePanel.prepend(commands)
-      return () => commands.remove()
+      applySearch()
+      return () => {
+        unsubscribeSearch()
+        commands.remove()
+      }
     },
     mountToolbarExtras(toolbar) {
       const tools = toolbar.querySelector<HTMLElement>(".composeui-editor__toolbar-group")

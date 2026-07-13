@@ -1082,7 +1082,7 @@ describe("mountEditor", () => {
     expect(root.querySelector("[data-testid='selection-node-hidden']")).toBeNull()
   })
 
-  it("selects from tree rows while expand controls only change expansion", () => {
+  it("selects from tree rows and toggles expansion for parent nodes", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())
     addRectangle(editor, { id: "parent", name: "Parent" })
@@ -1093,12 +1093,12 @@ describe("mountEditor", () => {
 
     expect(mounted.session.getState().selection).toEqual(["parent"])
     expect(root.querySelector("[data-testid='selection-parent']")).not.toBeNull()
-    expect(root.querySelector("[data-testid='tree-child']")).toBeNull()
+    expect(root.querySelector("[data-testid='tree-child']")).not.toBeNull()
 
     root.querySelector<HTMLButtonElement>("[data-testid='tree-toggle-parent']")?.click()
 
     expect(mounted.session.getState().selection).toEqual(["parent"])
-    expect(root.querySelector("[data-testid='tree-child']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='tree-child']")).toBeNull()
   })
 
   it("keeps expand controls out of the tab order and in the roving keyboard model", () => {
@@ -1116,13 +1116,11 @@ describe("mountEditor", () => {
     ).toBe(true)
     expect(root.querySelector<HTMLButtonElement>("[data-testid='tree-page-1']")?.tabIndex).toBe(0)
 
-    root.querySelector<HTMLButtonElement>("[data-testid='tree-parent']")?.click()
-    expect(mounted.session.getState().selection).toEqual(["parent"])
     const toggle = root.querySelector<HTMLButtonElement>("[data-testid='tree-toggle-parent']")!
     expect(toggle.querySelector("svg")).not.toBeNull()
     toggle.focus()
     toggle.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-    expect(mounted.session.getState().selection).toEqual(["parent"])
+    expect(mounted.session.getState().selection).toEqual([])
     expect(root.querySelector("[data-testid='tree-child']")).not.toBeNull()
     expect(document.activeElement?.getAttribute("data-testid")).toBe("tree-toggle-parent")
     expect(root.querySelector("[data-testid='tree-toggle-parent'] svg")).not.toBeNull()

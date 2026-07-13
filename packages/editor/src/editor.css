@@ -166,8 +166,19 @@
 }
 
 .composeui-editor__tree-rename {
-  flex: 1 1 auto;
+  background: var(--composeui-surface-control);
+  border: 1px solid var(--composeui-accent-primary);
+  border-radius: var(--composeui-radius-control);
+  color: var(--composeui-text-primary);
+  flex: 1 1 0;
+  font: inherit;
+  height: calc(var(--composeui-tree-row-height) - 4px);
+  line-height: 1;
   min-width: 0;
+  margin-inline-end: var(--composeui-space-1);
+  outline: none;
+  padding: 0 var(--composeui-space-1);
+  width: auto;
 }
 
 .composeui-editor__tree-toggle {

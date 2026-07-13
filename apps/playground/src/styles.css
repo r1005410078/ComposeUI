@@ -29,23 +29,33 @@ body {
 }
 
 .playground-scene-command-group {
-  border-bottom: 1px solid var(--composeui-border-default);
-  padding: var(--composeui-space-2);
+  align-items: center;
+  display: flex;
+  gap: var(--composeui-space-1);
+  min-height: 40px;
+  padding: var(--composeui-space-1) var(--composeui-space-2);
 }
 
-.playground-command {
+.playground-node-search {
   background: var(--composeui-surface-control);
   border: 1px solid var(--composeui-border-default);
   border-radius: var(--composeui-radius-control);
   color: var(--composeui-text-primary);
-  cursor: pointer;
   font: inherit;
-  height: var(--composeui-control-height);
+  height: 28px;
+  min-width: 0;
   padding: 0 var(--composeui-space-2);
+  width: 100%;
 }
 
-.playground-scene-command-group .playground-command {
-  width: 100%;
+.playground-scene-command-group .playground-icon-command {
+  flex: 0 0 28px;
+  height: 28px;
+  width: 28px;
+}
+
+.playground-node-search::placeholder {
+  color: var(--composeui-text-muted);
 }
 
 .playground-icon-command {
@@ -70,12 +80,6 @@ body {
 .playground-icon-command svg {
   height: var(--composeui-icon-size);
   width: var(--composeui-icon-size);
-}
-
-.playground-command:hover,
-.playground-command[aria-pressed="true"] {
-  background: var(--composeui-surface-control-hover);
-  border-color: var(--composeui-border-strong);
 }
 
 .playground-json-output {

@@ -388,7 +388,10 @@ function buildTree(
     selectButton.tabIndex = index === 0 ? 0 : -1
     selectButton.setAttribute("aria-label", `Select ${item.name}`)
     selectButton.textContent = item.name
-    selectButton.addEventListener("click", (event) => selectItem(session, item.id, event))
+    selectButton.addEventListener("click", (event) => {
+      selectItem(session, item.id, event)
+      if (item.hasChildren) session.toggleExpanded(item.id)
+    })
     if (item.typeName === "node") {
       selectButton.addEventListener("dblclick", () => beginRename(editor, item, selectButton))
     }
