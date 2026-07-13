@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
+    { "path": "./packages/operation-log" },
     { "path": "./packages/editor" },
     { "path": "./apps/playground" }
   ]
