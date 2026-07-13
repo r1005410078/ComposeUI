@@ -79,6 +79,8 @@ export async function exportLogBundle(
   if (session === undefined) throw new Error("LOG_BUNDLE_SESSION_NOT_FOUND")
   const events = await store.query({ sessionId: options.sessionId })
   const checkpoints: OperationCheckpoint[] = []
+  const initialCheckpoint = await store.getNearestCheckpoint(options.sessionId, 0)
+  if (initialCheckpoint !== undefined) checkpoints.push(initialCheckpoint)
   for (const event of events) {
     const checkpoint = await store.getNearestCheckpoint(options.sessionId, event.sequence)
     if (
@@ -92,9 +94,16 @@ export async function exportLogBundle(
   validateBundleContents(session, checkpoints, events, {
     sessionId: options.sessionId,
   })
+  await validateCheckpointHashes(checkpoints)
   const redactedSession = structuredClone(redactor(structuredClone(session)))
-  const redactedCheckpoints = structuredClone(redactor(structuredClone(checkpoints)))
+  const redactedCheckpoints = structuredClone(redactor(structuredClone(checkpoints))).map(
+    (checkpoint) => checkpoint,
+  )
   const redactedEvents = structuredClone(redactor(structuredClone(events)))
+  for (const checkpoint of redactedCheckpoints) {
+    checkpoint.documentHash = await hashCanonical(checkpoint.document)
+    checkpoint.sessionHash = await hashCanonical(checkpoint.sessionState)
+  }
   validateBundleContents(structuredClone(redactedSession), redactedCheckpoints, redactedEvents, {
     sessionId: options.sessionId,
   })
@@ -121,7 +130,7 @@ export async function exportLogBundle(
     integrity: {
       eventCount: redactedEvents.length,
       checkpointCount: redactedCheckpoints.length,
-      chainHash: sectionHashes.events,
+      chainHash: await computeChainHash(redactedSession, redactedCheckpoints, redactedEvents),
       ...(redactedCheckpoints.find((checkpoint) => checkpoint.sequence === 0) === undefined
         ? {}
         : {
@@ -199,7 +208,7 @@ export async function importLogBundle(
       events as unknown as OperationEvent[],
       manifest,
     )
-    validateManifest(manifest, session as Record<string, unknown>, checkpoints, events)
+    await validateManifest(manifest, session as Record<string, unknown>, checkpoints, events)
     return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV1
   } catch (error) {
     if (error instanceof Error && error.message === "LOG_BUNDLE_INTEGRITY_FAILED") throw error
@@ -249,33 +258,41 @@ function validateBundleContents(
   }
 }
 
-function validateManifest(
+async function validateManifest(
   manifest: Record<string, unknown>,
   session: Record<string, unknown>,
   checkpoints: unknown[],
   events: unknown[],
-): void {
+): Promise<void> {
   if (
     !isId(manifest.sessionId) ||
-    typeof manifest.productVersion !== "string" ||
+    !isNonEmptyString(manifest.productVersion) ||
     !isTimestamp(manifest.exportedAt) ||
     !isRecord(manifest.canonicalization) ||
     manifest.canonicalization.algorithm !== "canonical-json" ||
     manifest.canonicalization.version !== 1 ||
     !isRecord(manifest.redaction) ||
-    typeof manifest.redaction.policy !== "string" ||
+    !isNonEmptyString(manifest.redaction.policy) ||
     manifest.redaction.version !== 1 ||
     !isRecord(manifest.runtime) ||
     !isRecord(manifest.integrity) ||
     manifest.integrity.eventCount !== events.length ||
     manifest.integrity.checkpointCount !== checkpoints.length ||
-    !isHash(manifest.integrity.chainHash) ||
-    manifest.integrity.chainHash !== (manifest.sectionHashes as Record<string, unknown>).events
+    !isHash(manifest.integrity.chainHash)
   ) {
     throw integrityError()
   }
   const initial = manifest.integrity.initialSnapshotHash
   if (initial !== undefined && !isHash(initial)) throw integrityError()
+  const initialCheckpoint = checkpoints.find(
+    (checkpoint) => (checkpoint as OperationCheckpoint).sequence === 0,
+  )
+  if (
+    (initialCheckpoint === undefined && initial !== undefined) ||
+    (initialCheckpoint !== undefined && initial !== (await hashCanonical(initialCheckpoint)))
+  ) {
+    throw integrityError()
+  }
   const firstEventId = manifest.integrity.firstEventId
   const lastEventId = manifest.integrity.lastEventId
   if (
@@ -298,6 +315,47 @@ function validateManifest(
     throw integrityError()
   }
   if (!isSession(session)) throw integrityError()
+  await validateCheckpointHashes(checkpoints as OperationCheckpoint[])
+  if (
+    manifest.integrity.chainHash !==
+    (await computeChainHash(
+      session as unknown as OperationSession,
+      checkpoints as unknown as OperationCheckpoint[],
+      events as unknown as OperationEvent[],
+    ))
+  ) {
+    throw integrityError()
+  }
+}
+
+async function validateCheckpointHashes(checkpoints: OperationCheckpoint[]): Promise<void> {
+  for (const checkpoint of checkpoints) {
+    if (
+      checkpoint.documentHash !== (await hashCanonical(checkpoint.document)) ||
+      checkpoint.sessionHash !== (await hashCanonical(checkpoint.sessionState))
+    ) {
+      throw integrityError()
+    }
+  }
+}
+
+async function computeChainHash(
+  session: OperationSession,
+  checkpoints: OperationCheckpoint[],
+  events: OperationEvent[],
+): Promise<string> {
+  const initialCheckpoint = checkpoints.find((checkpoint) => checkpoint.sequence === 0)
+  let previousHash = await hashCanonical({
+    chainVersion: 1,
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    initialSnapshotHash:
+      initialCheckpoint === undefined ? null : await hashCanonical(initialCheckpoint),
+  })
+  for (const event of events) {
+    previousHash = await hashCanonical({ previousHash, event })
+  }
+  return previousHash
 }
 
 function validateMetadataRecord(value: Record<string, unknown>, allowUndefined: boolean): void {
@@ -357,7 +415,8 @@ function isEvent(value: unknown): value is OperationEvent {
     (value.causationId === undefined || isId(value.causationId)) &&
     (value.beforeHash === undefined || isHash(value.beforeHash)) &&
     (value.afterHash === undefined || isHash(value.afterHash)) &&
-    (value.diagnostics === undefined || Array.isArray(value.diagnostics))
+    (value.diagnostics === undefined ||
+      (Array.isArray(value.diagnostics) && value.diagnostics.every(isDiagnostic)))
   )
 }
 
@@ -369,14 +428,141 @@ function isCheckpoint(value: unknown): value is OperationCheckpoint {
     Number.isSafeInteger(value.sequence) &&
     value.sequence >= 0 &&
     isTimestamp(value.createdAt) &&
-    isRecord(value.document) &&
-    value.document.schemaVersion === 1 &&
-    isId(value.document.rootPageId) &&
-    Array.isArray(value.document.records) &&
+    isPageDocument(value.document) &&
     Object.hasOwn(value, "sessionState") &&
+    isSessionState(value.sessionState) &&
     isHash(value.documentHash) &&
     isHash(value.sessionHash)
   )
+}
+
+function isDiagnostic(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const keys = Object.keys(value)
+  return (
+    keys.every(
+      (key) => key === "code" || key === "severity" || key === "message" || key === "recordId",
+    ) &&
+    typeof value.code === "string" &&
+    value.code.length > 0 &&
+    (value.severity === "error" || value.severity === "warning") &&
+    typeof value.message === "string" &&
+    value.message.length > 0 &&
+    (value.recordId === undefined || isId(value.recordId))
+  )
+}
+
+function isPageDocument(value: unknown): boolean {
+  if (!isRecord(value) || value.schemaVersion !== 1 || !isId(value.rootPageId)) return false
+  if (!Array.isArray(value.records)) return false
+  const records = value.records
+  const ids = new Set<string>()
+  let documentCount = 0
+  for (const record of records) {
+    if (!isRecord(record) || !isId(record.id) || ids.has(record.id)) return false
+    if (
+      typeof record.revision !== "number" ||
+      !Number.isSafeInteger(record.revision) ||
+      record.revision < 0
+    ) {
+      return false
+    }
+    ids.add(record.id)
+    if (record.typeName === "document") {
+      documentCount += 1
+      if (
+        record.schemaVersion !== 1 ||
+        record.rootPageId !== value.rootPageId ||
+        !hasOnlyKeys(record, ["id", "revision", "typeName", "schemaVersion", "rootPageId"])
+      ) {
+        return false
+      }
+    } else if (record.typeName === "page") {
+      if (!isPageRecord(record)) return false
+    } else if (record.typeName === "node") {
+      if (!isNodeRecord(record)) return false
+    } else {
+      return false
+    }
+  }
+  return documentCount === 1
+}
+
+function isPageRecord(value: Record<string, unknown>): boolean {
+  return (
+    hasOnlyKeys(value, [
+      "id",
+      "revision",
+      "typeName",
+      "name",
+      "width",
+      "height",
+      "background",
+      "overflow",
+      "layout",
+    ]) &&
+    typeof value.name === "string" &&
+    Number.isFinite(value.width) &&
+    Number.isFinite(value.height) &&
+    typeof value.background === "string" &&
+    (value.overflow === "visible" || value.overflow === "hidden" || value.overflow === "scroll") &&
+    isRecord(value.layout) &&
+    hasOnlyKeys(value.layout, ["mode"]) &&
+    value.layout.mode === "free"
+  )
+}
+
+function isNodeRecord(value: Record<string, unknown>): boolean {
+  if (
+    !hasOnlyKeys(value, [
+      "id",
+      "revision",
+      "typeName",
+      "nodeType",
+      "name",
+      "parentId",
+      "index",
+      "layout",
+      "visible",
+      "locked",
+      "props",
+    ]) ||
+    value.nodeType !== "rectangle" ||
+    typeof value.name !== "string" ||
+    !isId(value.parentId) ||
+    typeof value.index !== "string" ||
+    typeof value.visible !== "boolean" ||
+    typeof value.locked !== "boolean" ||
+    !isRecord(value.props) ||
+    !hasOnlyKeys(value.props, ["fill"]) ||
+    typeof value.props.fill !== "string" ||
+    !isRecord(value.layout) ||
+    !hasOnlyKeys(value.layout, ["mode", "x", "y", "width", "height"]) ||
+    value.layout.mode !== "free"
+  ) {
+    return false
+  }
+  return [value.layout.x, value.layout.y, value.layout.width, value.layout.height].every(
+    (item) => typeof item === "number" && Number.isFinite(item),
+  )
+}
+
+function isSessionState(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return isJsonValue(value)
+}
+
+function isJsonValue(value: unknown): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true
+  if (typeof value === "number") return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  if (!isRecord(value)) return false
+  return Object.values(value).every(isJsonValue)
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
+  const allowedKeys = new Set(allowed)
+  return Object.keys(value).every((key) => allowedKeys.has(key))
 }
 
 function isCategory(value: unknown): value is OperationEvent["category"] {
@@ -396,6 +582,10 @@ function isStatus(value: unknown): value is OperationEvent["status"] {
 
 function isId(value: unknown): value is string {
   return typeof value === "string" && ID_PATTERN.test(value)
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0
 }
 
 function isHash(value: unknown): value is string {
