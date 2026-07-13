@@ -33,6 +33,20 @@ describe("defaultRedactor", () => {
     expect(input).toEqual([{ name: "Button", token: "secret" }])
   })
 
+  it("strips query and hash from protocol-relative and hash-only URLs", () => {
+    expect(
+      defaultRedactor({
+        asset: "//cdn.example.test/path?token=secret#section",
+        fragment: "#section",
+        ordinary: "hello?world#section",
+      }),
+    ).toEqual({
+      asset: "//cdn.example.test/path",
+      fragment: "",
+      ordinary: "hello?world#section",
+    })
+  })
+
   it("rejects cyclic payloads with a stable error", () => {
     const cyclic: { self?: unknown } = {}
     cyclic.self = cyclic

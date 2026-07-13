@@ -4,6 +4,9 @@ const unsupported = (): never => {
   throw new Error(UNSUPPORTED_CANONICAL_VALUE)
 }
 
+const compareUtf16 = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0
+
 export const canonicalJson = (value: unknown): string => {
   const active = new Set<object>()
 
@@ -21,16 +24,27 @@ export const canonicalJson = (value: unknown): string => {
     active.add(current)
     try {
       if (Array.isArray(current)) {
-        return `[${current.map(serialize).join(",")}]`
+        if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+          return unsupported()
+        }
+        const values = [] as string[]
+        for (let index = 0; index < current.length; index += 1) {
+          if (!Object.hasOwn(current, index)) return unsupported()
+          values.push(serialize(current[index]))
+        }
+        return `[${values.join(",")}]`
       }
 
       const prototype = Object.getPrototypeOf(current)
       if (prototype !== Object.prototype && prototype !== null) return unsupported()
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        return unsupported()
+      }
 
       const object = current as Record<string, unknown>
       return `{${Object.keys(object)
         // oxlint-disable-next-line unicorn/no-array-sort -- ES2022 lacks toSorted.
-        .sort((left, right) => left.localeCompare(right))
+        .sort(compareUtf16)
         .map((key) => `${JSON.stringify(key)}:${serialize(object[key])}`)
         .join(",")}}`
     } finally {

@@ -26,6 +26,25 @@ describe("canonicalJson", () => {
     cyclic.self = cyclic
     expect(() => canonicalJson(cyclic)).toThrow("UNSUPPORTED_CANONICAL_VALUE")
   })
+
+  it("sorts keys by deterministic UTF-16 order regardless of locale", () => {
+    const value = { ä: 1, "😀": 2, z: 3 }
+
+    expect(canonicalJson(value)).toBe('{"z":3,"ä":1,"😀":2}')
+  })
+
+  it("rejects symbol keys instead of silently dropping them", () => {
+    const symbolKey = Symbol("key")
+    const value = { visible: 1, [symbolKey]: 2 }
+
+    expect(() => canonicalJson(value)).toThrow("UNSUPPORTED_CANONICAL_VALUE")
+  })
+
+  it("rejects sparse arrays", () => {
+    const sparse: unknown[] = []
+    sparse.length = 2
+    expect(() => canonicalJson(sparse)).toThrow("UNSUPPORTED_CANONICAL_VALUE")
+  })
 })
 
 describe("hashCanonical", () => {
