@@ -1,3 +1,5 @@
+import type { Diagnostic } from "@composeui/core"
+
 export type OperationCategory =
   | "document"
   | "history"
@@ -7,13 +9,6 @@ export type OperationCategory =
   | "system"
 
 export type OperationStatus = "observed" | "started" | "succeeded" | "failed"
-
-export interface OperationDiagnostic {
-  code: string
-  severity: "error" | "warning"
-  message: string
-  recordId?: string
-}
 
 export interface OperationEvent<T = unknown> {
   schemaVersion: 1
@@ -27,8 +22,8 @@ export interface OperationEvent<T = unknown> {
   status: OperationStatus
   transactionId?: string
   causationId?: string
-  payload?: T
-  diagnostics?: readonly OperationDiagnostic[]
+  payload: T
+  diagnostics?: readonly Diagnostic[]
   beforeHash?: string
   afterHash?: string
 }

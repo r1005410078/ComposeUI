@@ -1,6 +1,5 @@
 export type {
   OperationCategory,
-  OperationDiagnostic,
   OperationEvent,
   OperationLogQuery,
   OperationStatus,

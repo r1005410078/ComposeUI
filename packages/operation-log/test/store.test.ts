@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
+import type { Diagnostic } from "@composeui/core"
 import type { OperationEvent } from "@composeui/operation-log"
 import { MemoryOperationLogStore } from "@composeui/operation-log"
 
@@ -13,6 +14,7 @@ const event = (overrides: Partial<OperationEvent> = {}): OperationEvent => ({
   type: "document.command",
   status: "succeeded",
   payload: { value: 1 },
+  diagnostics: [{ code: "TEST", severity: "warning", message: "test" } satisfies Diagnostic],
   ...overrides,
 })
 
@@ -48,6 +50,27 @@ describe("MemoryOperationLogStore", () => {
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
+  it("rejects duplicate event ids within one batch without writing any event", async () => {
+    const store = new MemoryOperationLogStore()
+
+    await expect(
+      store.append([event({ eventId: "e1", sequence: 1 }), event({ eventId: "e1", sequence: 2 })]),
+    ).rejects.toThrow("DUPLICATE_OPERATION_EVENT")
+    expect(await store.query({ sessionId: "s1" })).toEqual([])
+  })
+
+  it("keeps a batch atomic when an existing event id appears after a new event", async () => {
+    const store = new MemoryOperationLogStore()
+    await store.append([event({ eventId: "e1", sequence: 1 })])
+
+    await expect(
+      store.append([event({ eventId: "e2", sequence: 2 }), event({ eventId: "e1", sequence: 3 })]),
+    ).rejects.toThrow("DUPLICATE_OPERATION_EVENT")
+    expect(await store.query({ sessionId: "s1" })).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
+  })
+
   it("clones input and query results, filters afterSequence, and tracks sequences per session", async () => {
     const store = new MemoryOperationLogStore()
     const payload = { nested: { value: 1 } }
@@ -74,5 +97,23 @@ describe("MemoryOperationLogStore", () => {
     await expect(
       store.append([event({ sessionId: "s2", eventId: "e1", sequence: 1 })]),
     ).rejects.toThrow("DUPLICATE_OPERATION_EVENT")
+  })
+
+  it("supports unsubscribing and exposes committed data during notification", async () => {
+    const store = new MemoryOperationLogStore()
+    const pendingSnapshots: Promise<OperationEvent[]>[] = []
+    const listener = vi.fn(() => {
+      pendingSnapshots.push(store.query({ sessionId: "s1" }))
+    })
+    const unsubscribe = store.subscribe(listener)
+
+    await store.append([event()])
+    unsubscribe()
+    await store.append([event({ eventId: "e2", sequence: 2 })])
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(await pendingSnapshots[0]).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
   })
 })

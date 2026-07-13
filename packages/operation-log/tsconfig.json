@@ -7,7 +7,10 @@
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/operation-log.tsbuildinfo"
+    "tsBuildInfoFile": "dist/operation-log.tsbuildinfo",
+    "paths": {
+      "@composeui/core": ["../core/src/index.ts"]
+    }
   },
   "references": [{ "path": "../core" }],
   "include": ["src/**/*.ts"]
