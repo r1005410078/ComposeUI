@@ -91,8 +91,12 @@ function downloadExport(serialized: string): void {
   anchor.href = objectUrl
   anchor.click()
   if (objectUrl.startsWith("blob:") && typeof URL.revokeObjectURL === "function") {
-    URL.revokeObjectURL(objectUrl)
+    setTimeout(() => URL.revokeObjectURL?.(objectUrl), 0)
   }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function safeText(value: unknown): string {
@@ -176,6 +180,11 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   const toolbar = document.createElement("div")
   toolbar.className = "composeui-editor__output-toolbar"
   toolbar.dataset.testid = "output-toolbar"
+  const errorState = document.createElement("p")
+  errorState.className = "composeui-editor__output-error"
+  errorState.dataset.testid = "output-error"
+  errorState.setAttribute("role", "status")
+  errorState.hidden = true
   const body = document.createElement("div")
   body.className = "composeui-editor__output-body"
   const list = document.createElement("div")
@@ -186,7 +195,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   const detailsHost = document.createElement("div")
   detailsHost.className = "composeui-editor__output-details-host"
   body.append(list, detailsHost)
-  panel.append(toolbar, body)
+  panel.append(toolbar, errorState, body)
   root.replaceChildren(panel)
 
   const controller = context.operationLog
@@ -209,6 +218,16 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let search = ""
   let autoScroll = true
   let latestRows: readonly OperationEvent[] = []
+
+  const clearError = (): void => {
+    errorState.hidden = true
+    errorState.textContent = ""
+  }
+  const showError = (action: string, error: unknown): void => {
+    if (disposed) return
+    errorState.hidden = false
+    errorState.textContent = `${action}失败：${errorText(error)}`
+  }
 
   const renderRows = (rows: readonly OperationEvent[]): void => {
     if (disposed) return
@@ -334,13 +353,23 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     }),
     button("output-import", "导入日志", FileInput, () => fileInput.click()),
     button("output-export", "导出日志", Download, () => {
-      void controller
-        .exportSession()
-        .then(downloadExport)
-        .catch(() => undefined)
+      clearError()
+      void Promise.resolve()
+        .then(() => controller.exportSession())
+        .then((serialized) => {
+          downloadExport(serialized)
+          clearError()
+        })
+        .catch((error) => showError("导出日志", error))
     }),
     button("output-replay", "回放选中操作", Play, () => {
-      if (selected !== undefined) void controller.startReplay(selected.sequence)
+      if (selected === undefined) return
+      const sequence = selected.sequence
+      clearError()
+      void Promise.resolve()
+        .then(() => controller.startReplay(sequence))
+        .then(() => clearError())
+        .catch((error) => showError("回放操作", error))
     }),
   )
 
@@ -352,7 +381,12 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0]
     if (file === undefined) return
-    void file.text().then((serialized) => controller.importBundle(serialized))
+    clearError()
+    void Promise.resolve()
+      .then(() => file.text())
+      .then((serialized) => controller.importBundle(serialized))
+      .then(() => clearError())
+      .catch((error) => showError("导入日志", error))
   })
   toolbar.append(fileInput)
 

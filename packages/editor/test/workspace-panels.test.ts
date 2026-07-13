@@ -448,6 +448,19 @@ describe("workspace panel renderers", () => {
 
   it("handles import, export, and replay actions", async () => {
     const operationLog = fakeOperationLogController([operationEvent()])
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    const createObjectURL = vi.fn(() => "blob:operation-log")
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    })
+    const schedule = vi.spyOn(globalThis, "setTimeout")
     const anchorClick = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => undefined)
@@ -458,11 +471,20 @@ describe("workspace panel renderers", () => {
     )
 
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
-    await vi.waitFor(() => expect(operationLog.exportSession).toHaveBeenCalledTimes(1))
+    for (let index = 0; index < 8; index += 1) await Promise.resolve()
     expect(anchorClick).toHaveBeenCalled()
+    expect(operationLog.exportSession).toHaveBeenCalledTimes(1)
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), 0)
+    const revokeTask = schedule.mock.calls.at(-1)?.[0]
+    expect(typeof revokeTask).toBe("function")
+    ;(revokeTask as () => void)()
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:operation-log")
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await Promise.resolve()
     expect(operationLog.startReplay).toHaveBeenCalledWith(1)
 
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
@@ -473,6 +495,130 @@ describe("workspace panel renderers", () => {
     await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
 
     anchorClick.mockRestore()
+    schedule.mockRestore()
+    if (originalCreateObjectURL === undefined) {
+      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
+    } else {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectURL,
+      })
+    }
+    if (originalRevokeObjectURL === undefined) {
+      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
+    } else {
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      })
+    }
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("surfaces import, export, and replay failures without unhandled rejections", async () => {
+    const importBundle = vi.fn<OperationLogControllerPort["importBundle"]>()
+    const exportSession = vi.fn<OperationLogControllerPort["exportSession"]>()
+    const startReplay = vi.fn<OperationLogControllerPort["startReplay"]>()
+    importBundle.mockRejectedValue(new Error("bundle invalid"))
+    exportSession.mockRejectedValue(new Error("export unavailable"))
+    startReplay.mockRejectedValue(new Error("replay unavailable"))
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      importBundle,
+      exportSession,
+      startReplay,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "导出日志失败",
+      ),
+    )
+
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [
+        {
+          text: vi.fn(async () => {
+            throw new Error("file unreadable")
+          }),
+        },
+      ],
+    })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "file unreadable",
+      ),
+    )
+
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "导入日志失败",
+      ),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "回放操作失败",
+      ),
+    )
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("uses a safe data URL fallback without ObjectURL APIs", async () => {
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: undefined })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: undefined })
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    for (let index = 0; index < 8; index += 1) await Promise.resolve()
+    expect(anchorClick).toHaveBeenCalled()
+
+    anchorClick.mockRestore()
+    if (originalCreateObjectURL === undefined) {
+      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
+    } else {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectURL,
+      })
+    }
+    if (originalRevokeObjectURL === undefined) {
+      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
+    } else {
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      })
+    }
     if (typeof dispose === "function") dispose()
   })
 
