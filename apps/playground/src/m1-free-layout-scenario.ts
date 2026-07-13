@@ -1,8 +1,9 @@
 import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
+import type { EditorOperationObserver } from "@composeui/core"
 
-export function createM1Scenario() {
+export function createM1Scenario(options: { operationObserver?: EditorOperationObserver } = {}) {
   const pageId = "page-1"
-  const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId }))
+  const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId }), options)
   editor.dispatch({
     id: "node.create",
     payload: {

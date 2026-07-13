@@ -23,6 +23,7 @@ export interface OperationRecorderOptions {
   onDegraded?: OperationDegradedHandler
   /** @deprecated Use onDegraded. */
   degraded?: OperationDegradedHandler
+  initialSequence?: number
 }
 
 export class OperationRecorder {
@@ -56,6 +57,10 @@ export class OperationRecorder {
     this.#clock = options.clock ?? (() => new Date().toISOString())
     this.#idFactory = options.idFactory ?? createOperationId
     this.#degraded = options.onDegraded ?? options.degraded
+    this.#sequence = options.initialSequence ?? 0
+    if (!Number.isInteger(this.#sequence) || this.#sequence < 0) {
+      throw new Error("INVALID_OPERATION_SEQUENCE")
+    }
   }
 
   async #append<T>(input: RecordOperationInput<T>): Promise<OperationEvent<T>> {

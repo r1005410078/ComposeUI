@@ -1,8 +1,20 @@
 import {
+  EditorSession,
+  OperationLogController,
+  createSessionOperationObserver,
   createLocalStorageLayoutStore,
   mountEditorWorkspace,
   type StorageLike,
 } from "@composeui/editor"
+import { canonicalizeDocument } from "@composeui/core"
+import {
+  IndexedDbOperationLogStore,
+  OperationLogCoordinator,
+  OperationRecorder,
+  createCoreOperationObserver,
+  exportLogBundle,
+  hashCanonical,
+} from "@composeui/operation-log"
 import {
   ChevronsDownUp,
   Eye,
@@ -15,6 +27,100 @@ import { createM1Scenario } from "./m1-free-layout-scenario"
 import "./styles.css"
 
 const PLAYGROUND_LAYOUT_KEY = "composeui:workspace:2d:v2"
+const PLAYGROUND_LOG_DATABASE = "composeui:playground:operation-log:v1"
+const PLAYGROUND_SESSION_ID = "playground-session"
+const PLAYGROUND_PROJECT_ID = "bms-playground"
+
+export interface PlaygroundOperationRuntimeOptions {
+  databaseName?: string
+  indexedDB?: IDBFactory
+}
+
+export interface PlaygroundOperationRuntime {
+  readonly indexedDB: IDBFactory
+  readonly scenario: ReturnType<typeof createM1Scenario>
+  readonly session: EditorSession
+  readonly store: IndexedDbOperationLogStore
+  readonly recorder: OperationRecorder
+  readonly coordinator: OperationLogCoordinator
+  readonly controller: OperationLogController
+  mount(root: HTMLElement): void
+  dispose(): Promise<void>
+}
+
+export async function createPlaygroundOperationRuntime(
+  options: PlaygroundOperationRuntimeOptions = {},
+): Promise<PlaygroundOperationRuntime> {
+  const factory = options.indexedDB ?? globalThis.indexedDB
+  if (factory === undefined) throw new Error("INDEXEDDB_UNAVAILABLE")
+  const store = await IndexedDbOperationLogStore.open({
+    databaseName: options.databaseName ?? PLAYGROUND_LOG_DATABASE,
+    indexedDB: factory,
+  })
+  const existingSession = await store.getSession(PLAYGROUND_SESSION_ID)
+  const recorder = new OperationRecorder({
+    sessionId: PLAYGROUND_SESSION_ID,
+    projectId: PLAYGROUND_PROJECT_ID,
+    store,
+    initialSequence: existingSession?.eventCount ?? 0,
+  })
+  const session = new EditorSession({ operationObserver: createSessionOperationObserver(recorder) })
+  const scenario = createM1Scenario({ operationObserver: createCoreOperationObserver(recorder) })
+  const coordinator = await OperationLogCoordinator.start({
+    store,
+    recorder,
+    snapshot: async () => {
+      const document = canonicalizeDocument(scenario.editor.getStore())
+      const sessionState = session.getState()
+      return {
+        document,
+        sessionState,
+        documentHash: await hashCanonical(document),
+        sessionHash: await hashCanonical(sessionState),
+      }
+    },
+    checkpointEveryEvents: 100,
+    checkpointEveryMs: 30_000,
+  })
+  const controller = new OperationLogController({
+    store,
+    sessionId: recorder.sessionId,
+    exportSession: () =>
+      exportLogBundle(store, {
+        sessionId: recorder.sessionId,
+        productVersion: "playground",
+      }),
+  })
+  let mounted: ReturnType<typeof mountEditorWorkspace> | undefined
+  let disposed = false
+  return {
+    indexedDB: factory,
+    scenario,
+    session,
+    store,
+    recorder,
+    coordinator,
+    controller,
+    mount(root) {
+      mounted = mountEditorWorkspace(root, scenario.editor, {
+        pageId: scenario.pageId,
+        projectTitle: "BMS",
+        session,
+        operationLog: controller,
+      })
+    },
+    async dispose() {
+      if (disposed) return
+      disposed = true
+      mounted?.dispose()
+      mounted = undefined
+      controller.dispose()
+      await coordinator.end()
+      await coordinator.flush()
+      await store.close()
+    },
+  }
+}
 
 export function createPlaygroundLayoutStore(storage: StorageLike) {
   return createLocalStorageLayoutStore(storage, PLAYGROUND_LAYOUT_KEY)
@@ -37,8 +143,9 @@ function createIconCommandButton(
   return button
 }
 
-function mountPlayground(app: HTMLElement): void {
-  const scenario = createM1Scenario()
+async function mountPlayground(app: HTMLElement): Promise<void> {
+  const runtime = await createPlaygroundOperationRuntime()
+  const { scenario } = runtime
   const output = document.createElement("pre")
   output.className = "playground-json-output"
   output.dataset.testid = "canonical-json-output"
@@ -49,8 +156,10 @@ function mountPlayground(app: HTMLElement): void {
   app.replaceChildren(editorHost)
 
   const layoutStore = createPlaygroundLayoutStore(window.localStorage)
-  const mounted = mountEditorWorkspace(editorHost, scenario.editor, {
+  const workspace = mountEditorWorkspace(editorHost, scenario.editor, {
     pageId: scenario.pageId,
+    session: runtime.session,
+    operationLog: runtime.controller,
     projectTitle: "BMS",
     layoutStore,
     mountSceneExtras(sceneRoot) {
@@ -152,7 +261,7 @@ function mountPlayground(app: HTMLElement): void {
           output.hidden = false
         }),
         createIconCommandButton("reset-layout", "重置布局", RefreshCcw, () => {
-          void mounted.api.resetLayout()
+          void workspace.api.resetLayout()
         }),
       )
       tools.append(commands)
@@ -167,11 +276,14 @@ function mountPlayground(app: HTMLElement): void {
   editorHost.append(output)
 
   if (import.meta.env.DEV) {
-    Object.assign(window, { __composeuiM1: { editor: scenario.editor, mounted } })
+    Object.assign(window, {
+      __composeuiM1: { editor: scenario.editor, mounted: workspace, operationRuntime: runtime },
+    })
   }
+  window.addEventListener("pagehide", () => void runtime.dispose(), { once: true })
 }
 
 if (typeof document !== "undefined") {
   const app = document.querySelector<HTMLElement>("#app")
-  if (app !== null) mountPlayground(app)
+  if (app !== null) void mountPlayground(app)
 }

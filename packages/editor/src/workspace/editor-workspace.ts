@@ -56,6 +56,7 @@ export interface MountEditorWorkspaceOptions {
   layoutStore?: WorkspaceLayoutStore
   resources?: WorkspaceResourceService
   operationLog?: OperationLogControllerPort
+  session?: EditorSession
   panelRegistry?: PanelRegistry | WorkspacePanelRegistry
   modeRegistry?: ModeRegistry
   createDockview?: DockviewFactory
@@ -197,7 +198,7 @@ export function mountEditorWorkspace(
   editor: Editor,
   options: MountEditorWorkspaceOptions,
 ): MountedEditorWorkspace {
-  const session = new EditorSession()
+  const session = options.session ?? new EditorSession()
   const events = options.onEvent ?? (() => undefined)
   const pageId = options.pageId
   const registry = new Map<string, WorkspacePanelDescriptor>()

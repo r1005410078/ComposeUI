@@ -604,7 +604,7 @@ test("mounts the Godot 2D workspace with the canonical panels and no mode bar", 
 
   await page.getByRole("tab", { name: "输出" }).click()
   await expect(page.locator(".composeui-editor__output > h2")).toHaveCount(0)
-  await expect(page.getByTestId("empty-output")).toBeVisible()
+  await expect(page.getByTestId("output-entry").first()).toBeVisible()
 
   await openCanvas(page)
   await expect(page.getByRole("tab", { name: "画布" })).toHaveAttribute("aria-selected", "true")
@@ -773,6 +773,17 @@ test("runs workspace commands for creation, grid, overflow, and canonical export
   await expect(page.getByTestId("canonical-json-output")).toContainText('"node-created-1"')
   await expect(page.getByTestId("canonical-json-output")).not.toContainText("gridVisible")
   await expect(page.getByTestId("canonical-json-output")).not.toContainText("selection")
+})
+
+test("persists operation output across reload", async ({ page }) => {
+  await page.goto("/")
+  await page.getByTestId("create-node").click()
+  await page.getByRole("tab", { name: "输出" }).click()
+  await expect(page.getByTestId("output-entry").filter({ hasText: "创建" }).first()).toBeVisible()
+
+  await page.reload()
+  await page.getByRole("tab", { name: "输出" }).click()
+  await expect(page.getByTestId("output-entry").filter({ hasText: "创建" }).first()).toBeVisible()
 })
 
 async function assertViewportLayout(page: Page) {
