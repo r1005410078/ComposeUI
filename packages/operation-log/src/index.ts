@@ -50,3 +50,11 @@ export type {
   LogBundleManifestV1,
   LogBundleV1,
 } from "./bundle"
+export { ReplayHandlerRegistry } from "./replay/registry"
+export type {
+  ReplayDifference,
+  ReplayHandler,
+  ReplayHandlerContext,
+  ReplayHandlerResolution,
+  ReplaySessionPort,
+} from "./replay/types"
