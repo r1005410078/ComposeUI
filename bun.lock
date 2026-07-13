@@ -37,6 +37,13 @@
         "lucide": "^1.24.0",
       },
     },
+    "packages/operation-log": {
+      "name": "@composeui/operation-log",
+      "version": "0.0.0",
+      "dependencies": {
+        "@composeui/core": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@asamuzakjp/css-color": ["@asamuzakjp/css-color@5.1.11", "https://registry.npmmirror.com/@asamuzakjp/css-color/-/css-color-5.1.11.tgz", { "dependencies": { "@asamuzakjp/generational-cache": "^1.0.1", "@csstools/css-calc": "^3.2.0", "@csstools/css-color-parser": "^4.1.0", "@csstools/css-parser-algorithms": "^4.0.0", "@csstools/css-tokenizer": "^4.0.0" } }, "sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg=="],
@@ -52,6 +59,8 @@
     "@composeui/core": ["@composeui/core@workspace:packages/core"],
 
     "@composeui/editor": ["@composeui/editor@workspace:packages/editor"],
+
+    "@composeui/operation-log": ["@composeui/operation-log@workspace:packages/operation-log"],
 
     "@composeui/playground": ["@composeui/playground@workspace:apps/playground"],
 
