@@ -68,4 +68,21 @@ describe("core operation observer adapter", () => {
       1, 2, 3, 4,
     ])
   })
+
+  it("notifies successful document commands with their recorded sequence", async () => {
+    const store = new MemoryOperationLogStore()
+    const recorder = new OperationRecorder({ sessionId: "s1", projectId: "p1", store })
+    const sequences: number[] = []
+    const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }), {
+      operationObserver: createCoreOperationObserver(recorder, {
+        onDocumentCommandSucceeded: (sequence) => sequences.push(sequence),
+      }),
+    })
+
+    editor.dispatch(createNodeCommand("node-1"))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await recorder.flush()
+
+    expect(sequences).toEqual([2])
+  })
 })

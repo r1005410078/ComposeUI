@@ -200,7 +200,13 @@ export class OperationLogCoordinator {
     if (finalHash === undefined) delete this.#session.finalHash
     else this.#session.finalHash = finalHash
     await this.#store.putSession(this.#session)
-    for (const cleanup of this.#cleanup.splice(0)) cleanup()
+    for (const cleanup of this.#cleanup.splice(0)) {
+      try {
+        cleanup()
+      } catch {
+        // Lifecycle cleanup must not prevent session finalization.
+      }
+    }
   }
 
   async flush(): Promise<void> {
@@ -209,8 +215,14 @@ export class OperationLogCoordinator {
   }
 
   dispose(): void {
-    for (const cleanup of this.#cleanup.splice(0)) cleanup()
-    void this.flush()
+    for (const cleanup of this.#cleanup.splice(0)) {
+      try {
+        cleanup()
+      } catch {
+        // Lifecycle cleanup must be idempotent and non-fatal.
+      }
+    }
+    void this.flush().catch(() => undefined)
   }
 }
 

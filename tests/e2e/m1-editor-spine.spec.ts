@@ -786,6 +786,15 @@ test("persists operation output across reload", async ({ page }) => {
   await expect(page.getByTestId("output-entry").filter({ hasText: "创建" }).first()).toBeVisible()
 })
 
+test("creates an operation checkpoint after successful document commands", async ({ page }) => {
+  await page.goto("/")
+  const createNode = page.getByTestId("create-node")
+  for (let index = 0; index < 100; index += 1) await createNode.click()
+
+  await page.getByRole("tab", { name: "输出" }).click()
+  await expect(page.getByTestId("output-entry").filter({ hasText: "创建检查点" })).toBeVisible()
+})
+
 async function assertViewportLayout(page: Page) {
   const viewport = page.viewportSize()
   const host = await page.locator(".composeui-editor__workspace-host").boundingBox()

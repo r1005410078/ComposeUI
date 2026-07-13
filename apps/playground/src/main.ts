@@ -34,6 +34,8 @@ const PLAYGROUND_PROJECT_ID = "bms-playground"
 export interface PlaygroundOperationRuntimeOptions {
   databaseName?: string
   indexedDB?: IDBFactory
+  checkpointEveryEvents?: number
+  checkpointEveryMs?: number
 }
 
 export interface PlaygroundOperationRuntime {
@@ -57,6 +59,10 @@ export async function createPlaygroundOperationRuntime(
     databaseName: options.databaseName ?? PLAYGROUND_LOG_DATABASE,
     indexedDB: factory,
   })
+  await OperationLogCoordinator.recover(store, new Date().toISOString(), {
+    projectId: PLAYGROUND_PROJECT_ID,
+    staleAfterMs: 0,
+  })
   const existingSession = await store.getSession(PLAYGROUND_SESSION_ID)
   const recorder = new OperationRecorder({
     sessionId: PLAYGROUND_SESSION_ID,
@@ -65,8 +71,13 @@ export async function createPlaygroundOperationRuntime(
     initialSequence: existingSession?.eventCount ?? 0,
   })
   const session = new EditorSession({ operationObserver: createSessionOperationObserver(recorder) })
-  const scenario = createM1Scenario({ operationObserver: createCoreOperationObserver(recorder) })
-  const coordinator = await OperationLogCoordinator.start({
+  let coordinator: OperationLogCoordinator | undefined
+  const scenario = createM1Scenario({
+    operationObserver: createCoreOperationObserver(recorder, {
+      onDocumentCommandSucceeded: () => coordinator?.documentEvent(),
+    }),
+  })
+  const startedCoordinator = await OperationLogCoordinator.start({
     store,
     recorder,
     snapshot: async () => {
@@ -79,9 +90,20 @@ export async function createPlaygroundOperationRuntime(
         sessionHash: await hashCanonical(sessionState),
       }
     },
-    checkpointEveryEvents: 100,
-    checkpointEveryMs: 30_000,
+    checkpointEveryEvents: options.checkpointEveryEvents ?? 100,
+    checkpointEveryMs: options.checkpointEveryMs ?? 30_000,
+    lifecycle: {
+      onHidden(flush) {
+        if (typeof document === "undefined") return
+        const listener = (): void => {
+          if (document.visibilityState === "hidden") void flush().catch(() => undefined)
+        }
+        document.addEventListener("visibilitychange", listener)
+        return () => document.removeEventListener("visibilitychange", listener)
+      },
+    },
   })
+  coordinator = startedCoordinator
   const controller = new OperationLogController({
     store,
     sessionId: recorder.sessionId,
@@ -99,7 +121,7 @@ export async function createPlaygroundOperationRuntime(
     session,
     store,
     recorder,
-    coordinator,
+    coordinator: startedCoordinator,
     controller,
     mount(root) {
       mounted = mountEditorWorkspace(root, scenario.editor, {
@@ -115,9 +137,14 @@ export async function createPlaygroundOperationRuntime(
       mounted?.dispose()
       mounted = undefined
       controller.dispose()
-      await coordinator.end()
-      await coordinator.flush()
-      await store.close()
+      try {
+        await startedCoordinator.end()
+        await startedCoordinator.flush()
+      } catch {
+        // Closing the store is still required after a failed final flush.
+      } finally {
+        await store.close().catch(() => undefined)
+      }
     },
   }
 }
@@ -280,7 +307,9 @@ async function mountPlayground(app: HTMLElement): Promise<void> {
       __composeuiM1: { editor: scenario.editor, mounted: workspace, operationRuntime: runtime },
     })
   }
-  window.addEventListener("pagehide", () => void runtime.dispose(), { once: true })
+  window.addEventListener("pagehide", () => void runtime.dispose().catch(() => undefined), {
+    once: true,
+  })
 }
 
 if (typeof document !== "undefined") {

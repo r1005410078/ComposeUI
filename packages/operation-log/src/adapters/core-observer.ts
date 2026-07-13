@@ -1,11 +1,16 @@
 import type { EditorOperation, EditorOperationObserver } from "@composeui/core"
 import { hashCanonical } from "../canonical"
+import type { OperationEvent } from "../events"
 import type { OperationRecorder } from "../recorder"
+
+export interface CoreOperationObserverOptions {
+  onDocumentCommandSucceeded?: (sequence: number) => void | Promise<void>
+}
 
 function recordCoreOperation(
   recorder: OperationRecorder,
   operation: EditorOperation,
-): Promise<void> {
+): Promise<OperationEvent | undefined> {
   if (operation.type === "document.command") {
     if (operation.status === "started") {
       return recorder.recordDeferred(async () => ({
@@ -56,11 +61,24 @@ function recordCoreOperation(
   }))
 }
 
-export function createCoreOperationObserver(recorder: OperationRecorder): EditorOperationObserver {
+export function createCoreOperationObserver(
+  recorder: OperationRecorder,
+  options: CoreOperationObserverOptions = {},
+): EditorOperationObserver {
   return {
     observe(operation) {
       const snapshot = structuredClone(operation)
-      void recordCoreOperation(recorder, snapshot).catch(() => undefined)
+      void recordCoreOperation(recorder, snapshot)
+        .then((event) => {
+          if (
+            event === undefined ||
+            snapshot.type !== "document.command" ||
+            snapshot.status !== "succeeded"
+          )
+            return
+          return options.onDocumentCommandSucceeded?.(event.sequence)
+        })
+        .catch(() => undefined)
     },
   }
 }

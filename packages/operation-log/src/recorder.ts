@@ -100,9 +100,9 @@ export class OperationRecorder {
   }
 
   /** Queue input generation as part of the recorder chain for async adapters. */
-  recordDeferred<T>(factory: () => Promise<RecordOperationInput<T>>): Promise<void> {
+  recordDeferred<T>(factory: () => Promise<RecordOperationInput<T>>): Promise<OperationEvent<T>> {
     const task = this.#pending.then(async () => {
-      await this.#append(await factory())
+      return this.#append(await factory())
     })
     this.#pending = task.then(
       () => undefined,
