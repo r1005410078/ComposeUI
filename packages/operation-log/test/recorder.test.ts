@@ -4,7 +4,11 @@ import type {
   OperationLogStore,
   RecordOperationInput,
 } from "@composeui/operation-log"
-import { createOperationId, MemoryOperationLogStore, OperationRecorder } from "@composeui/operation-log"
+import {
+  createOperationId,
+  MemoryOperationLogStore,
+  OperationRecorder,
+} from "@composeui/operation-log"
 
 const input = (overrides: Partial<RecordOperationInput> = {}): RecordOperationInput => ({
   category: "system",
