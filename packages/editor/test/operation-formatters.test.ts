@@ -57,6 +57,32 @@ describe("operation formatters", () => {
     ).toContain("NODE_LOCKED")
   })
 
+  it("formats core observer move patches with before and after coordinates", () => {
+    const summary = formatOperation(
+      event("document.command", {
+        command: {
+          id: "node.move",
+          payload: { ids: ["rect-1"], delta: { x: 60, y: 40 } },
+        },
+        transaction: { transactionId: "tx-1" },
+        patch: {
+          created: [],
+          updated: [
+            {
+              id: "rect-1",
+              typeName: "node",
+              before: { id: "rect-1", typeName: "node", x: 120, y: 80 },
+              after: { id: "rect-1", typeName: "node", x: 180, y: 120 },
+            },
+          ],
+          removed: [],
+        },
+      }),
+    )
+
+    expect(summary).toContain("移动“rect-1”：(120, 80) -> (180, 120)")
+  })
+
   it("formats history, session, patch, and common document operations", () => {
     expect(
       formatOperation(event("history.undo", { currentIndex: 2 }, { category: "history" })),

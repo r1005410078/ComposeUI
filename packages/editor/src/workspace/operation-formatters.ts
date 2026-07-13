@@ -43,7 +43,7 @@ function formatDocument(event: OperationEvent): string {
       summary = `创建“${stringValue(commandPayload?.name) ?? id}”`
       break
     case "node.move":
-      summary = formatMove(id, commandPayload)
+      summary = formatMove(id, commandPayload, asRecord(payload?.patch))
       break
     case "node.resize":
     case "node.resizeMany":
@@ -71,18 +71,37 @@ function formatDocument(event: OperationEvent): string {
       summary = `${commandId}`
   }
 
-  const patch = Array.isArray(payload?.patch) ? ` · 补丁 ${payload.patch.length} 项` : ""
-  return `${summary} · ${formatStatus(event.status)}${patch}${formatDiagnostics(event)}`
+  const patchSummary = formatPatchSummary(payload?.patch)
+  return `${summary} · ${formatStatus(event.status)}${patchSummary}${formatDiagnostics(event)}`
 }
 
-function formatMove(id: string, payload: Record<string, unknown> | undefined): string {
-  const before = point(payload?.before)
-  const after = point(payload?.after)
+function formatMove(
+  id: string,
+  payload: Record<string, unknown> | undefined,
+  patch: Record<string, unknown> | undefined,
+): string {
+  const updated = Array.isArray(patch?.updated) ? patch.updated : []
+  const update = updated
+    .map((item) => asRecord(item))
+    .find((item) => item !== undefined && item.id === id)
+  const before = point(update?.before) ?? point(payload?.before)
+  const after = point(update?.after) ?? point(payload?.after)
   if (before !== undefined && after !== undefined) {
     return `移动“${id}”：${formatPoint(before)} -> ${formatPoint(after)}`
   }
   const delta = point(payload?.delta)
   return delta === undefined ? `移动“${id}”` : `移动“${id}”：偏移 ${formatPoint(delta)}`
+}
+
+function formatPatchSummary(value: unknown): string {
+  if (Array.isArray(value)) return ` · 补丁 ${value.length} 项`
+  const patch = asRecord(value)
+  if (patch === undefined) return ""
+  const count = ["created", "updated", "removed"].reduce(
+    (total, key) => total + (Array.isArray(patch[key]) ? patch[key].length : 0),
+    0,
+  )
+  return count === 0 ? "" : ` · 补丁 ${count} 项`
 }
 
 function formatResize(id: string, payload: Record<string, unknown> | undefined): string {
