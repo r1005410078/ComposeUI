@@ -62,6 +62,14 @@
   --composeui-panel-toolbar-height: 32px;
   --composeui-panel-row-height: 26px;
   --composeui-panel-empty-max-width: 240px;
+  --composeui-output-row-height: 30px;
+  --composeui-output-time-width: 142px;
+  --composeui-output-details-width: 320px;
+  --composeui-output-row-hover: var(--composeui-surface-control-hover);
+  --composeui-output-row-selected: var(--composeui-selection-fill);
+  --composeui-output-error: var(--composeui-state-danger);
+  --composeui-output-warning: var(--composeui-state-warning);
+  --composeui-output-success: var(--composeui-state-success);
   --composeui-radius-control: 4px;
   --composeui-radius-panel: 3px;
   --composeui-scrollbar-track: var(--composeui-surface-app);
