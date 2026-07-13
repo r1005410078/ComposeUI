@@ -41,3 +41,10 @@ export {
   enforceRetention,
 } from "./retention"
 export type { OperationRetentionOptions, OperationRetentionResult } from "./retention"
+export { DEFAULT_LOG_BUNDLE_MAX_BYTES, exportLogBundle, importLogBundle } from "./bundle"
+export type {
+  ExportLogBundleOptions,
+  ImportLogBundleOptions,
+  LogBundleManifestV1,
+  LogBundleV1,
+} from "./bundle"
