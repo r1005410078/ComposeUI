@@ -1,33 +1,22 @@
+import type { OperationEvent, OperationLogStore } from "@composeui/operation-log"
 import type {
-  OperationCategory,
-  OperationEvent,
-  OperationLogStore,
-  OperationStatus,
-} from "@composeui/operation-log"
+  OperationLogControllerListener,
+  OperationLogControllerPort,
+  OperationLogControllerState,
+  OperationLogFilter,
+  OperationLogFilterValue,
+  OperationLogViewQuery,
+} from "./operation-log-controller-port"
 
-export type OperationLogFilterValue<T extends string> = T | readonly T[]
-
-export type OperationLogLevel = OperationStatus
-
-export interface OperationLogViewQuery {
-  levels: readonly OperationLogLevel[]
-  categories: readonly OperationCategory[]
-  search: string
-}
-
-export interface OperationLogFilter {
-  category?: OperationLogFilterValue<OperationCategory>
-  status?: OperationLogFilterValue<OperationStatus>
-  text?: string
-}
-
-export interface OperationLogControllerState {
-  readonly rows: readonly OperationEvent[]
-  readonly query: OperationLogViewQuery
-  readonly filter: OperationLogFilter
-  readonly selection?: OperationEvent
-  readonly detail?: OperationEvent
-}
+export type {
+  OperationLogControllerListener,
+  OperationLogControllerPort,
+  OperationLogControllerState,
+  OperationLogFilter,
+  OperationLogFilterValue,
+  OperationLogLevel,
+  OperationLogViewQuery,
+} from "./operation-log-controller-port"
 
 export interface OperationLogControllerOptions {
   store: OperationLogStore
@@ -37,9 +26,7 @@ export interface OperationLogControllerOptions {
   startReplay?: (sequence: number) => void | Promise<void>
 }
 
-export type OperationLogControllerListener = (state: OperationLogControllerState) => void
-
-export class OperationLogController {
+export class OperationLogController implements OperationLogControllerPort {
   readonly #store: OperationLogStore
   readonly #sessionId: string
   readonly #exportSession: () => Promise<string>

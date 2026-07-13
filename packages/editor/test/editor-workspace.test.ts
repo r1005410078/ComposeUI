@@ -14,7 +14,7 @@ import type {
   WorkspacePanelDescriptor,
   WorkspacePanelRegistry,
 } from "../src/index"
-import type { OperationLogController } from "../src/index"
+import type { OperationLogControllerPort, OperationLogViewQuery } from "../src/index"
 
 type FakePanel = {
   id: string
@@ -226,7 +226,13 @@ function createEditorInstance() {
 describe("editor workspace", () => {
   it("passes the operation log controller unchanged to first-party panels", () => {
     let capturedContext: WorkspaceContext | undefined
-    const operationLog = {} as OperationLogController
+    const operationLog: OperationLogControllerPort = {
+      query: async (_query: OperationLogViewQuery) => [],
+      subscribe: () => () => undefined,
+      exportSession: async () => "",
+      importBundle: async (_serialized: string) => undefined,
+      startReplay: (_sequence: number) => undefined,
+    }
     const registry: WorkspacePanelRegistry = {
       all: () => [
         {

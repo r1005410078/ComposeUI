@@ -6,7 +6,7 @@ import {
 } from "dockview"
 import { Play, Save, createElement as createIconElement } from "lucide"
 import type { Editor } from "@composeui/core"
-import type { OperationLogController } from "../operation-log-controller"
+import type { OperationLogControllerPort } from "../operation-log-controller-port"
 import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
@@ -55,7 +55,7 @@ export interface MountEditorWorkspaceOptions {
   mountSceneExtras?: (root: HTMLElement) => void | (() => void) | { destroy(): void }
   layoutStore?: WorkspaceLayoutStore
   resources?: WorkspaceResourceService
-  operationLog?: OperationLogController
+  operationLog?: OperationLogControllerPort
   panelRegistry?: PanelRegistry | WorkspacePanelRegistry
   modeRegistry?: ModeRegistry
   createDockview?: DockviewFactory

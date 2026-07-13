@@ -22,6 +22,7 @@ export { createSessionOperationObserver } from "./operation-log-adapter"
 export { OperationLogController } from "./operation-log-controller"
 export type {
   OperationLogControllerListener,
+  OperationLogControllerPort,
   OperationLogControllerOptions,
   OperationLogControllerState,
   OperationLogFilter,

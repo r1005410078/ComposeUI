@@ -1,6 +1,6 @@
 import type { Editor } from "@composeui/core"
 import type { EditorSession } from "../session"
-import type { OperationLogController } from "../operation-log-controller"
+import type { OperationLogControllerPort } from "../operation-log-controller-port"
 
 export interface WorkspaceContext {
   editor: Editor
@@ -8,7 +8,7 @@ export interface WorkspaceContext {
   pageId: string
   api: WorkspaceCommandApi
   resources?: WorkspaceResourceService
-  operationLog?: OperationLogController
+  operationLog?: OperationLogControllerPort
   emit: (event: WorkspaceEvent) => void
 }
 
