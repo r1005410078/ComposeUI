@@ -287,6 +287,7 @@
   min-height: 0;
   overflow: auto;
   padding: var(--composeui-space-1) 0;
+  scroll-padding-block-start: var(--composeui-panel-toolbar-height);
 }
 
 .composeui-editor__history-list li {
@@ -345,6 +346,7 @@
   min-height: 0;
   overflow: auto;
   place-items: center;
+  scroll-padding-block-start: var(--composeui-panel-toolbar-height);
 }
 
 .composeui-editor__output-messages p {

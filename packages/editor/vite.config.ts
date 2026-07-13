@@ -18,5 +18,8 @@ export default defineConfig({
   plugins: [emitThemeCss()],
   build: {
     lib: { entry: "src/index.ts", formats: ["es"], fileName: "index", cssFileName: "editor" },
+    rollupOptions: {
+      external: ["@composeui/core", "dockview", "lucide"],
+    },
   },
 })
