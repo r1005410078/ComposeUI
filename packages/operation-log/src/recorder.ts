@@ -1,5 +1,6 @@
 import type { OperationEvent } from "./events"
 import type { OperationLogStore as OperationLogStoreContract } from "./store"
+import { createOperationId } from "./id"
 import { defaultRedactor } from "./redaction"
 
 export type RecordOperationInput<T = unknown> = Omit<
@@ -41,7 +42,7 @@ export class OperationRecorder {
     this.#store = options.store
     this.#redactor = options.redactor ?? defaultRedactor
     this.#clock = options.clock ?? (() => new Date().toISOString())
-    this.#idFactory = options.idFactory ?? (() => crypto.randomUUID())
+    this.#idFactory = options.idFactory ?? createOperationId
     this.#degraded = options.onDegraded ?? options.degraded
   }
 
@@ -54,12 +55,12 @@ export class OperationRecorder {
       projectId: this.#projectId,
       sequence: ++this.#sequence,
       timestamp: this.#clock(),
-      payload: this.#redactor(input.payload) as T,
+      payload: this.#redactor(structuredClone(input.payload)) as T,
     }
 
     this.#pending = this.#pending.then(async () => {
       try {
-        await this.#store.append([event])
+        await this.#store.append([structuredClone(event)])
       } catch (error) {
         try {
           this.#degraded?.(error, event)

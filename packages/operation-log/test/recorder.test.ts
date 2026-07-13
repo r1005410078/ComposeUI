@@ -4,7 +4,7 @@ import type {
   OperationLogStore,
   RecordOperationInput,
 } from "@composeui/operation-log"
-import { MemoryOperationLogStore, OperationRecorder } from "@composeui/operation-log"
+import { createOperationId, MemoryOperationLogStore, OperationRecorder } from "@composeui/operation-log"
 
 const input = (overrides: Partial<RecordOperationInput> = {}): RecordOperationInput => ({
   category: "system",
@@ -126,5 +126,76 @@ describe("OperationRecorder", () => {
     await expect(recorder.flush()).resolves.toBeUndefined()
     expect(degraded).toHaveBeenCalledWith(failure, expect.objectContaining({ sequence: 1 }))
     expect(append).toHaveBeenCalledTimes(2)
+  })
+
+  it("continues the queue when onDegraded itself throws", async () => {
+    const failure = new Error("disk full")
+    const append = vi
+      .fn<OperationLogStore["append"]>()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue(undefined)
+    const onDegraded = vi.fn(() => {
+      throw new Error("diagnostics unavailable")
+    })
+    const recorder = new OperationRecorder({
+      sessionId: "s1",
+      projectId: "p1",
+      store: { append, query: vi.fn(async () => []), subscribe: () => () => undefined },
+      onDegraded,
+      idFactory: (() => {
+        let index = 0
+        return () => `event-${++index}`
+      })(),
+    })
+
+    await expect(recorder.record(input({ type: "first" }))).resolves.toMatchObject({ sequence: 1 })
+    await expect(recorder.record(input({ type: "second" }))).resolves.toMatchObject({ sequence: 2 })
+    await expect(recorder.flush()).resolves.toBeUndefined()
+    expect(onDegraded).toHaveBeenCalledWith(failure, expect.objectContaining({ sequence: 1 }))
+    expect(append).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not mutate input payloads and isolates store mutations", async () => {
+    const source = { token: "secret", nested: { value: 1 } }
+    let storedEvent: OperationEvent | undefined
+    const store: OperationLogStore = {
+      append: vi.fn(async (events) => {
+        storedEvent = events[0]
+        storedEvent!.payload = { changed: true }
+        storedEvent!.type = "mutated.by.store"
+      }),
+      query: vi.fn(async () => []),
+      subscribe: () => () => undefined,
+    }
+    const recorder = new OperationRecorder({
+      sessionId: "s1",
+      projectId: "p1",
+      store,
+      idFactory: () => "event-1",
+    })
+
+    const result = await recorder.record(input({ payload: source }))
+
+    expect(source).toEqual({ token: "secret", nested: { value: 1 } })
+    expect(result).toMatchObject({
+      type: "system.sessionStarted",
+      payload: { token: "[REDACTED]", nested: { value: 1 } },
+    })
+    expect(storedEvent).not.toBe(result)
+    expect(storedEvent).toMatchObject({ type: "mutated.by.store", payload: { changed: true } })
+  })
+
+  it("creates IDs without a global Web Crypto provider", () => {
+    const originalCrypto = globalThis.crypto
+    vi.stubGlobal("crypto", undefined)
+    try {
+      const first = createOperationId()
+      const second = createOperationId()
+
+      expect(first).toMatch(/^op-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/)
+      expect(second).not.toBe(first)
+    } finally {
+      vi.stubGlobal("crypto", originalCrypto)
+    }
   })
 })
