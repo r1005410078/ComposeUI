@@ -8,3 +8,12 @@ export { MemoryOperationLogStore } from "./store"
 export type { MemoryOperationLogStoreOptions, OperationLogStore } from "./store"
 export { canonicalJson, hashCanonical } from "./canonical"
 export { defaultRedactor } from "./redaction"
+export { OperationRecorder } from "./recorder"
+export type {
+  OperationClock,
+  OperationDegradedHandler,
+  OperationIdFactory,
+  OperationRecorderOptions,
+  OperationRedactor,
+  RecordOperationInput,
+} from "./recorder"
