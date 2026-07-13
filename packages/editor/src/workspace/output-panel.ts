@@ -79,6 +79,22 @@ function emptyState(): HTMLElement {
   return empty
 }
 
+function downloadExport(serialized: string): void {
+  const blob = new Blob([serialized], { type: "application/json" })
+  const anchor = document.createElement("a")
+  anchor.download = "operation-log.json"
+  anchor.rel = "noopener"
+  const objectUrl =
+    typeof URL.createObjectURL === "function"
+      ? URL.createObjectURL(blob)
+      : `data:application/json;charset=utf-8,${encodeURIComponent(serialized)}`
+  anchor.href = objectUrl
+  anchor.click()
+  if (objectUrl.startsWith("blob:") && typeof URL.revokeObjectURL === "function") {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 function safeText(value: unknown): string {
   const seen = new WeakSet<object>()
   try {
@@ -228,13 +244,6 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       }
       if (autoScroll) list.scrollTop = list.scrollHeight
     }
-    if (
-      selected !== undefined &&
-      !latestRows.some((event) => event.eventId === selected?.eventId)
-    ) {
-      selected = undefined
-      detailsHost.replaceChildren()
-    }
   }
 
   const refresh = async (): Promise<void> => {
@@ -250,13 +259,13 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   }
 
   const toggleLevel = (level: OperationStatus): void => {
-    levels = levels.includes(level) ? levels.filter((item) => item !== level) : [level]
+    levels = levels.includes(level) ? levels.filter((item) => item !== level) : [...levels, level]
     void refresh()
   }
   const toggleCategory = (category: OperationCategory): void => {
     categories = categories.includes(category)
       ? categories.filter((item) => item !== category)
-      : [category]
+      : [...categories, category]
     void refresh()
   }
 
@@ -325,7 +334,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     }),
     button("output-import", "导入日志", FileInput, () => fileInput.click()),
     button("output-export", "导出日志", Download, () => {
-      void controller.exportSession()
+      void controller
+        .exportSession()
+        .then(downloadExport)
+        .catch(() => undefined)
     }),
     button("output-replay", "回放选中操作", Play, () => {
       if (selected !== undefined) void controller.startReplay(selected.sequence)
@@ -346,7 +358,17 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
 
   const unsubscribe = controller.subscribe((state: OperationLogControllerState) => {
     if (disposed) return
-    selected = state.detail
+    selected = state.detail ?? state.selection
+    renderRows(
+      selected !== undefined && !state.rows.some((event) => event.eventId === selected?.eventId)
+        ? [...state.rows, selected]
+        : state.rows,
+    )
+    if (selected === undefined) {
+      detailsHost.replaceChildren()
+    } else {
+      detailsHost.replaceChildren(eventDetails(selected))
+    }
     void refresh()
   })
   void refresh()

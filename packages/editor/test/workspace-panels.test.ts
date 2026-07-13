@@ -6,6 +6,7 @@ import { EditorSession } from "../src/index"
 import type { WorkspaceContext } from "../src/workspace/types"
 import { createWorkspacePanels, type PanelId } from "../src/workspace/panels"
 import type { OperationLogControllerPort } from "../src/operation-log-controller-port"
+import type { OperationLogControllerState } from "../src/operation-log-controller-port"
 import type { OperationEvent } from "@composeui/operation-log"
 
 function createContext(
@@ -346,6 +347,132 @@ describe("workspace panel renderers", () => {
       "true",
     )
 
+    root.querySelector<HTMLButtonElement>("[data-testid='output-level-succeeded']")!.click()
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
+    })
+    expect(operationLog.query).toHaveBeenLastCalledWith({
+      levels: ["failed", "succeeded"],
+      categories: [],
+      search: "",
+    })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-category-document']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-category-diagnostic']")!.click()
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
+    })
+    expect(operationLog.query).toHaveBeenLastCalledWith({
+      levels: ["failed", "succeeded"],
+      categories: ["document", "diagnostic"],
+      search: "",
+    })
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("updates details immediately from controller notifications", async () => {
+    let notify: ((state: OperationLogControllerState) => void) | undefined
+    const first = operationEvent()
+    const second = operationEvent({
+      eventId: "event-2",
+      sequence: 2,
+      category: "diagnostic",
+      type: "diagnostic.reported",
+      status: "failed",
+      diagnostics: [{ code: "NODE_LOCKED", message: "节点已锁定", severity: "error" }],
+    })
+    const operationLog: OperationLogControllerPort = {
+      query: vi.fn(async () => [first]),
+      subscribe: vi.fn((listener) => {
+        notify = listener
+        return () => undefined
+      }),
+      exportSession: vi.fn(async () => "bundle"),
+      importBundle: vi.fn(async () => undefined),
+      startReplay: vi.fn(),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    notify?.({
+      rows: [second],
+      query: { levels: [], categories: [], search: "" },
+      filter: {},
+      detail: second,
+      selection: second,
+    })
+    expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
+      "NODE_LOCKED",
+    )
+    await Promise.resolve()
+    expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
+      "NODE_LOCKED",
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("ignores stale queries and async work after dispose", async () => {
+    const pending: Array<{ resolve: (events: readonly OperationEvent[]) => void }> = []
+    const eventOne = operationEvent()
+    const eventTwo = operationEvent({ eventId: "event-2", sequence: 2 })
+    const operationLog: OperationLogControllerPort = {
+      query: vi.fn(
+        () =>
+          new Promise<readonly OperationEvent[]>((resolve) => {
+            pending.push({ resolve })
+          }),
+      ),
+      subscribe: vi.fn(() => () => undefined),
+      exportSession: vi.fn(async () => "bundle"),
+      importBundle: vi.fn(async () => undefined),
+      startReplay: vi.fn(),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "new"
+    search.dispatchEvent(new Event("input", { bubbles: true }))
+    pending[1]!.resolve([eventTwo])
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-entry']")?.textContent).toContain("2"),
+    )
+    dispose()
+    dispose()
+    pending[0]!.resolve([eventOne])
+    await Promise.resolve()
+    expect(root.childElementCount).toBe(0)
+  })
+
+  it("handles import, export, and replay actions", async () => {
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() => expect(operationLog.exportSession).toHaveBeenCalledTimes(1))
+    expect(anchorClick).toHaveBeenCalled()
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    expect(operationLog.startReplay).toHaveBeenCalledWith(1)
+
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    const file = { text: vi.fn(async () => "bundle") }
+    Object.defineProperty(input, "files", { configurable: true, value: [file] })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
+
+    anchorClick.mockRestore()
     if (typeof dispose === "function") dispose()
   })
 
