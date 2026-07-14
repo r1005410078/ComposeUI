@@ -138,6 +138,32 @@ describe("workspace operation observer", () => {
     ])
   })
 
+  it("reports a safe diagnostic when a workspace event cannot be cloned", async () => {
+    const { recorder: deferredRecorder, inputs } = recorder()
+    const observer = createWorkspaceOperationObserver(deferredRecorder)
+    const layout = { version: 1, modeId: "2d", layout: { onChange: () => undefined } }
+
+    expect(() => observer.observe({ type: "layout-changed", layout })).not.toThrow()
+    await Promise.resolve()
+
+    expect(inputs).toEqual([
+      {
+        category: "diagnostic",
+        type: "diagnostic.reported",
+        status: "observed",
+        diagnostics: [
+          {
+            code: "WORKSPACE_EVENT_SERIALIZATION_FAILURE",
+            severity: "error",
+            message: "Unable to serialize workspace event: layout-changed",
+          },
+        ],
+        payload: { sourceType: "layout-changed" },
+      },
+    ])
+    expect(inputs[0]?.payload).not.toHaveProperty("layout")
+  })
+
   it("does not throw when deferred recording rejects", async () => {
     const deferredRecorder: WorkspaceOperationRecorder = {
       recordDeferred: vi.fn(() => Promise.reject(new Error("store unavailable"))),

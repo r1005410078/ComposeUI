@@ -37,13 +37,44 @@ export function createWorkspaceOperationObserver(
 ): WorkspaceOperationObserver {
   return {
     observe(event) {
+      let snapshot: WorkspaceOperationSourceEvent
       try {
-        const snapshot = structuredClone(event)
-        void recorder.recordDeferred(async () => toRecordInput(snapshot)).catch(() => undefined)
+        snapshot = structuredClone(event)
       } catch {
-        // Workspace event capture must never interrupt the editor workflow.
+        recordSerializationFailure(recorder, sourceType(event))
+        return
       }
+      recordDeferred(recorder, async () => toRecordInput(snapshot))
     },
+  }
+}
+
+function recordSerializationFailure(recorder: WorkspaceOperationRecorder, type: string): void {
+  recordDeferred(recorder, async () =>
+    diagnosticInput(
+      "WORKSPACE_EVENT_SERIALIZATION_FAILURE",
+      `Unable to serialize workspace event: ${type}`,
+      { sourceType: type },
+    ),
+  )
+}
+
+function recordDeferred(
+  recorder: WorkspaceOperationRecorder,
+  factory: () => Promise<RecordOperationInput>,
+): void {
+  try {
+    void recorder.recordDeferred(factory).catch(() => undefined)
+  } catch {
+    // Operation recording must never interrupt the editor workflow.
+  }
+}
+
+function sourceType(event: WorkspaceOperationSourceEvent): string {
+  try {
+    return typeof event.type === "string" ? event.type : "unknown"
+  } catch {
+    return "unknown"
   }
 }
 
@@ -81,7 +112,10 @@ function toRecordInput(event: WorkspaceOperationSourceEvent): RecordOperationInp
 }
 
 function diagnosticInput(
-  code: "WORKSPACE_LAYOUT_FAILURE" | "WORKSPACE_PANEL_FAILURE",
+  code:
+    | "WORKSPACE_LAYOUT_FAILURE"
+    | "WORKSPACE_PANEL_FAILURE"
+    | "WORKSPACE_EVENT_SERIALIZATION_FAILURE",
   message: string,
   payload: unknown,
 ): RecordOperationInput {
