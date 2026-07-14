@@ -41,7 +41,12 @@ export {
   enforceRetention,
 } from "./retention"
 export type { OperationRetentionOptions, OperationRetentionResult } from "./retention"
-export { DEFAULT_LOG_BUNDLE_MAX_BYTES, exportLogBundle, importLogBundle } from "./bundle"
+export {
+  DEFAULT_LOG_BUNDLE_MAX_BYTES,
+  exportLogBundle,
+  importLogBundle,
+  isValidatedLogBundle,
+} from "./bundle"
 export type {
   ExportLogBundleOptions,
   ImportLogBundleOptions,
@@ -49,6 +54,7 @@ export type {
   LogBundleV2,
   LogBundleManifestV1,
   LogBundleV1,
+  ValidatedLogBundle,
 } from "./bundle"
 export { ReplayHandlerRegistry } from "./replay/registry"
 export type {
@@ -70,5 +76,4 @@ export type {
   ReplayResult,
   ReplayResultStatus,
   ReplayState,
-  ValidatedLogBundle,
 } from "./replay/engine"

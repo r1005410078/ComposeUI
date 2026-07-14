@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
 import type { LogBundleV1, OperationEvent, ReplaySessionPort } from "../src/index"
-import { hashCanonical } from "../src/index"
+import { canonicalJson, hashCanonical, importLogBundle } from "../src/index"
 import { ReplayEngine } from "../src/index"
 
 const document = createEmptyDocument({ documentId: "document-1", pageId: "page-1" })
@@ -42,7 +42,7 @@ function event(sequence: number, payload: unknown): OperationEvent {
     sessionId: "session-1",
     projectId: "project-1",
     sequence,
-    timestamp: `2026-07-14T00:00:${String(sequence).padStart(2, "0")}.000Z`,
+    timestamp: `2026-07-14T00:${String(Math.floor(sequence / 60)).padStart(2, "0")}:${String(sequence % 60).padStart(2, "0")}.000Z`,
     category: "session",
     type: "session.gridVisibility",
     status: "succeeded",
@@ -78,13 +78,33 @@ function bundleWithCheckpoints(events: OperationEvent[]): LogBundleV1 {
         createdAt: "2026-07-14T00:00:00.000Z",
         document,
         sessionState: sessionPort().state,
-        documentHash: "",
-        sessionHash: "",
+        documentHash: "document",
+        sessionHash: "session",
       },
     ],
     events,
   }
   return bundle
+}
+
+async function importTestBundle(bundle: LogBundleV1) {
+  const sectionHashes = {
+    session: await hashCanonical(bundle.session),
+    checkpoints: await hashCanonical(bundle.checkpoints),
+    events: await hashCanonical(bundle.events),
+  }
+  const { manifestHash: _oldManifestHash, ...manifestWithoutHash } = {
+    ...bundle.manifest,
+    sectionHashes,
+  }
+  const encoded = canonicalJson({
+    ...bundle,
+    manifest: {
+      ...manifestWithoutHash,
+      manifestHash: await hashCanonical(manifestWithoutHash),
+    },
+  })
+  return importLogBundle(encoded)
 }
 
 describe("ReplayEngine", () => {
@@ -106,11 +126,11 @@ describe("ReplayEngine", () => {
     expect(expected.dispatch(command).ok).toBe(true)
     const transaction = expected.getHistory().entries[0]!
     const checkpointHash = await hashCanonical(document)
-    const events = Array.from({ length: 14 }, (_, index) =>
-      event(index + 101, { gridVisible: true }),
+    const events = Array.from({ length: 120 }, (_, index) =>
+      event(index + 1, { gridVisible: true }),
     )
-    events[13] = {
-      ...events[13]!,
+    events[113] = {
+      ...events[113]!,
       category: "document",
       type: "document.command",
       payload: { command, transaction, patch: transaction.forward },
@@ -141,7 +161,7 @@ describe("ReplayEngine", () => {
     const activeEditor = createEditor(document)
     const activeBefore = activeEditor.getStore().all()
     const engine = await ReplayEngine.create({
-      bundle,
+      bundle: await importTestBundle(bundle),
       targetSequence: 120,
       createSession: () => sessionPort(),
     })
@@ -164,7 +184,7 @@ describe("ReplayEngine", () => {
       event(3, { gridVisible: false }),
     ]
     const engine = await ReplayEngine.create({
-      bundle: bundleWithCheckpoints(events),
+      bundle: await importTestBundle(bundleWithCheckpoints(events)),
       createSession: () => sessionPort(),
     })
     const paused = await engine.verify()
@@ -172,5 +192,73 @@ describe("ReplayEngine", () => {
     const continued = await engine.continueBestEffort()
     expect(continued.deterministic).toBe(false)
     expect(continued.currentSequence).toBe(3)
+  })
+
+  it("rejects an unbranded bundle and reports a missing prior checkpoint", async () => {
+    const futureCheckpointBundle = bundleWithCheckpoints([event(1, { gridVisible: true })])
+    futureCheckpointBundle.checkpoints[0]!.sequence = 1
+    const bundle = await importTestBundle(futureCheckpointBundle)
+    await expect(
+      ReplayEngine.create({
+        bundle: { ...bundle },
+        createSession: () => sessionPort(),
+      }),
+    ).rejects.toThrow("REPLAY_BUNDLE_NOT_VALIDATED")
+
+    const engine = await ReplayEngine.create({
+      bundle,
+      targetSequence: 0,
+      createSession: () => sessionPort(),
+    })
+    const result = await engine.runTo(0)
+    expect(result.status).toBe("paused")
+    expect(result.difference).toMatchObject({ type: "schema-incompatible", sequence: 0 })
+  })
+
+  it("turns handler and session exceptions into typed differences", async () => {
+    const handlerBundle = await importTestBundle(
+      bundleWithCheckpoints([event(1, { gridVisible: true })]),
+    )
+    const handlerEngine = await ReplayEngine.create({
+      bundle: handlerBundle,
+      createSession: () => sessionPort(),
+      approvedHandlers: {
+        "session.gridVisibility": async () => {
+          throw new Error("handler boom")
+        },
+      },
+    })
+    const handlerResult = await handlerEngine.verify()
+    expect(handlerResult.difference).toMatchObject({
+      type: "session-error",
+      eventType: "session.gridVisibility",
+    })
+
+    const sessionEngine = await ReplayEngine.create({
+      bundle: handlerBundle,
+      createSession: () => ({
+        ...sessionPort(),
+        setGridVisible: () => {
+          throw new Error("session boom")
+        },
+      }),
+    })
+    const sessionResult = await sessionEngine.verify()
+    expect(sessionResult.difference).toMatchObject({
+      type: "session-error",
+      eventType: "session.gridVisibility",
+    })
+  })
+
+  it("uses the target supplied to each runTo call", async () => {
+    const bundle = await importTestBundle(
+      bundleWithCheckpoints([event(1, { gridVisible: true }), event(2, { gridVisible: true })]),
+    )
+    const engine = await ReplayEngine.create({
+      bundle,
+      createSession: () => sessionPort(),
+    })
+    expect((await engine.runTo(1)).targetSequence).toBe(1)
+    expect((await engine.runTo(2)).targetSequence).toBe(2)
   })
 })

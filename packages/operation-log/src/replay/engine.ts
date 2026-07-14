@@ -2,7 +2,8 @@ import { canonicalizeDocument, createEditor } from "@composeui/core"
 import type { Editor, PageDocument } from "@composeui/core"
 import { hashCanonical } from "../canonical"
 import type { OperationEvent } from "../events"
-import type { LogBundleV1, LogBundleV2 } from "../bundle"
+import type { ValidatedLogBundle } from "../bundle"
+import { isValidatedLogBundle } from "../bundle"
 import { builtinReplayHandlers } from "./builtin-handlers"
 import { ReplayHandlerRegistry } from "./registry"
 import type {
@@ -11,8 +12,6 @@ import type {
   ReplayHandlerContext,
   ReplaySessionPort,
 } from "./types"
-
-export type ValidatedLogBundle = LogBundleV1 | LogBundleV2
 
 export interface ReplayEngineCreateOptions {
   bundle: ValidatedLogBundle
@@ -38,7 +37,7 @@ export interface ReplayResult {
   targetSequence: number
   difference?: ReplayDifference
   nondeterministicFromSequence?: number
-  state: ReplayState
+  state?: ReplayState
 }
 
 interface InternalResultOptions {
@@ -79,13 +78,17 @@ function handlerEntries(
   return Object.entries(handlers)
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 /**
  * Replays a validated bundle in a newly-created core/session runtime.
  * No host adapters are accepted by this class; handlers always receive disabled side effects.
  */
 export class ReplayEngine {
-  readonly #editor: Editor
-  readonly #session: ReplaySessionPort
+  readonly #editor: Editor | undefined
+  readonly #session: ReplaySessionPort | undefined
   readonly #registry: ReplayHandlerRegistry
   readonly #events: OperationEvent[]
   readonly #startedAtSequence: number
@@ -99,6 +102,7 @@ export class ReplayEngine {
   #nondeterministicFromSequence: number | undefined
 
   static async create(options: ReplayEngineCreateOptions): Promise<ReplayEngine> {
+    if (!isValidatedLogBundle(options.bundle)) throw new Error("REPLAY_BUNDLE_NOT_VALIDATED")
     if (!Number.isSafeInteger(options.targetSequence ?? 0) || (options.targetSequence ?? 0) < 0) {
       throw new Error("INVALID_REPLAY_TARGET_SEQUENCE")
     }
@@ -108,41 +112,77 @@ export class ReplayEngine {
     )
     const sortedCheckpoints = sortBySequence(checkpoints)
     const checkpoint = sortedCheckpoints.at(-1) ?? options.bundle.checkpoints[0]
+    const registry = new ReplayHandlerRegistry()
+    const approvedEntries = [...handlerEntries(options.approvedHandlers)]
+    const approvedTypes = new Set(approvedEntries.map(([type]) => type))
+    for (const [type, handler] of Object.entries(builtinReplayHandlers))
+      if (!approvedTypes.has(type)) registry.register(type, handler)
+    for (const [type, handler] of approvedEntries) registry.register(type, handler)
+    if (sortedCheckpoints.length === 0) {
+      return new ReplayEngine(
+        options.bundle,
+        undefined,
+        undefined,
+        registry,
+        targetSequence,
+        targetSequence,
+        {
+          type: "schema-incompatible",
+          sequence: targetSequence,
+          version: options.bundle.manifest.schemaVersion,
+        },
+      )
+    }
     if (checkpoint === undefined) throw new Error("REPLAY_CHECKPOINT_NOT_FOUND")
 
-    const session = await options.createSession(clone(checkpoint.sessionState))
     const createIsolatedEditor =
       options.createEditor ?? ((initialDocument: PageDocument) => createEditor(initialDocument))
     const editor = createIsolatedEditor(clone(checkpoint.document))
-    const registry = new ReplayHandlerRegistry()
-    for (const [type, handler] of Object.entries(builtinReplayHandlers))
-      registry.register(type, handler)
-    for (const [type, handler] of handlerEntries(options.approvedHandlers))
-      registry.register(type, handler)
-
-    return new ReplayEngine(
-      options.bundle,
-      editor,
-      session,
-      registry,
-      checkpoint.sequence,
-      targetSequence,
-    )
+    try {
+      const session = await options.createSession(clone(checkpoint.sessionState))
+      return new ReplayEngine(
+        options.bundle,
+        editor,
+        session,
+        registry,
+        checkpoint.sequence,
+        targetSequence,
+      )
+    } catch (error) {
+      return new ReplayEngine(
+        options.bundle,
+        editor,
+        undefined,
+        registry,
+        checkpoint.sequence,
+        targetSequence,
+        {
+          type: "session-error",
+          sequence: checkpoint.sequence,
+          eventType: "session.create",
+          message: errorMessage(error),
+        },
+      )
+    }
   }
 
   private constructor(
     bundle: ValidatedLogBundle,
-    editor: Editor,
-    session: ReplaySessionPort,
+    editor: Editor | undefined,
+    session: ReplaySessionPort | undefined,
     registry: ReplayHandlerRegistry,
     startedAtSequence: number,
     targetSequence: number,
+    initialDifference?: ReplayDifference,
   ) {
     this.#editor = editor
     this.#session = session
     this.#registry = registry
     this.#startedAtSequence = startedAtSequence
     this.#currentSequence = startedAtSequence
+    this.#firstDifference = initialDifference
+    this.#paused = initialDifference !== undefined
+    this.#deterministic = initialDifference === undefined
     this.#defaultTargetSequence =
       targetSequence === Number.MAX_SAFE_INTEGER
         ? (bundle.events.at(-1)?.sequence ?? startedAtSequence)
@@ -159,9 +199,12 @@ export class ReplayEngine {
   }
 
   async step(targetSequence = this.#defaultTargetSequence): Promise<ReplayResult> {
-    if (this.#paused && !this.#bestEffort) return this.#result({ status: "paused" })
+    if (this.#paused && !this.#bestEffort) return this.#result({ status: "paused" }, targetSequence)
+    if (this.#editor === undefined || this.#session === undefined) {
+      return this.#result({ status: "paused" }, targetSequence)
+    }
     const event = this.#nextEvent(targetSequence)
-    if (event === undefined) return this.#result({ status: "completed" })
+    if (event === undefined) return this.#result({ status: "completed" }, targetSequence)
     this.#eventIndex += 1
     this.#currentSequence = eventSequence(event)
     const resolution = this.#registry.resolve(event.type, event.sequence)
@@ -173,16 +216,25 @@ export class ReplayEngine {
         session: this.#session,
         sideEffects: "disabled",
       }
-      difference = await resolution.handler(clone(event), context)
-      if (difference === undefined && event.afterHash !== undefined) {
-        const actual = await hashCanonical(snapshotDocument(this.#editor))
-        if (actual !== event.afterHash) {
-          difference = {
-            type: "state-hash-mismatch",
-            sequence: event.sequence,
-            expected: event.afterHash,
-            actual,
+      try {
+        difference = await resolution.handler(clone(event), context)
+        if (difference === undefined && event.afterHash !== undefined) {
+          const actual = await hashCanonical(snapshotDocument(this.#editor))
+          if (actual !== event.afterHash) {
+            difference = {
+              type: "state-hash-mismatch",
+              sequence: event.sequence,
+              expected: event.afterHash,
+              actual,
+            }
           }
+        }
+      } catch (error) {
+        difference = {
+          type: event.category === "session" ? "session-error" : "handler-error",
+          sequence: event.sequence,
+          eventType: event.type,
+          message: errorMessage(error),
         }
       }
     }
@@ -193,27 +245,35 @@ export class ReplayEngine {
       this.#nondeterministicFromSequence ??= event.sequence
       if (!this.#bestEffort) {
         this.#paused = true
-        return this.#result({ status: "paused", difference })
+        return this.#result({ status: "paused", difference }, targetSequence)
       }
     }
-    return this.#result({
-      status: this.#nextEvent(targetSequence) === undefined ? "completed" : "paused",
-    })
+    return this.#result(
+      {
+        status: this.#nextEvent(targetSequence) === undefined ? "completed" : "paused",
+      },
+      targetSequence,
+    )
   }
 
   async runTo(targetSequence: number): Promise<ReplayResult> {
     if (!Number.isSafeInteger(targetSequence) || targetSequence < this.#startedAtSequence) {
       throw new Error("INVALID_REPLAY_TARGET_SEQUENCE")
     }
+    if (this.#paused && !this.#bestEffort) return this.#result({ status: "paused" }, targetSequence)
     while (!this.#paused || this.#bestEffort) {
       const event = this.#nextEvent(targetSequence)
       if (event === undefined) break
       await this.step(targetSequence)
-      if (this.#paused && !this.#bestEffort) return this.#result({ status: "paused" })
+      if (this.#paused && !this.#bestEffort)
+        return this.#result({ status: "paused" }, targetSequence)
     }
-    return this.#result({
-      status: this.#currentSequence >= targetSequence ? "completed" : "paused",
-    })
+    return this.#result(
+      {
+        status: this.#currentSequence >= targetSequence ? "completed" : "paused",
+      },
+      targetSequence,
+    )
   }
 
   async verify(): Promise<ReplayResult> {
@@ -227,6 +287,9 @@ export class ReplayEngine {
   }
 
   getState(): ReplayState {
+    if (this.#editor === undefined || this.#session === undefined) {
+      throw new Error("REPLAY_STATE_UNAVAILABLE")
+    }
     return {
       sequence: this.#currentSequence,
       document: clone(snapshotDocument(this.#editor)),
@@ -239,18 +302,37 @@ export class ReplayEngine {
     return event !== undefined && event.sequence <= targetSequence ? event : undefined
   }
 
-  #result(options: InternalResultOptions): ReplayResult {
+  #result(options: InternalResultOptions, targetSequence: number): ReplayResult {
+    let state: ReplayState | undefined
+    try {
+      state = this.getState()
+    } catch (error) {
+      if (this.#firstDifference === undefined) {
+        this.#recordDifference({
+          type: "session-error",
+          sequence: this.#currentSequence,
+          eventType: "session.state",
+          message: errorMessage(error),
+        })
+      }
+    }
     return {
       status: options.status,
       deterministic: this.#deterministic,
       startedAtSequence: this.#startedAtSequence,
       currentSequence: this.#currentSequence,
-      targetSequence: this.#defaultTargetSequence,
+      targetSequence,
       ...(this.#firstDifference === undefined ? {} : { difference: clone(this.#firstDifference) }),
       ...(this.#nondeterministicFromSequence === undefined
         ? {}
         : { nondeterministicFromSequence: this.#nondeterministicFromSequence }),
-      state: this.getState(),
+      ...(state === undefined ? {} : { state }),
     }
+  }
+
+  #recordDifference(difference: ReplayDifference): void {
+    this.#deterministic = false
+    this.#firstDifference ??= clone(difference)
+    this.#nondeterministicFromSequence ??= difference.sequence
   }
 }

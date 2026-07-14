@@ -316,54 +316,72 @@ export async function handleSessionOperation(
   const payload = payloadRecord(event)
   if (payload === undefined)
     return { type: "schema-incompatible", sequence: event.sequence, version: event.schemaVersion }
-  try {
-    switch (event.type) {
-      case "session.selection": {
-        const selection = Array.isArray(payload.selection) ? payload.selection : payload.ids
-        if (!Array.isArray(selection) || !selection.every((id) => typeof id === "string"))
-          throw new Error("selection")
-        context.session.setSelection(selection)
-        return undefined
-      }
-      case "session.viewport": {
-        const viewport = isRecord(payload.viewport) ? payload.viewport : payload
-        if (
-          !isRecord(viewport) ||
-          typeof viewport.x !== "number" ||
-          typeof viewport.y !== "number" ||
-          typeof viewport.zoom !== "number"
-        )
-          throw new Error("viewport")
-        context.session.setViewport({ x: viewport.x, y: viewport.y, zoom: viewport.zoom })
-        return undefined
-      }
-      case "session.interactionMode":
-      case "session.tool": {
-        const mode = payload.interactionMode ?? payload.mode
-        if (mode !== "select" && mode !== "pan") throw new Error("interactionMode")
-        context.session.setInteractionMode(mode)
-        return undefined
-      }
-      case "session.gridVisibility":
-      case "session.grid": {
-        const visible = payload.gridVisible ?? payload.visible
-        if (typeof visible !== "boolean") throw new Error("gridVisible")
-        context.session.setGridVisible(visible)
-        return undefined
-      }
-      case "session.expandedTree":
-      case "session.treeDisclosure": {
-        const expanded = Array.isArray(payload.expanded) ? payload.expanded : payload.ids
-        if (!Array.isArray(expanded) || !expanded.every((id) => typeof id === "string"))
-          throw new Error("expanded")
-        context.session.setExpanded(expanded)
-        return undefined
-      }
-      default:
-        return { type: "missing-handler", sequence: event.sequence, eventType: event.type }
+  switch (event.type) {
+    case "session.selection": {
+      const selection = Array.isArray(payload.selection) ? payload.selection : payload.ids
+      if (!Array.isArray(selection) || !selection.every((id) => typeof id === "string"))
+        return {
+          type: "schema-incompatible",
+          sequence: event.sequence,
+          version: event.schemaVersion,
+        }
+      context.session.setSelection(selection)
+      return undefined
     }
-  } catch {
-    return { type: "schema-incompatible", sequence: event.sequence, version: event.schemaVersion }
+    case "session.viewport": {
+      const viewport = isRecord(payload.viewport) ? payload.viewport : payload
+      if (
+        !isRecord(viewport) ||
+        typeof viewport.x !== "number" ||
+        typeof viewport.y !== "number" ||
+        typeof viewport.zoom !== "number"
+      )
+        return {
+          type: "schema-incompatible",
+          sequence: event.sequence,
+          version: event.schemaVersion,
+        }
+      context.session.setViewport({ x: viewport.x, y: viewport.y, zoom: viewport.zoom })
+      return undefined
+    }
+    case "session.interactionMode":
+    case "session.tool": {
+      const mode = payload.interactionMode ?? payload.mode
+      if (mode !== "select" && mode !== "pan")
+        return {
+          type: "schema-incompatible",
+          sequence: event.sequence,
+          version: event.schemaVersion,
+        }
+      context.session.setInteractionMode(mode)
+      return undefined
+    }
+    case "session.gridVisibility":
+    case "session.grid": {
+      const visible = payload.gridVisible ?? payload.visible
+      if (typeof visible !== "boolean")
+        return {
+          type: "schema-incompatible",
+          sequence: event.sequence,
+          version: event.schemaVersion,
+        }
+      context.session.setGridVisible(visible)
+      return undefined
+    }
+    case "session.expandedTree":
+    case "session.treeDisclosure": {
+      const expanded = Array.isArray(payload.expanded) ? payload.expanded : payload.ids
+      if (!Array.isArray(expanded) || !expanded.every((id) => typeof id === "string"))
+        return {
+          type: "schema-incompatible",
+          sequence: event.sequence,
+          version: event.schemaVersion,
+        }
+      context.session.setExpanded(expanded)
+      return undefined
+    }
+    default:
+      return { type: "missing-handler", sequence: event.sequence, eventType: event.type }
   }
 }
 

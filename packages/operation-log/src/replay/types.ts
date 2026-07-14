@@ -14,6 +14,8 @@ export type ReplayDifference =
   | { type: "missing-handler"; sequence: number; eventType: string }
   | { type: "schema-incompatible"; sequence: number; version: number }
   | { type: "environment-mismatch"; sequence: number; requirement: string }
+  | { type: "handler-error"; sequence: number; eventType: string; message: string }
+  | { type: "session-error"; sequence: number; eventType: string; message: string }
 
 export interface ReplaySessionPort {
   setSelection(ids: readonly string[]): void

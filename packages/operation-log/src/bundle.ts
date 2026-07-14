@@ -76,6 +76,26 @@ export interface LogBundleV2 {
   events: OperationEvent[]
 }
 
+declare const validatedLogBundleBrand: unique symbol
+export type ValidatedLogBundle =
+  | (LogBundleV1 & { readonly [validatedLogBundleBrand]: true })
+  | (LogBundleV2 & { readonly [validatedLogBundleBrand]: true })
+
+const validatedBundleBrand = Symbol("composeui.validated-log-bundle")
+
+export function isValidatedLogBundle(value: unknown): value is ValidatedLogBundle {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    (value as Record<PropertyKey, unknown>)[validatedBundleBrand] === true
+  )
+}
+
+function markValidatedLogBundle<T extends LogBundleV1 | LogBundleV2>(value: T): ValidatedLogBundle {
+  Object.defineProperty(value, validatedBundleBrand, { value: true })
+  return value as ValidatedLogBundle
+}
+
 export interface ExportLogBundleOptions {
   sessionId: string
   productVersion: string
@@ -184,7 +204,7 @@ export async function exportLogBundle(
 export async function importLogBundle(
   encoded: string,
   options: ImportLogBundleOptions = {},
-): Promise<LogBundleV1 | LogBundleV2> {
+): Promise<ValidatedLogBundle> {
   enforceByteLimit(encoded, options.maxBytes ?? DEFAULT_LOG_BUNDLE_MAX_BYTES)
   try {
     const parsed: unknown = JSON.parse(encoded)
@@ -230,14 +250,16 @@ export async function importLogBundle(
       manifest,
     )
     await validateManifest(manifest, session as Record<string, unknown>, checkpoints, events)
-    return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV2
+    return markValidatedLogBundle(
+      structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV2,
+    )
   } catch (error) {
     if (error instanceof Error && error.message === "LOG_BUNDLE_INTEGRITY_FAILED") throw error
     throw integrityError()
   }
 }
 
-async function importLegacyBundle(parsed: Record<string, unknown>): Promise<LogBundleV1> {
+async function importLegacyBundle(parsed: Record<string, unknown>): Promise<ValidatedLogBundle> {
   const manifest = parsed.manifest
   const session = parsed.session
   const checkpoints = parsed.checkpoints
@@ -263,7 +285,9 @@ async function importLegacyBundle(parsed: Record<string, unknown>): Promise<LogB
     throw integrityError()
   }
   validateBundleContents(session, checkpoints, events, manifest, { strictHashes: false })
-  return structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV1
+  return markValidatedLogBundle(
+    structuredClone({ manifest, session, checkpoints, events }) as unknown as LogBundleV1,
+  )
 }
 
 function isLegacyManifest(value: Record<string, unknown>): boolean {
