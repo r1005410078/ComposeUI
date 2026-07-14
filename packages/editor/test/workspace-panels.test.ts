@@ -626,6 +626,63 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("uses a data URL fallback for More export without ObjectURL APIs", async () => {
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: undefined })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: undefined })
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() => expect(anchorClick).toHaveBeenCalled())
+
+    anchorClick.mockRestore()
+    if (originalCreateObjectURL === undefined) {
+      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
+    } else {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectURL,
+      })
+    }
+    if (originalRevokeObjectURL === undefined) {
+      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
+    } else {
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      })
+    }
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("clears only the current view through More", async () => {
+    const events = [operationEvent()]
+    const operationLog = fakeOperationLogController(events)
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
+    expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
+    await expect(operationLog.query({ levels: [], categories: [], search: "" })).resolves.toEqual(events)
+    if (typeof dispose === "function") dispose()
+  })
+
   it("renders isolated replay state and a typed difference", async () => {
     const replayController = new ReplayController({
       createEngine: vi.fn(async () => ({

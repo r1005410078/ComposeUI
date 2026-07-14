@@ -392,28 +392,49 @@
   gap: var(--composeui-gap-compact);
   min-height: var(--composeui-panel-toolbar-height);
   min-width: 0;
-  overflow-x: auto;
+  overflow: visible;
   padding: 0 var(--composeui-space-2);
-  scrollbar-color: var(--composeui-scrollbar-thumb) var(--composeui-scrollbar-track);
-  scrollbar-width: thin;
 }
 
-.composeui-editor__output-toolbar::-webkit-scrollbar {
-  height: var(--composeui-scrollbar-width);
-  width: var(--composeui-scrollbar-width);
+.composeui-editor__output-menu-host {
+  display: inline-flex;
+  flex: 0 0 auto;
+  position: relative;
 }
 
-.composeui-editor__output-toolbar::-webkit-scrollbar-track {
-  background: var(--composeui-scrollbar-track);
+.composeui-editor__output-menu {
+  background: var(--composeui-surface-panel-raised);
+  border: 1px solid var(--composeui-border-default);
+  border-radius: var(--composeui-radius-control);
+  box-shadow: var(--composeui-shadow-panel);
+  display: grid;
+  gap: var(--composeui-gap-compact);
+  min-inline-size: calc(var(--composeui-space-4) * 8);
+  padding: var(--composeui-space-1);
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--composeui-space-1));
+  z-index: 30;
 }
 
-.composeui-editor__output-toolbar::-webkit-scrollbar-thumb {
-  background: var(--composeui-scrollbar-thumb);
-  border-radius: var(--composeui-scrollbar-radius);
+.composeui-editor__output-menu-item {
+  background: transparent;
+  border: 0;
+  border-radius: var(--composeui-radius-control);
+  color: var(--composeui-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  min-height: var(--composeui-icon-button-size);
+  padding: 0 var(--composeui-space-2);
+  text-align: left;
 }
 
-.composeui-editor__output-toolbar::-webkit-scrollbar-thumb:hover {
-  background: var(--composeui-scrollbar-thumb-hover);
+.composeui-editor__output-menu-item:hover,
+.composeui-editor__output-menu-item:focus-visible {
+  background: var(--composeui-surface-control-hover);
+  color: var(--composeui-text-primary);
+  outline: 1px solid var(--composeui-focus-ring);
+  outline-offset: 1px;
 }
 
 .composeui-editor__output-button {

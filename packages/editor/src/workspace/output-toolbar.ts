@@ -93,6 +93,9 @@ export function mountOutputToolbar(
   })
   more.setAttribute("aria-haspopup", "menu")
   more.setAttribute("aria-expanded", "false")
+  const menuHost = document.createElement("span")
+  menuHost.className = "composeui-editor__output-menu-host"
+  menuHost.append(more)
   const fileInput = document.createElement("input")
   fileInput.type = "file"
   fileInput.accept = ".json,application/json"
@@ -127,7 +130,7 @@ export function mountOutputToolbar(
   menu.append(importItem, exportItem, scrollItem, clearItem)
   const openMenu = (): void => {
     if (disposed || menu.isConnected) return
-    root.append(menu)
+    menuHost.append(menu)
     more.setAttribute("aria-expanded", "true")
   }
   const closeMenu = (restoreFocus: boolean): void => {
@@ -151,7 +154,7 @@ export function mountOutputToolbar(
   document.addEventListener("pointerdown", onDocumentPointerDown)
   const replayHost = document.createElement("span")
   replayHost.dataset.testid = "output-replay-host"
-  root.replaceChildren(searchLabel, filter, autoScroll, more, replayHost, fileInput)
+  root.replaceChildren(searchLabel, filter, autoScroll, menuHost, replayHost, fileInput)
 
   const render = (): void => {
     searchInput.value = model.search
