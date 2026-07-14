@@ -8,6 +8,7 @@ import {
   ReplayController,
   type DockviewFactory,
   type EditorWorkspaceDockview,
+  type WorkspaceEvent,
 } from "../src/index"
 import type {
   StoredWorkspaceLayout,
@@ -242,6 +243,16 @@ function createEditorInstance() {
 }
 
 describe("editor workspace", () => {
+  it("keeps legacy workspace failure producers type-compatible", () => {
+    const event: WorkspaceEvent = {
+      type: "panel-failure",
+      panelId: "resources",
+      error: new Error("legacy producer"),
+    }
+
+    expect(event.error).toBeInstanceOf(Error)
+  })
+
   it("serializes errors without retaining unsafe values", () => {
     const error = new Proxy(
       {},
@@ -699,8 +710,9 @@ describe("editor workspace", () => {
       { type: "panel-activated", panelId: "scene" },
     ])
     mounted.dispose()
+    const eventCountAfterDispose = events.length
     fake.triggerActivePanelChange("resources")
-    expect(events).toHaveLength(4)
+    expect(events).toHaveLength(eventCountAfterDispose)
   })
 
   it("coalesces layout events and flushes the final cloneable snapshot", async () => {
@@ -752,7 +764,7 @@ describe("editor workspace", () => {
       fake.triggerLayoutChange()
       mounted.dispose()
       await vi.advanceTimersByTimeAsync(150)
-      expect(events).not.toContainEqual({
+      expect(events).toContainEqual({
         type: "layout-changed",
         layout: { version: 1, modeId: "2d", layout: { revision: 5 } },
       })
@@ -801,6 +813,124 @@ describe("editor workspace", () => {
       error: { name: "Error", message: "quota exceeded", code: "QUOTA" },
     })
     for (const event of events) expect(() => structuredClone(event)).not.toThrow()
+    mounted.dispose()
+  })
+
+  it("serializes layout saves so an older save cannot finish after a newer snapshot", async () => {
+    let resolveFirstSave!: () => void
+    let resolveSecondSave!: () => void
+    const save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          if (save.mock.calls.length === 1) resolveFirstSave = resolve
+          else resolveSecondSave = resolve
+        }),
+    )
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove: vi.fn() },
+      createDockview: fake.factory,
+    })
+
+    fake.setLayoutSnapshot({ revision: 1 })
+    fake.triggerLayoutChange()
+    const firstFlush = mounted.api.flushLayout()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    fake.setLayoutSnapshot({ revision: 2 })
+    fake.triggerLayoutChange()
+    const secondFlush = mounted.api.flushLayout()
+    expect(save).toHaveBeenCalledTimes(1)
+
+    resolveFirstSave()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+    resolveSecondSave()
+    await Promise.all([firstFlush, secondFlush])
+    expect(save.mock.calls.map(([layout]) => layout.layout)).toEqual([{ revision: 1 }, { revision: 2 }])
+    mounted.dispose()
+  })
+
+  it("fences pending saves before resetting the stored layout", async () => {
+    let resolveSave!: () => void
+    let resolveRemove!: () => void
+    const save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve
+        }),
+    )
+    const remove = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRemove = resolve
+        }),
+    )
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove },
+      createDockview: fake.factory,
+    })
+
+    fake.setLayoutSnapshot({ revision: "before-reset" })
+    fake.triggerLayoutChange()
+    void mounted.api.flushLayout()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    fake.setLayoutSnapshot({ revision: "pending-before-reset" })
+    fake.triggerLayoutChange()
+    const reset = mounted.api.resetLayout()
+    expect(remove).not.toHaveBeenCalled()
+
+    resolveSave()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+    resolveRemove()
+    await reset
+    await mounted.api.flushLayout()
+    expect(save).toHaveBeenCalledTimes(1)
+    mounted.dispose()
+  })
+
+  it("flushes a pending layout during disposal and suppresses late save failures", async () => {
+    let rejectSave!: (error: Error) => void
+    const save = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject
+        }),
+    )
+    const fake = createDockviewFake()
+    const events: unknown[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutChangeDelayMs: 10_000,
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove: vi.fn() },
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    fake.setLayoutSnapshot({ revision: "dispose" })
+    fake.triggerLayoutChange()
+    mounted.dispose()
+    const completion = mounted.api.flushLayout()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ layout: { revision: "dispose" } })))
+    rejectSave(new Error("late failure"))
+    await completion
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: "layout-failure", operation: "save" }),
+    )
+  })
+
+  it("derives native panel closure from the structural layout callback", () => {
+    const fake = createDockviewFake()
+    const events: unknown[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    fake.dockview.removePanel(fake.panels.get("resources")!)
+    expect(events).toContainEqual({ type: "panel-closed", panelId: "resources" })
     mounted.dispose()
   })
 })

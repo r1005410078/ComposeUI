@@ -9,7 +9,7 @@ export interface WorkspaceContext {
   api: WorkspaceCommandApi
   resources?: WorkspaceResourceService
   operationLog?: OperationLogControllerPort
-  emit: (event: WorkspaceContextEvent) => void
+  emit: (event: WorkspaceEvent) => void
 }
 
 export type WorkspaceCommand =
@@ -122,13 +122,13 @@ function toErrorMessage(error: unknown): string {
 export interface WorkspaceLayoutFailureEvent {
   type: "layout-failure"
   operation: "load" | "save" | "remove"
-  error: WorkspaceError
+  error: unknown
 }
 
 export interface WorkspacePanelFailureEvent {
   type: "panel-failure"
   panelId: string
-  error: WorkspaceError
+  error: unknown
 }
 
 export type WorkspaceEvent =
@@ -141,10 +141,10 @@ export type WorkspaceEvent =
   | WorkspaceLayoutFailureEvent
   | WorkspacePanelFailureEvent
 
-export type WorkspaceContextEvent =
-  | WorkspaceEvent
-  | { type: "layout-failure"; operation: "load" | "save" | "remove"; error: unknown }
-  | { type: "panel-failure"; panelId: string; error: unknown }
+export type SerializedWorkspaceEvent =
+  | Exclude<WorkspaceEvent, WorkspaceLayoutFailureEvent | WorkspacePanelFailureEvent>
+  | { type: "layout-failure"; operation: "load" | "save" | "remove"; error: WorkspaceError }
+  | { type: "panel-failure"; panelId: string; error: WorkspaceError }
 
 export interface MountedWorkspace {
   readonly session: EditorSession
