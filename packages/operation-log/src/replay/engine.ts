@@ -116,6 +116,7 @@ function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
     panels.clear()
     for (const panelId of workspacePanelIds(layout)) panels.add(panelId)
     activePanelId = workspaceActivePanelId(layout)
+    hasPanelOverlay = false
   }
 
   const snapshot = (): unknown => {

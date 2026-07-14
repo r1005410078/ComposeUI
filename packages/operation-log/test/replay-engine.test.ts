@@ -421,18 +421,10 @@ describe("ReplayEngine", () => {
       panels: ["inspector"],
       activePanelId: "inspector",
     })
-    expect((await engine.runTo(4)).state?.workspace).toEqual({
-      layout: nextLayout,
-      panels: ["canvas", "inspector"],
-      activePanelId: "inspector",
-    })
+    expect((await engine.runTo(4)).state?.workspace).toEqual(nextLayout)
     const result = await engine.runTo(5)
     expect(result).toMatchObject({ status: "completed", deterministic: true })
-    expect(result.state?.workspace).toEqual({
-      layout: initialWorkspace,
-      panels: ["canvas"],
-      activePanelId: "canvas",
-    })
+    expect(result.state?.workspace).toEqual(initialWorkspace)
   })
 
   it("keeps Dockview-shaped layouts unchanged while tracking panel operations separately", async () => {
@@ -494,10 +486,7 @@ describe("ReplayEngine", () => {
       await hashCanonical(expectedIntermediate),
     )
     expect((intermediate.state?.workspace as { layout: unknown }).layout).toEqual(dockviewLayout)
-    expect((await engine.runTo(3)).state?.workspace).toEqual({
-      layout: nextLayout,
-      panels: [],
-    })
+    expect((await engine.runTo(3)).state?.workspace).toEqual(nextLayout)
   })
 
   it("reports workspace port method and state failures as workspace differences", async () => {
