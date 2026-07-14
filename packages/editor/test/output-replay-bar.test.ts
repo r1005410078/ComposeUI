@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest"
-import { mountOutputReplayBar } from "./output-replay-bar"
-import type { ReplayControllerPort, ReplayControllerState } from "./replay-controller"
+import { mountOutputReplayBar } from "../src/workspace/output-replay-bar"
+import type { ReplayControllerPort, ReplayControllerState } from "../src/workspace/replay-controller"
 
 function createController(initial: ReplayControllerState): ReplayControllerPort & { publish(state: ReplayControllerState): void } {
   let state = initial
