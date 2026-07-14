@@ -1,50 +1,56 @@
-# Operation Log System Design
+# 操作日志系统设计
 
-## Goal
+## 目标
 
-Add a durable operation logging system to ComposeUI so every meaningful editor interaction can be inspected later, replayed deterministically, and used to identify the first point where actual behavior diverges from expected behavior.
+为 ComposeUI 增加持久化操作日志系统，使每个有意义的编辑器交互都可以在之后被检查、确定性回放，并用于定位实际行为第一次偏离预期的位置。
 
-The Output panel becomes the user-facing operation console. Logs remain independent from the project document and can be exported as a standalone diagnostic bundle.
+Output 面板作为面向用户的操作控制台。日志独立于项目文档保存，并可以导出为独立的诊断包。
 
-## Decisions
+## 当前状态
 
-- Persist logs locally across refreshes.
-- Capture document, history, session, workspace, diagnostic, and selected high-frequency interaction events.
-- Prioritize deterministic state replay over pixel-perfect pointer playback.
-- Export logs as an independent bundle rather than embedding them in project documents.
-- Record semantic commands as replay input and transaction patches plus state hashes as verification output.
-- Keep the implementation framework-neutral so the same service can be injected from React, Vue 2, Vue 3, Angular, or a direct DOM host.
+- 第一阶段已完成：事件契约、Recorder、规范化哈希、内存与 IndexedDB 持久化、检查点、保留策略、日志导入导出、Output 控制台和隔离确定性回放。
+- 第一阶段已通过 Vitest、TypeScript 类型检查、Lint、构建和 Playwright 回放 E2E 验证，并已合并到 `main`。
+- 第二阶段尚未完成：完整 Workspace 布局日志、高频交互采样与合并、导入日志管理增强和连续视觉回放。
 
-## Relationship To History
+## 设计决策
 
-Operation logging does not replace the existing `History` timeline.
+- 刷新后仍在本地保留日志。
+- 捕获文档、历史、会话、Workspace、诊断以及部分高频交互事件。
+- 优先保证状态确定性回放，而不是像素级指针回放。
+- 将日志导出为独立包，而不是嵌入项目文档。
+- 将语义命令作为回放输入，将事务补丁和状态哈希作为校验输出。
+- 保持实现与框架无关，使同一服务可以注入 React、Vue 2、Vue 3、Angular 或直接 DOM 宿主。
 
-`History` owns the current editable undo/redo branch. Jumping backward and issuing a new command may discard the abandoned future branch from History.
+## 与 History 的关系
 
-The operation log is an append-only record of what occurred. Undo, redo, history jumps, failed commands, and abandoned branches remain in the log. History entries and operation events are correlated through `transactionId`.
+操作日志不会替代现有的 `History` 时间线。
 
-## Package And Dependency Boundaries
+`History` 负责当前可编辑的撤销/重做分支。向后跳转后再发出新命令，可能会从 History 中丢弃被放弃的未来分支。
 
-Create a framework-neutral `@composeui/operation-log` package with four primary responsibilities:
+操作日志是对已发生操作的追加记录。撤销、重做、历史跳转、失败命令以及被放弃的分支都会保留在日志中。History 条目和操作事件通过 `transactionId` 关联。
 
-- `OperationRecorder` accepts normalized events, assigns ordering and causal metadata, applies redaction and coalescing, and publishes query updates.
-- `OperationLogStore` is a persistence port with in-memory and IndexedDB adapters.
-- `ReplayEngine` restores a checkpoint in an isolated runtime, replays events, and reports deterministic differences.
-- `LogBundleCodec` validates, migrates, imports, and exports standalone log bundles.
+## 包与依赖边界
 
-Integration boundaries are narrow event sinks rather than direct storage dependencies:
+创建框架无关的 `@composeui/operation-log` 包，承担四项主要职责：
 
-- `@composeui/core` declares a narrow `EditorOperationObserver` port and emits command attempts, successes, failures, undo, redo, and history jumps through it.
-- editor session emits selection, active tool, viewport, and tree disclosure changes.
-- workspace emits panel activation, layout changes, restoration failures, and panel failures.
-- Output subscribes to the operation-log query API and does not access IndexedDB directly.
-- framework adapters create and inject the same operation-log service without implementing logging rules.
+- `OperationRecorder` 接收规范化事件，分配顺序和因果元数据，执行脱敏与合并，并发布查询更新。
+- `OperationLogStore` 定义持久化端口，并提供内存和 IndexedDB 适配器。
+- `ReplayEngine` 在隔离运行时中恢复检查点、回放事件并报告确定性差异。
+- `LogBundleCodec` 校验、迁移、导入和导出独立日志包。
 
-The dependency direction is one-way: `@composeui/operation-log` may depend on public core types and implement the core observer port, while core never imports the operation-log package. Core remains usable and testable in Node.js and never depends on a browser persistence adapter.
+集成边界应使用窄事件 sink，而不是让业务模块直接依赖存储：
 
-## Event Model
+- `@composeui/core` 声明窄化的 `EditorOperationObserver` 端口，通过它发出命令尝试、成功、失败、撤销、重做和历史跳转事件。
+- editor session 发出选择、当前工具、视口和树展开状态变化。
+- Workspace 发出面板激活、布局变化、恢复失败和面板失败事件。
+- Output 订阅 operation-log 查询 API，不直接访问 IndexedDB。
+- 框架适配器负责创建和注入同一个 operation-log 服务，但不实现日志规则。
 
-Every event uses a versioned envelope:
+依赖方向保持单向：`@composeui/operation-log` 可以依赖公开的 core 类型并实现 core observer 端口，但 core 永远不能导入 operation-log 包。Core 必须继续能够在 Node.js 中使用和测试，也不能依赖浏览器持久化适配器。
+
+## 事件模型
+
+每个事件都使用带版本的 envelope：
 
 ```ts
 interface OperationEvent<TPayload> {
@@ -66,188 +72,193 @@ interface OperationEvent<TPayload> {
 }
 ```
 
-`sequence` is strictly increasing within a session and is the authoritative replay order. Wall-clock timestamps are informational and may not be used for ordering.
+`sequence` 在一个 session 内严格递增，是权威的回放顺序。墙上时钟时间只用于展示，不能用于排序。
 
-Initial event families are:
+初始事件族包括：
 
-- `document.command`: command ID and structured payload; successful events include forward and inverse patches and before/after state hashes.
-- `history.undo`, `history.redo`, and `history.jump`: target transaction and timeline position.
-- `session.selection`, `session.tool`, `session.viewport`, and `session.treeDisclosure`: editor session state changes.
-- `workspace.panel` and `workspace.layout`: panel activation, movement, collapse, and restoration.
-- `diagnostic.reported`: command validation, listener, persistence, replay, and panel failures.
-- `system.sessionStarted`, `system.checkpoint`, and `system.sessionEnded`: lifecycle and replay boundaries.
+- `document.command`：命令 ID 和结构化 payload；成功事件包含正向与逆向补丁以及前后状态哈希。
+- `history.undo`、`history.redo` 和 `history.jump`：目标事务和时间线位置。
+- `session.selection`、`session.tool`、`session.viewport` 和 `session.treeDisclosure`：编辑器会话状态变化。
+- `workspace.panel` 和 `workspace.layout`：面板激活、移动、折叠和恢复。
+- `diagnostic.reported`：命令校验、监听器、持久化、回放和面板失败。
+- `system.sessionStarted`、`system.checkpoint` 和 `system.sessionEnded`：生命周期与回放边界。
 
-Command attempts are logged before preparation and transaction execution so failed operations are retained. A successful command event contains the original command, resulting patch, transaction ID, and hashes. A failed command event contains the sanitized command and structured diagnostics.
+命令尝试必须在准备和事务执行前记录，从而保留失败操作。成功命令事件包含原始命令、生成的补丁、事务 ID 和哈希。失败命令事件包含经过脱敏的命令和结构化诊断信息。
 
-All payloads must be structured-cloneable and serializable. DOM nodes, functions, cyclic objects, and raw thrown values are forbidden.
+所有 payload 必须支持 structured clone 并可序列化。禁止保存 DOM 节点、函数、循环引用和未经处理的原始异常对象。
 
-## Causality And Idempotency
+## 因果关系与幂等性
 
-Every event has a globally unique `eventId`. Retries preserve the same ID, allowing stores to reject duplicates safely.
+每个事件都有全局唯一的 `eventId`。重试必须保留同一个 ID，使存储层能够拒绝重复事件。
 
-`causationId` links derived events to their initiating event. For example, a pointer drag can cause a `document.command` event, which then causes a transaction and Output update. `transactionId` links commands to History without making History the event source.
+`causationId` 用于关联派生事件和触发事件。例如，一次指针拖动可以触发 `document.command`，随后产生事务和 Output 更新。`transactionId` 将命令与 History 关联，但不让 History 成为事件源。
 
-Recorder failures must not recursively produce an unbounded chain of diagnostic events. Internal persistence failures use a guarded diagnostic channel with rate limiting and a terminal degraded state.
+Recorder 失败不能递归产生无限诊断事件链。内部持久化失败使用受保护且限流的诊断通道，并在超过限制后进入终止性 degraded 状态。
 
-## High-Frequency Events
+## 高频事件
 
-Document commands are never sampled or discarded.
+文档命令不能被采样或丢弃。
 
-Pointer movement, viewport panning, zooming, and drag previews can generate high event volumes. The recorder preserves interaction start and end events, coalesces intermediate values in a configurable time window, and records the final exact state. Coalesced events retain their input count and time range so Output can display summaries such as `画布平移 28 次`.
+指针移动、视口平移、缩放和拖拽预览可能产生大量事件。Recorder 保留交互开始和结束事件，在可配置的时间窗口内合并中间值，并记录最终精确状态。合并事件保留输入数量和时间范围，使 Output 可以显示类似 `画布平移 28 次` 的摘要。
 
-Deterministic document replay depends on the final semantic command, not intermediate pointer samples.
+确定性文档回放依赖最终语义命令，而不是中间指针采样。
 
-## Privacy And Redaction
+## 隐私与脱敏
 
-A configurable redactor runs before persistence and export. The default policy retains node IDs, names, dimensions, coordinates, command payloads, patches, and diagnostics required for replay.
+可配置的 redactor 在持久化和导出前运行。默认策略保留回放所需的节点 ID、名称、尺寸、坐标、命令 payload、补丁和诊断信息。
 
-The default policy removes or masks credentials, authorization data, URL query parameters, local filesystem paths outside approved project-relative paths, resource contents, and host-provided sensitive metadata.
+默认策略删除或遮盖凭据、授权数据、URL 查询参数、未经批准的项目相对路径之外的本地文件路径、资源内容以及宿主提供的敏感元数据。
 
-Redaction occurs before data reaches IndexedDB. Export applies redaction again so a host can enforce a stricter sharing policy than its local policy.
+数据进入 IndexedDB 前必须先脱敏。导出时再次执行脱敏，使宿主可以采用比本地策略更严格的共享策略。
 
-## Canonical Hashing
+## 规范化哈希
 
-State hashes are calculated from a canonical document representation:
+状态哈希根据规范化文档表示计算：
 
-- object keys use deterministic ordering;
-- records use stable identity ordering;
-- unsupported values are rejected rather than stringified implicitly;
-- session and workspace state are hashed separately from the project document;
-- the hash algorithm and canonicalization version are stored in the bundle manifest.
+- 对象键使用确定性排序。
+- 记录使用稳定的 identity 排序。
+- 不支持的值必须被拒绝，不能隐式转成字符串。
+- 会话和 Workspace 状态与项目文档分开计算哈希。
+- 哈希算法和规范化版本写入 bundle manifest。
 
-Hash comparison detects divergence cheaply. Patch comparison produces the human-readable field-level difference when a mismatch occurs.
+哈希比较可以低成本检测分歧。补丁比较则生成可供人阅读的字段级差异。
 
-## Persistence
+## 持久化
 
-The default browser adapter uses IndexedDB with four object stores:
+默认浏览器适配器使用 IndexedDB，并包含四个 object store：
 
-- `sessions`: session metadata, project ID, product versions, start/end time, event count, and final hash.
-- `events`: append-only events keyed by `[sessionId, sequence]`, with indexes required by Output filters.
-- `checkpoints`: document and session snapshots keyed by session and sequence.
-- `metadata`: database schema version, migration state, and storage statistics.
+- `sessions`：session 元数据、项目 ID、产品版本、开始/结束时间、事件数量和最终哈希。
+- `events`：以 `[sessionId, sequence]` 为键的追加事件，并建立 Output 筛选所需的索引。
+- `checkpoints`：以 session 和 sequence 为键的文档与会话快照。
+- `metadata`：数据库 schema 版本、迁移状态和存储统计信息。
 
-Critical events such as document command results, failures, undo, redo, and history jumps are queued immediately. Ordinary UI events may be written in short batches while retaining assigned sequence order.
+文档命令结果、失败、撤销、重做和历史跳转等关键事件立即排队。普通 UI 事件可以短批次写入，但必须保持已分配的 sequence 顺序。
 
-The adapter flushes pending batches when the page becomes hidden, when the project changes, and during orderly workspace disposal. Browser shutdown is not guaranteed, so an unclosed session is detected on the next startup and labeled as abnormally ended.
+页面进入 hidden、项目切换和 Workspace 正常销毁时，适配器都会 flush 待写批次。浏览器关闭不保证执行清理，因此下次启动时会检测未关闭的 session，并标记为异常结束。
 
-IndexedDB failure never blocks editing. The recorder retries transient failures, enters a degraded state after its retry budget is exhausted, retains a bounded in-memory tail where possible, and exposes a visible diagnostic in Output.
+IndexedDB 失败不能阻塞编辑。Recorder 重试临时失败；超过重试预算后进入 degraded 状态；在可能的情况下保留有界的内存尾部，并在 Output 中显示诊断信息。
 
-## Checkpoints And Retention
+## 检查点与保留策略
 
-A checkpoint is created after either 100 document events or 30 seconds since the previous checkpoint, whichever occurs first. Both thresholds are host-configurable.
+满足以下任一条件时创建检查点：累计 100 个文档事件，或距离上一个检查点达到 30 秒。两个阈值都由宿主配置。
 
-Each checkpoint stores a full canonical document snapshot, replay-relevant session state, sequence, and hashes. Events after the checkpoint remain append-only.
+每个检查点保存完整的规范化文档快照、回放所需的会话状态、sequence 和哈希。检查点之后的事件仍保持追加模式。
 
-Default local retention is 50 MB per project or 30 days. Cleanup removes the oldest completed sessions first while preserving the current session, its latest valid checkpoint, and at least the most recent complete session. Exported bundles are not affected by local retention.
+默认本地保留策略为每个项目 50 MB 或 30 天。清理优先删除最早结束的 session，同时保留当前 session、当前 session 最近的有效检查点和最近一个完整 session。已导出的 bundle 不受本地保留策略影响。
 
-## Log Bundle
+## 日志包
 
-The standalone log bundle contains:
+独立日志包包含：
 
-- a versioned manifest;
-- product, schema, hash, browser, platform, plugin, and feature versions;
-- the initial snapshot and subsequent checkpoints;
-- ordered operation events;
-- redaction-policy metadata and integrity hashes.
+- 带版本的 manifest。
+- 产品、schema、哈希、浏览器、平台、插件和功能版本。
+- 初始快照及后续检查点。
+- 按顺序排列的操作事件。
+- 脱敏策略元数据和完整性哈希。
 
-Import validates bundle size, schema support, sequence continuity, event identity, checkpoint hashes, hash-chain integrity, and supported command/event types before replay becomes available.
+导入时必须校验 bundle 大小、schema 支持情况、sequence 连续性、事件 identity、检查点哈希、哈希链完整性以及支持的命令/事件类型，校验通过后才能开放回放。
 
-Imported data is untrusted. It cannot contain executable handlers, invoke arbitrary code, access the active project, perform network requests, or write through host resource adapters.
+导入数据不可信。它不能包含可执行 handler，不能执行任意代码，不能访问当前项目，不能发起网络请求，也不能通过宿主资源适配器写入数据。
 
-## Deterministic Replay
+## 确定性回放
 
-Replay always runs in an isolated editor instance and never mutates the active project.
+回放始终在隔离的 editor 实例中运行，绝不会修改当前项目。
 
-To reach a target event, ReplayEngine:
+为了到达目标事件，ReplayEngine 会：
 
-1. validates the bundle and environment metadata;
-2. selects the nearest valid checkpoint at or before the target;
-3. creates isolated core, session, and workspace state;
-4. executes document commands and history operations in sequence order;
-5. compares command outcome, diagnostics, patch, and state hash after every deterministic event;
-6. applies replayable session and workspace events;
-7. pauses at the target and exposes the reconstructed state and event context.
+1. 校验 bundle 和环境元数据。
+2. 选择目标事件之前最近的有效检查点。
+3. 创建隔离的 core、session 和 Workspace 状态。
+4. 按 sequence 顺序执行文档命令和历史操作。
+5. 在每个确定性事件之后比较命令结果、诊断、补丁和状态哈希。
+6. 应用可回放的 session 与 Workspace 事件。
+7. 在目标位置暂停，并暴露重建后的状态和事件上下文。
 
-Supported modes are single-step, run-to-event, continuous playback, and headless verification. Continuous playback may use original relative timing or a fixed speed. Headless verification stops at the first mismatch.
+支持单步、回放到事件、连续播放和 headless 验证模式。连续播放可以使用原始相对时间或固定速度。Headless 验证在第一次不一致处停止。
 
-Replay disables saving, network requests, uploads, external resource mutation, and other host side effects.
+回放会禁用保存、网络请求、上传、外部资源修改以及其他宿主副作用。
 
-## Replay Differences
+## 回放差异
 
-Replay reports typed differences:
+回放报告带类型的差异：
 
-- `command-mismatch`: success, failure, or diagnostics differ.
-- `patch-mismatch`: affected records or fields differ.
-- `state-hash-mismatch`: canonical final state differs.
-- `missing-handler`: the current runtime does not recognize an event.
-- `schema-incompatible`: the bundle cannot be migrated safely.
-- `environment-mismatch`: required product, plugin, or feature versions differ.
+- `command-mismatch`：成功、失败或诊断信息不同。
+- `patch-mismatch`：受影响的记录或字段不同。
+- `state-hash-mismatch`：规范化后的最终状态不同。
+- `missing-handler`：当前运行时无法识别某个事件。
+- `schema-incompatible`：bundle 无法安全迁移。
+- `environment-mismatch`：产品、插件或功能版本不匹配。
 
-The default response is to pause at the first difference and display expected value, actual value, first differing field, and adjacent events. A user may continue in best-effort mode, but all subsequent results are marked non-deterministic.
+默认行为是在第一次差异处暂停，并显示预期值、实际值、首次不同字段和相邻事件。用户可以继续使用 best-effort 模式，但之后所有结果都必须标记为非确定性。
 
-## Output Panel
+## Output 面板
 
-The Output panel becomes a compact operation console using existing theme tokens and colors.
+Output 面板使用现有主题 token 和颜色，作为紧凑的操作控制台。
 
-Its toolbar contains:
+工具栏包含：
 
-- clear current view without deleting persisted events;
-- log-level filters for operation, information, warning, and error;
-- category filters for document, history, session, workspace, and diagnostics;
-- text search across command ID, node name, transaction ID, and diagnostic code;
-- auto-scroll toggle;
-- import, export, and replay actions.
+- 清空当前视图，但不删除已持久化事件。
+- 操作、信息、警告和错误级别筛选。
+- 文档、历史、会话、Workspace 和诊断类别筛选。
+- 按命令 ID、节点名称、事务 ID 和诊断代码进行文本搜索。
+- 自动滚动开关。
+- 导入、导出和回放操作。
 
-Each virtualized row displays time, status icon, localized summary, and key parameters. Examples include coordinate transitions for moves and dimensions for resizes. Failed events display their diagnostic code and error state. Coalesced UI events render as one expandable group.
+每一行虚拟化日志显示时间、状态图标、本地化摘要和关键参数，例如移动操作的坐标变化与缩放操作的尺寸变化。失败事件显示诊断代码和错误状态。合并的 UI 事件以一个可展开分组显示。
 
-Selecting a row opens structured details containing payload, patch, hashes, transaction ID, causal links, and diagnostics. The detail view supports copying one event and starting replay from that point.
+选择日志行后，结构化详情会显示 payload、补丁、哈希、事务 ID、因果关系和诊断信息。详情视图支持复制单个事件，并从该事件开始回放。
 
-Localized summaries come from a formatter registry. Persisted events contain semantic data rather than translated presentation strings, avoiding log migration when language changes.
+本地化摘要来自 formatter registry。持久化事件保存语义数据，而不是翻译后的展示字符串，因此切换语言不需要迁移日志。
 
-## Error Handling
+## 错误处理
 
-- Logging and persistence errors never fail an editor command.
-- Event subscribers are isolated so one faulty consumer cannot block other consumers.
-- Storage retries preserve `eventId` and sequence ordering.
-- Quota and migration errors are visible in Output and available through the diagnostic API.
-- Invalid imported bundles fail closed and remain unavailable to ReplayEngine.
-- Unknown newer events may be displayed as raw structured data but cannot participate in deterministic replay without a registered handler.
+- 日志和持久化错误不能使编辑器命令失败。
+- 事件订阅者彼此隔离，一个错误订阅者不能阻塞其他订阅者。
+- 存储重试必须保留 `eventId` 和 sequence 顺序。
+- Quota 和迁移错误必须在 Output 中可见，并可通过诊断 API 获取。
+- 无效导入 bundle 必须 fail closed，并且不能提供给 ReplayEngine。
+- 未知的新事件可以作为原始结构化数据展示，但没有注册 handler 时不能参与确定性回放。
 
-## Delivery Phases
+## 交付阶段
 
-Phase one includes:
+### 第一阶段：已完成
 
-- event contracts, recorder, canonical hashing, and in-memory store;
-- document command success/failure, undo, redo, and history-jump capture;
-- selection, active-tool, and viewport capture;
-- IndexedDB persistence, checkpoints, retention, and export;
-- Output filtering, search, details, and virtualized rows;
-- isolated single-step, run-to-event, and headless deterministic replay.
+- 事件契约、Recorder、规范化哈希和内存存储。
+- 文档命令成功/失败、撤销、重做和历史跳转捕获。
+- 选择、当前工具和视口捕获。
+- IndexedDB 持久化、检查点、保留策略和导出。
+- Output 筛选、搜索、详情和虚拟化列表。
+- 隔离单步、回放到事件和 headless 确定性回放。
 
-Phase two adds complete workspace layout capture, richer interaction sampling, imported-bundle management, and continuous visual playback.
+### 第二阶段：待完成
 
-## Testing
+- 完整 Workspace 布局捕获。
+- 更丰富的交互采样。
+- 导入 bundle 管理能力。
+- 连续视觉回放。
 
-Unit tests cover event ordering, idempotency, coalescing, redaction, canonical hashing, storage retry, retention, and schema migration.
+## 测试
 
-Core integration tests cover successful and failed instances of every command, transaction correlation, patches and hashes, and undo/redo/jump events without changing existing History behavior.
+单元测试覆盖事件顺序、幂等性、合并、脱敏、规范化哈希、存储重试、保留策略和 schema 迁移。
 
-Replay tests prove that original and reconstructed documents are identical and that altered commands, patches, hashes, sequence numbers, or checkpoints produce the expected typed difference.
+Core 集成测试覆盖每种命令的成功与失败场景、事务关联、补丁与哈希，以及不改变现有 History 行为的撤销/重做/跳转事件。
 
-IndexedDB tests cover refresh restoration, interrupted batches, quota failure, duplicate retries, cleanup, and database upgrades.
+回放测试证明原始文档和重建文档一致，并证明修改命令、补丁、哈希、sequence 或检查点时会产生预期的类型化差异。
 
-Editor tests cover Output filtering, search, details, localization formatters, virtual scrolling, import errors, and degraded-state diagnostics.
+IndexedDB 测试覆盖刷新恢复、中断批次、Quota 失败、重复重试、清理和数据库升级。
 
-End-to-end tests perform create, move, resize, rename, undo, redo, and history jump operations; reload the application; reload the persisted log; and complete deterministic replay.
+Editor 测试覆盖 Output 筛选、搜索、详情、本地化 formatter、虚拟滚动、导入错误和 degraded 状态诊断。
 
-Performance tests verify that ordinary command recording does not add synchronous storage work to the interaction path and that high-frequency UI input is coalesced rather than persisted event by event.
+端到端测试执行创建、移动、缩放、重命名、撤销、重做和历史跳转；刷新应用；重新加载持久化日志；并完成确定性回放。
 
-## Non-Goals
+性能测试验证普通命令记录不会在交互路径中增加同步存储工作，并且高频 UI 输入会被合并，而不是逐事件持久化。
 
-- Replacing the existing undo/redo History implementation.
-- Embedding operation history in project documents.
-- Treating the operation log as a collaboration protocol.
-- Recording screenshots, video, or every raw pointer event.
-- Guaranteeing exact visual playback across different product or plugin versions.
-- Uploading logs to a server in phase one.
-- Allowing replay to invoke host side effects.
+## 非目标
+
+- 替代现有的撤销/重做 History 实现。
+- 将操作历史嵌入项目文档。
+- 将操作日志作为协作协议。
+- 记录截图、视频或每一个原始指针事件。
+- 保证不同产品或插件版本之间的精确视觉回放。
+- 在第一阶段将日志上传到服务器。
+- 允许回放触发宿主副作用。
