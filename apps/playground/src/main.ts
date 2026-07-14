@@ -198,9 +198,9 @@ export async function createPlaygroundOperationRuntime(
     coordinator: startedCoordinator,
     controller,
     replayController,
-    mount(root, options = {}) {
+    mount(root, mountOptions = {}) {
       mounted = mountEditorWorkspace(root, scenario.editor, {
-        ...options,
+        ...mountOptions,
         pageId: scenario.pageId,
         projectTitle: "BMS",
         session,
