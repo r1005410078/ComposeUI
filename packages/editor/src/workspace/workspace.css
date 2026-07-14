@@ -402,6 +402,12 @@
   position: relative;
 }
 
+.composeui-editor__output-filter-host {
+  display: inline-flex;
+  flex: 0 0 auto;
+  position: relative;
+}
+
 .composeui-editor__output-menu {
   background: var(--composeui-surface-panel-raised);
   border: 1px solid var(--composeui-border-default);
@@ -415,6 +421,39 @@
   right: 0;
   top: calc(100% + var(--composeui-space-1));
   z-index: 30;
+}
+
+.composeui-editor__output-filter-popover {
+  background: var(--composeui-surface-panel-raised);
+  border: 1px solid var(--composeui-border-default);
+  border-radius: var(--composeui-radius-control);
+  box-shadow: var(--composeui-shadow-panel);
+  display: grid;
+  gap: var(--composeui-space-2);
+  min-inline-size: calc(var(--composeui-space-4) * 10);
+  padding: var(--composeui-space-2);
+  position: absolute;
+  top: calc(100% + var(--composeui-space-1));
+  z-index: 30;
+}
+
+.composeui-editor__output-filter-options {
+  display: grid;
+  gap: var(--composeui-gap-compact);
+}
+
+.composeui-editor__output-filter-option {
+  align-items: center;
+  color: var(--composeui-text-secondary);
+  display: flex;
+  gap: var(--composeui-space-1);
+}
+
+.composeui-editor__output-filter-actions {
+  border-top: 1px solid var(--composeui-border-subtle);
+  display: flex;
+  gap: var(--composeui-gap-compact);
+  padding-top: var(--composeui-space-1);
 }
 
 .composeui-editor__output-menu-item {

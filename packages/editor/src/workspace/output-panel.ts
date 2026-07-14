@@ -3,10 +3,7 @@ import { Check, Play, RotateCcw, Trash2, createElement } from "lucide"
 import { formatOperation } from "./operation-formatters"
 import type { OperationLogControllerState } from "../operation-log-controller-port"
 import type { ReplayControllerState } from "./replay-controller"
-import {
-  mountOutputToolbar,
-  type OutputToolbarMount,
-} from "./output-toolbar"
+import { mountOutputToolbar, type OutputToolbarMount } from "./output-toolbar"
 import type { WorkspaceContext, WorkspacePanelMount } from "./types"
 
 const levelLabels: Record<OperationStatus, string> = {
@@ -437,6 +434,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     onFilterChange(nextLevels, nextCategories) {
       levels = [...nextLevels]
       categories = [...nextCategories]
+      renderToolbar()
       void refresh()
     },
     onResetFilters: resetFilters,

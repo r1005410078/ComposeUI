@@ -24,9 +24,9 @@ describe("mountOutputToolbar", () => {
     expect(root.querySelector("input[aria-label='搜索操作日志']")).not.toBeNull()
     const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")
     expect(filter).not.toBeNull()
-    expect(filter?.disabled).toBe(true)
-    expect(filter?.getAttribute("aria-disabled")).toBe("true")
-    expect(filter?.title).toBe("筛选功能将在下一步启用")
+    expect(filter?.disabled).toBe(false)
+    expect(filter?.textContent).toContain("筛选")
+    expect(filter?.getAttribute("aria-expanded")).toBe("false")
     expect(root.querySelector("[data-testid='output-auto-scroll']")).not.toBeNull()
     const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")
     expect(more).not.toBeNull()
@@ -38,6 +38,104 @@ describe("mountOutputToolbar", () => {
 
     mounted.dispose()
     expect(() => mounted.dispose()).not.toThrow()
+  })
+
+  it("uses empty filter arrays as checked wildcard selections and normalizes all checked", () => {
+    const root = document.createElement("div")
+    const toolbarActions = actions()
+    const mounted = mountOutputToolbar(root, toolbarActions)
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+
+    filter.click()
+    const popover = root.querySelector<HTMLElement>("[data-testid='output-filter-popover']")!
+    expect(popover.getAttribute("role")).toBe("dialog")
+    expect(filter.getAttribute("aria-controls")).toBe(popover.id)
+    expect(filter.getAttribute("aria-expanded")).toBe("true")
+    expect(popover.querySelectorAll("input[type='checkbox']")).toHaveLength(10)
+    expect(popover.querySelector<HTMLInputElement>("[data-filter-level='observed']")?.checked).toBe(
+      true,
+    )
+    expect(
+      popover.querySelector<HTMLInputElement>("[data-filter-category='system']")?.checked,
+    ).toBe(true)
+
+    const observed = popover.querySelector<HTMLInputElement>("[data-filter-level='observed']")!
+    root.querySelector<HTMLInputElement>("[data-filter-level='observed']")!.click()
+    expect(toolbarActions.onFilterChange).toHaveBeenLastCalledWith(
+      ["started", "succeeded", "failed"],
+      [],
+    )
+
+    mounted.update({
+      levels: ["started", "succeeded", "failed"],
+      categories: [],
+      search: "",
+      autoScroll: true,
+      canReplaySelection: false,
+    })
+    observed.click()
+    expect(toolbarActions.onFilterChange).toHaveBeenLastCalledWith([], [])
+  })
+
+  it("shows active filters, resets, and keeps the popover open while toggling", () => {
+    const root = document.createElement("div")
+    const toolbarActions = actions()
+    const mounted = mountOutputToolbar(root, toolbarActions)
+    mounted.update({
+      levels: ["failed"],
+      categories: ["diagnostic", "system"],
+      search: "",
+      autoScroll: true,
+      canReplaySelection: false,
+    })
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+    expect(filter.textContent).toContain("筛选 3")
+
+    filter.click()
+    root.querySelector<HTMLInputElement>("[data-filter-level='failed']")!.click()
+    expect(root.querySelector("[data-testid='output-filter-popover']")).not.toBeNull()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-reset']")!.click()
+    expect(toolbarActions.onResetFilters).toHaveBeenCalledTimes(1)
+  })
+
+  it("closes Filter on Escape, restores focus, moves checkbox focus with arrows, and closes More", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const mounted = mountOutputToolbar(root, actions())
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+
+    filter.click()
+    const observed = root.querySelector<HTMLInputElement>("[data-filter-level='observed']")!
+    observed.focus()
+    observed.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))
+    expect(document.activeElement).toBe(
+      root.querySelector<HTMLInputElement>("[data-filter-level='started']"),
+    )
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    )
+    expect(document.activeElement).toBe(observed)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(root.querySelector("[data-testid='output-filter-popover']")).toBeNull()
+    expect(document.activeElement).toBe(filter)
+
+    filter.click()
+    more.click()
+    expect(root.querySelector("[data-testid='output-filter-popover']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-more-menu']")).not.toBeNull()
+
+    more.click()
+    filter.click()
+    const outside = document.createElement("div")
+    document.body.append(outside)
+    outside.dispatchEvent(new Event("pointerdown", { bubbles: true }))
+    expect(root.querySelector("[data-testid='output-filter-popover']")).toBeNull()
+
+    mounted.dispose()
+    outside.remove()
+    root.remove()
   })
 
   it("opens More actions and closes on Escape with trigger focus restored", () => {
@@ -54,7 +152,9 @@ describe("mountOutputToolbar", () => {
     expect(root.querySelector("[data-testid='output-menu-scroll']")?.textContent).toContain(
       "自动滚动：开",
     )
-    expect(root.querySelector("[data-testid='output-clear']")?.textContent).toContain("清空当前视图")
+    expect(root.querySelector("[data-testid='output-clear']")?.textContent).toContain(
+      "清空当前视图",
+    )
 
     root.querySelector<HTMLButtonElement>("[data-testid='output-menu-scroll']")!.click()
     expect(toolbarActions.onAutoScrollChange).toHaveBeenCalledWith(false)

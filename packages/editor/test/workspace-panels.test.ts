@@ -538,7 +538,35 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("queries with exact filter selections from the output popover", async () => {
+    const event = operationEvent({ status: "failed", category: "diagnostic" })
+    const operationLog = fakeOperationLogController([event])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
 
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!.click()
+    root.querySelector<HTMLInputElement>("[data-filter-level='observed']")!.click()
+    await vi.waitFor(() =>
+      expect(operationLog.query).toHaveBeenLastCalledWith({
+        levels: ["started", "succeeded", "failed"],
+        categories: [],
+        search: "",
+      }),
+    )
+    root.querySelector<HTMLInputElement>("[data-filter-category='document']")!.click()
+    await vi.waitFor(() =>
+      expect(operationLog.query).toHaveBeenLastCalledWith({
+        levels: ["started", "succeeded", "failed"],
+        categories: ["history", "session", "workspace", "diagnostic", "system"],
+        search: "",
+      }),
+    )
+
+    if (typeof dispose === "function") dispose()
+  })
 
   it("starts replay from the selected operation", async () => {
     const operationLog = fakeOperationLogController([operationEvent()])
@@ -679,7 +707,9 @@ describe("workspace panel renderers", () => {
 
     expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
     expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
-    await expect(operationLog.query({ levels: [], categories: [], search: "" })).resolves.toEqual(events)
+    await expect(operationLog.query({ levels: [], categories: [], search: "" })).resolves.toEqual(
+      events,
+    )
     if (typeof dispose === "function") dispose()
   })
 
@@ -846,7 +876,6 @@ describe("workspace panel renderers", () => {
 
     if (typeof dispose === "function") dispose()
   })
-
 
   it("returns all first-party panel descriptors with stable ids", () => {
     const ids: PanelId[] = createWorkspacePanels().map((descriptor) => descriptor.id)

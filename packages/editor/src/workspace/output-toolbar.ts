@@ -1,6 +1,37 @@
 import type { OperationCategory, OperationStatus } from "@composeui/operation-log"
 import { Filter, MoreHorizontal, Play, RotateCcw, Search, createElement } from "lucide"
 
+const filterLevels = [
+  "observed",
+  "started",
+  "succeeded",
+  "failed",
+] as const satisfies readonly OperationStatus[]
+const filterCategories = [
+  "document",
+  "history",
+  "session",
+  "workspace",
+  "diagnostic",
+  "system",
+] as const satisfies readonly OperationCategory[]
+
+const filterLevelLabels: Record<OperationStatus, string> = {
+  observed: "记录",
+  started: "开始",
+  succeeded: "成功",
+  failed: "失败",
+}
+
+const filterCategoryLabels: Record<OperationCategory, string> = {
+  document: "文档",
+  history: "历史",
+  session: "会话",
+  workspace: "工作区",
+  diagnostic: "诊断",
+  system: "系统",
+}
+
 export interface OutputToolbarModel {
   readonly levels: readonly OperationStatus[]
   readonly categories: readonly OperationCategory[]
@@ -80,10 +111,19 @@ export function mountOutputToolbar(
   searchInput.addEventListener("input", () => actions.onSearch(searchInput.value))
   searchLabel.append(searchInput)
 
-  const filter = actionButton("output-filter-trigger", "筛选", Filter, () => undefined)
-  filter.disabled = true
-  filter.setAttribute("aria-disabled", "true")
-  filter.title = "筛选功能将在下一步启用"
+  const filterHost = document.createElement("span")
+  filterHost.className = "composeui-editor__output-filter-host"
+  const filter = actionButton("output-filter-trigger", "筛选", Filter, () => {
+    if (filterPopover.isConnected) closeFilter(false)
+    else {
+      closeMenu(false)
+      openFilter()
+    }
+  })
+  filter.setAttribute("aria-haspopup", "dialog")
+  filter.setAttribute("aria-expanded", "false")
+  filter.setAttribute("aria-controls", "output-filter-popover")
+  filterHost.append(filter)
   const autoScroll = actionButton("output-auto-scroll", "自动滚动", RotateCcw, () => {
     actions.onAutoScrollChange(!model.autoScroll)
   })
@@ -128,8 +168,33 @@ export function mountOutputToolbar(
     actions.onClearView()
   })
   menu.append(importItem, exportItem, scrollItem, clearItem)
+  const filterPopover = document.createElement("div")
+  filterPopover.className = "composeui-editor__output-filter-popover"
+  filterPopover.id = "output-filter-popover"
+  filterPopover.dataset.testid = "output-filter-popover"
+  filterPopover.setAttribute("role", "dialog")
+  filterPopover.setAttribute("aria-label", "筛选操作日志")
+  const filterOptions = document.createElement("div")
+  filterOptions.className = "composeui-editor__output-filter-options"
+  const filterActions = document.createElement("div")
+  filterActions.className = "composeui-editor__output-filter-actions"
+  const resetFilters = document.createElement("button")
+  resetFilters.type = "button"
+  resetFilters.className = "composeui-editor__output-menu-item"
+  resetFilters.dataset.testid = "output-filter-reset"
+  resetFilters.textContent = "重置"
+  resetFilters.addEventListener("click", () => actions.onResetFilters())
+  const closeFilters = document.createElement("button")
+  closeFilters.type = "button"
+  closeFilters.className = "composeui-editor__output-menu-item"
+  closeFilters.dataset.testid = "output-filter-close"
+  closeFilters.textContent = "完成"
+  closeFilters.addEventListener("click", () => closeFilter(true))
+  filterActions.append(resetFilters, closeFilters)
+  filterPopover.append(filterOptions, filterActions)
   const openMenu = (): void => {
     if (disposed || menu.isConnected) return
+    closeFilter(false)
     menuHost.append(menu)
     more.setAttribute("aria-expanded", "true")
   }
@@ -139,8 +204,80 @@ export function mountOutputToolbar(
     more.setAttribute("aria-expanded", "false")
     if (restoreFocus) more.focus()
   }
+  const isSelected = <Value extends string>(selected: readonly Value[], value: Value): boolean =>
+    selected.length === 0 || selected.includes(value)
+  const normalize = <Value extends string>(
+    selected: readonly Value[],
+    all: readonly Value[],
+  ): Value[] => (selected.length === all.length ? [] : [...selected])
+  const changeFilter = <Value extends OperationStatus | OperationCategory>(
+    selected: readonly Value[],
+    all: readonly Value[],
+    value: Value,
+    checked: boolean,
+  ): Value[] => {
+    const expanded = selected.length === 0 ? [...all] : [...selected]
+    const next = checked
+      ? [...new Set([...expanded, value])]
+      : expanded.filter((item) => item !== value)
+    return normalize(next, all)
+  }
+  const renderFilterOptions = (): void => {
+    filterOptions.replaceChildren()
+    const addOption = <Value extends OperationStatus | OperationCategory>(
+      value: Value,
+      label: string,
+      selected: readonly Value[],
+      all: readonly Value[],
+      attribute: "filterLevel" | "filterCategory",
+    ): void => {
+      const option = document.createElement("label")
+      option.className = "composeui-editor__output-filter-option"
+      const checkbox = document.createElement("input")
+      checkbox.type = "checkbox"
+      checkbox.checked = isSelected(selected, value)
+      checkbox.dataset[attribute] = value
+      checkbox.addEventListener("click", () => {
+        const next = changeFilter(selected, all, value, checkbox.checked)
+        if (attribute === "filterLevel") {
+          actions.onFilterChange(next as OperationStatus[], model.categories)
+        } else {
+          actions.onFilterChange(model.levels, next as OperationCategory[])
+        }
+      })
+      option.append(checkbox, document.createTextNode(label))
+      filterOptions.append(option)
+    }
+    for (const level of filterLevels) {
+      addOption(level, filterLevelLabels[level], model.levels, filterLevels, "filterLevel")
+    }
+    for (const category of filterCategories) {
+      addOption(
+        category,
+        filterCategoryLabels[category],
+        model.categories,
+        filterCategories,
+        "filterCategory",
+      )
+    }
+  }
+  const openFilter = (): void => {
+    if (disposed || filterPopover.isConnected) return
+    renderFilterOptions()
+    filterHost.append(filterPopover)
+    filter.setAttribute("aria-expanded", "true")
+  }
+  const closeFilter = (restoreFocus: boolean): void => {
+    if (!filterPopover.isConnected) return
+    filterPopover.remove()
+    filter.setAttribute("aria-expanded", "false")
+    if (restoreFocus) filter.focus()
+  }
   const onDocumentKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && menu.isConnected) {
+    if (event.key === "Escape" && filterPopover.isConnected) {
+      event.preventDefault()
+      closeFilter(true)
+    } else if (event.key === "Escape" && menu.isConnected) {
       event.preventDefault()
       closeMenu(true)
     }
@@ -149,15 +286,35 @@ export function mountOutputToolbar(
     if (menu.isConnected && event.target instanceof Node && !root.contains(event.target)) {
       closeMenu(false)
     }
+    if (filterPopover.isConnected && event.target instanceof Node && !root.contains(event.target)) {
+      closeFilter(false)
+    }
   }
+  filterPopover.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+    const checkboxes = Array.from(
+      filterPopover.querySelectorAll<HTMLInputElement>("input[type='checkbox']"),
+    )
+    const index = checkboxes.indexOf(document.activeElement as HTMLInputElement)
+    if (index === -1) return
+    event.preventDefault()
+    const direction = event.key === "ArrowDown" ? 1 : -1
+    checkboxes[(index + direction + checkboxes.length) % checkboxes.length]?.focus()
+  })
   document.addEventListener("keydown", onDocumentKeydown)
   document.addEventListener("pointerdown", onDocumentPointerDown)
   const replayHost = document.createElement("span")
   replayHost.dataset.testid = "output-replay-host"
-  root.replaceChildren(searchLabel, filter, autoScroll, menuHost, replayHost, fileInput)
+  root.replaceChildren(searchLabel, filterHost, autoScroll, menuHost, replayHost, fileInput)
 
   const render = (): void => {
     searchInput.value = model.search
+    const activeFilterCount = model.levels.length + model.categories.length
+    filter.replaceChildren(
+      createElement(Filter),
+      document.createTextNode(`筛选${activeFilterCount === 0 ? "" : ` ${activeFilterCount}`}`),
+    )
+    if (filterPopover.isConnected) renderFilterOptions()
     autoScroll.setAttribute("aria-pressed", String(model.autoScroll))
     autoScroll.disabled = model.busyAction === "auto-scroll"
     scrollItem.textContent = model.autoScroll ? "自动滚动：开" : "自动滚动：关"
