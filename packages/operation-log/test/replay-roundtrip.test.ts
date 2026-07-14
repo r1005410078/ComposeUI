@@ -9,6 +9,7 @@ import {
   hashCanonical,
   importLogBundle,
   type ReplaySessionPort,
+  type ReplayWorkspacePort,
 } from "../src/index"
 
 function createSession(): ReplaySessionPort {
@@ -41,6 +42,30 @@ function createSession(): ReplaySessionPort {
   }
 }
 
+function createWorkspace(initialState: unknown): ReplayWorkspacePort {
+  let state = initialState
+  return {
+    openPanel(panelId) {
+      state = { ...(state as Record<string, unknown> | undefined), activePanelId: panelId }
+    },
+    closePanel(panelId) {
+      state = { ...(state as Record<string, unknown> | undefined), closedPanelId: panelId }
+    },
+    activatePanel(panelId) {
+      state = { ...(state as Record<string, unknown> | undefined), activePanelId: panelId }
+    },
+    applyLayout(layout) {
+      state = layout
+    },
+    resetLayout(layout) {
+      state = layout
+    },
+    getState() {
+      return structuredClone(state)
+    },
+  }
+}
+
 async function recordScenario() {
   const store = new MemoryOperationLogStore()
   const recorder = new OperationRecorder({
@@ -58,6 +83,8 @@ async function recordScenario() {
     sessionState: createSession().getState(),
     documentHash: await hashCanonical(initialDocument),
     sessionHash: await hashCanonical(createSession().getState()),
+    workspaceState: { version: 1, modeId: "2d", layout: { panels: [] } },
+    workspaceHash: await hashCanonical({ version: 1, modeId: "2d", layout: { panels: [] } }),
   })
   const editor = createEditor(initialDocument, {
     operationObserver: createCoreOperationObserver(recorder),
@@ -67,6 +94,18 @@ async function recordScenario() {
     type: "system.sessionStarted",
     status: "observed",
     payload: {},
+  })
+  await recorder.record({
+    category: "workspace",
+    type: "workspace.panel.opened",
+    status: "observed",
+    payload: { panelId: "inspector" },
+  })
+  await recorder.record({
+    category: "workspace",
+    type: "workspace.layout.changed",
+    status: "observed",
+    payload: { layout: { version: 1, modeId: "2d", layout: { panels: ["inspector"] } } },
   })
 
   expect(
@@ -113,7 +152,14 @@ async function recordScenario() {
       redactionPolicy: "replay-test-v1",
     }),
   )
-  return { bundle, editor, finalDocument, eventCount: recorder.sequence, store }
+  return {
+    bundle,
+    editor,
+    finalDocument,
+    finalWorkspace: { version: 1, modeId: "2d", layout: { panels: ["inspector"] } },
+    eventCount: recorder.sequence,
+    store,
+  }
 }
 
 describe("ReplayEngine public round trip", () => {
@@ -123,10 +169,12 @@ describe("ReplayEngine public round trip", () => {
       await ReplayEngine.create({
         bundle: recorded.bundle,
         createSession,
+        createWorkspace,
       })
     ).verify()
     expect(result).toMatchObject({ status: "completed", deterministic: true })
     expect(result.state?.document).toEqual(recorded.finalDocument)
+    expect(result.state?.workspace).toEqual(recorded.finalWorkspace)
     expect(result.currentSequence).toBe(recorded.eventCount)
     expect(canonicalizeDocument(recorded.editor.getStore())).toEqual(recorded.finalDocument)
     const sourceEvents = await recorded.store.query({

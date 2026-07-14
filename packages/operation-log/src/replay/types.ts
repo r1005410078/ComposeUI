@@ -16,6 +16,7 @@ export type ReplayDifference =
   | { type: "environment-mismatch"; sequence: number; requirement: string }
   | { type: "handler-error"; sequence: number; eventType: string; message: string }
   | { type: "session-error"; sequence: number; eventType: string; message: string }
+  | { type: "workspace-error"; sequence: number; eventType: string; message: string }
 
 export interface ReplaySessionPort {
   setSelection(ids: readonly string[]): void
@@ -26,9 +27,19 @@ export interface ReplaySessionPort {
   getState(): unknown
 }
 
+export interface ReplayWorkspacePort {
+  openPanel(panelId: string): void
+  closePanel(panelId: string): void
+  activatePanel(panelId: string): void
+  applyLayout(layout: unknown): void
+  resetLayout(layout: unknown): void
+  getState(): unknown
+}
+
 export interface ReplayHandlerContext {
   editor: Editor
   session: ReplaySessionPort
+  workspace: ReplayWorkspacePort
   sideEffects: "disabled"
 }
 

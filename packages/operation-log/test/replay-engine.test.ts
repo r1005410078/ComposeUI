@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
-import type { LogBundleV1, OperationEvent, ReplaySessionPort } from "../src/index"
-import { canonicalJson, hashCanonical, importLogBundle } from "../src/index"
+import type {
+  LogBundleV1,
+  OperationEvent,
+  ReplaySessionPort,
+  ReplayWorkspacePort,
+} from "../src/index"
+import {
+  MemoryOperationLogStore,
+  canonicalJson,
+  exportLogBundle,
+  hashCanonical,
+  importLogBundle,
+} from "../src/index"
 import { ReplayEngine } from "../src/index"
 
 const document = createEmptyDocument({ documentId: "document-1", pageId: "page-1" })
@@ -30,6 +41,22 @@ function sessionPort(): ReplaySessionPort & { state: Record<string, unknown> } {
     },
     setExpanded: (ids) => {
       state.expanded = [...ids]
+    },
+    getState: () => structuredClone(state),
+  }
+}
+
+function workspacePort(initialState: unknown): ReplayWorkspacePort {
+  let state = initialState
+  return {
+    openPanel: () => undefined,
+    closePanel: () => undefined,
+    activatePanel: () => undefined,
+    applyLayout: (layout) => {
+      state = layout
+    },
+    resetLayout: (layout) => {
+      state = layout
     },
     getState: () => structuredClone(state),
   }
@@ -105,6 +132,39 @@ async function importTestBundle(bundle: LogBundleV1) {
     },
   })
   return importLogBundle(encoded)
+}
+
+async function workspaceCheckpointBundle(workspaceState: unknown) {
+  const store = new MemoryOperationLogStore()
+  const session = {
+    sessionId: "session-1",
+    projectId: "project-1",
+    status: "ended" as const,
+    startedAt: "2026-07-14T00:00:00.000Z",
+    endedAt: "2026-07-14T00:01:00.000Z",
+    eventCount: 0,
+    finalHash: "a".repeat(64),
+  }
+  const sessionState = sessionPort().state
+  await store.putSession(session)
+  await store.putCheckpoint({
+    sessionId: session.sessionId,
+    sequence: 0,
+    createdAt: session.startedAt,
+    document,
+    sessionState,
+    documentHash: await hashCanonical(document),
+    sessionHash: await hashCanonical(sessionState),
+    workspaceState,
+    workspaceHash: await hashCanonical(workspaceState),
+  })
+  return importLogBundle(
+    await exportLogBundle(store, {
+      sessionId: session.sessionId,
+      productVersion: "test",
+      exportedAt: session.endedAt,
+    }),
+  )
 }
 
 describe("ReplayEngine", () => {
@@ -267,5 +327,48 @@ describe("ReplayEngine", () => {
     })
     expect((await engine.runTo(1)).targetSequence).toBe(1)
     expect((await engine.runTo(2)).targetSequence).toBe(2)
+  })
+
+  it("creates an isolated workspace from a checkpoint and initializes old checkpoints with undefined", async () => {
+    const checkpointState = { version: 1, modeId: "2d", layout: { panels: ["inspector"] } }
+    const received: unknown[] = []
+    const current = await ReplayEngine.create({
+      bundle: await workspaceCheckpointBundle(checkpointState),
+      createSession: () => sessionPort(),
+      createWorkspace: (initialState) => {
+        received.push(initialState)
+        return workspacePort(initialState)
+      },
+    })
+    expect(current.getState().workspace).toEqual(checkpointState)
+    expect(received).toEqual([checkpointState])
+
+    const legacyReceived: unknown[] = []
+    const legacy = await ReplayEngine.create({
+      bundle: await importTestBundle(bundleWithCheckpoints([])),
+      createSession: () => sessionPort(),
+      createWorkspace: (initialState) => {
+        legacyReceived.push(initialState)
+        return workspacePort(initialState)
+      },
+    })
+    expect(legacy.getState().workspace).toBeUndefined()
+    expect(legacyReceived).toEqual([undefined])
+  })
+
+  it("reports workspace factory failures separately from session failures", async () => {
+    const engine = await ReplayEngine.create({
+      bundle: await importTestBundle(bundleWithCheckpoints([])),
+      createSession: () => sessionPort(),
+      createWorkspace: () => {
+        throw new Error("workspace boom")
+      },
+    })
+    const result = await engine.verify()
+    expect(result.difference).toMatchObject({
+      type: "workspace-error",
+      eventType: "workspace.create",
+      message: "workspace boom",
+    })
   })
 })

@@ -69,6 +69,7 @@ export type {
   ReplayHandlerContext,
   ReplayHandlerResolution,
   ReplaySessionPort,
+  ReplayWorkspacePort,
 } from "./replay/types"
 export {
   builtinReplayHandlers,
@@ -76,6 +77,7 @@ export {
   handleHistoryOperation,
   handleSessionOperation,
   handleSystemOperation,
+  handleWorkspaceOperation,
 } from "./replay/builtin-handlers"
 export { ReplayEngine } from "./replay/engine"
 export type {
