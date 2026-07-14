@@ -64,3 +64,11 @@ export {
   handleHistoryOperation,
   handleSessionOperation,
 } from "./replay/builtin-handlers"
+export { ReplayEngine } from "./replay/engine"
+export type {
+  ReplayEngineCreateOptions,
+  ReplayResult,
+  ReplayResultStatus,
+  ReplayState,
+  ValidatedLogBundle,
+} from "./replay/engine"
