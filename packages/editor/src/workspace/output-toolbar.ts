@@ -358,10 +358,13 @@ export function mountOutputToolbar(
     if (restoreFocus) filter.focus()
   }
   const onDocumentKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && filterOpen) {
+    const eventBelongsToToolbar =
+      (event.target instanceof Node && root.contains(event.target)) ||
+      root.contains(document.activeElement)
+    if (event.key === "Escape" && eventBelongsToToolbar && filterOpen) {
       event.preventDefault()
       closeFilter(true)
-    } else if (event.key === "Escape" && menuOpen) {
+    } else if (event.key === "Escape" && eventBelongsToToolbar && menuOpen) {
       event.preventDefault()
       closeMenu(true)
     }

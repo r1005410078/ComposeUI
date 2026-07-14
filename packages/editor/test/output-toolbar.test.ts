@@ -201,6 +201,35 @@ describe("mountOutputToolbar", () => {
     root.remove()
   })
 
+  it("closes only the focused toolbar overlay on Escape", () => {
+    const firstRoot = document.createElement("div")
+    const secondRoot = document.createElement("div")
+    document.body.append(firstRoot, secondRoot)
+    const first = mountOutputToolbar(firstRoot, actions())
+    const second = mountOutputToolbar(secondRoot, actions())
+    const firstMore = firstRoot.querySelector<HTMLButtonElement>(
+      "[data-testid='output-more-trigger']",
+    )!
+    const secondMore = secondRoot.querySelector<HTMLButtonElement>(
+      "[data-testid='output-more-trigger']",
+    )!
+
+    firstMore.click()
+    secondMore.click()
+    expect(document.activeElement).toBe(secondRoot.querySelector("[data-testid='output-import']"))
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+
+    expect(firstRoot.querySelector("[data-testid='output-more-menu']")).not.toBeNull()
+    expect(secondRoot.querySelector("[data-testid='output-more-menu']")).toBeNull()
+    expect(document.activeElement).toBe(secondMore)
+
+    first.dispose()
+    second.dispose()
+    firstRoot.remove()
+    secondRoot.remove()
+  })
+
   it("requires confirmation before clearing and cancels it when More closes", () => {
     const root = document.createElement("div")
     document.body.append(root)

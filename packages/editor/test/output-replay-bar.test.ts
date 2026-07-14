@@ -2,9 +2,14 @@
 
 import { describe, expect, it, vi } from "vitest"
 import { mountOutputReplayBar } from "../src/workspace/output-replay-bar"
-import type { ReplayControllerPort, ReplayControllerState } from "../src/workspace/replay-controller"
+import type {
+  ReplayControllerPort,
+  ReplayControllerState,
+} from "../src/workspace/replay-controller"
 
-function createController(initial: ReplayControllerState): ReplayControllerPort & { publish(state: ReplayControllerState): void } {
+function createController(
+  initial: ReplayControllerState,
+): ReplayControllerPort & { publish(state: ReplayControllerState): void } {
   let state = initial
   const listeners = new Set<(next: ReplayControllerState) => void>()
   return {
@@ -102,7 +107,9 @@ describe("output replay bar", () => {
       model: { busy: false },
     })
 
-    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain("回放存在差异")
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain(
+      "回放存在差异",
+    )
     expect(root.querySelector("[data-testid='replay-summary']")?.textContent).not.toContain(
       "patch-mismatch",
     )
@@ -134,7 +141,10 @@ describe("output replay bar", () => {
       model: { busy: false },
     })
 
-    expect(onError).toHaveBeenCalledWith("回放", expect.objectContaining({ message: "engine unavailable" }))
+    expect(onError).toHaveBeenCalledWith(
+      "回放",
+      expect.objectContaining({ message: "engine unavailable" }),
+    )
     mount.dispose()
   })
 
@@ -176,9 +186,9 @@ describe("output replay bar", () => {
     )
 
     mount.update({ busy: true })
-    expect(root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button")).toSatisfy(
-      (buttons) => [...buttons].every((button) => button.disabled),
-    )
+    expect(
+      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
+    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
 
     controller.publish({
       active: true,
@@ -188,9 +198,9 @@ describe("output replay bar", () => {
       targetSequence: 8,
     })
     mount.update({ busy: false })
-    expect(root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button")).toSatisfy(
-      (buttons) => [...buttons].every((button) => button.disabled),
-    )
+    expect(
+      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
+    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
     mount.dispose()
   })
 })

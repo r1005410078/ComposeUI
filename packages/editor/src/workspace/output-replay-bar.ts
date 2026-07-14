@@ -18,7 +18,11 @@ export interface OutputReplayBarOptions {
   readonly model: OutputReplayBarModel
 }
 
-function textElement(tag: keyof HTMLElementTagNameMap, className: string, value: string): HTMLElement {
+function textElement(
+  tag: keyof HTMLElementTagNameMap,
+  className: string,
+  value: string,
+): HTMLElement {
   const element = document.createElement(tag)
   element.className = className
   element.textContent = value
@@ -104,9 +108,7 @@ export function mountOutputReplayBar(
         },
         busy || options.getSelectedSequence() === undefined,
       ),
-      action("replay-verify", "验证", BadgeCheck, "badge-check", () =>
-        options.controller.verify(),
-      ),
+      action("replay-verify", "验证", BadgeCheck, "badge-check", () => options.controller.verify()),
     )
     if (!state.deterministic) {
       controls.append(
@@ -115,7 +117,9 @@ export function mountOutputReplayBar(
         ),
       )
     }
-    controls.append(action("replay-stop", "停止", Square, "square", () => options.controller.stop()))
+    controls.append(
+      action("replay-stop", "停止", Square, "square", () => options.controller.stop()),
+    )
 
     const children: Node[] = [summary, controls]
     if (state.difference !== undefined) {

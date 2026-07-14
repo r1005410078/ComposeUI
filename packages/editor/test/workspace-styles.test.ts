@@ -66,9 +66,7 @@ describe("operation output workspace styles", () => {
     )?.[1]
     expect(toolbarRule).toContain("overflow: visible")
     expect(toolbarRule).not.toContain("overflow-x: auto")
-    const menuRule = workspaceCss.match(
-      /\.composeui-editor__output-menu\s*\{([\s\S]*?)\n\}/,
-    )?.[1]
+    const menuRule = workspaceCss.match(/\.composeui-editor__output-menu\s*\{([\s\S]*?)\n\}/)?.[1]
     expect(menuRule).toContain("position: absolute")
     expect(menuRule).toContain("z-index:")
     expect(workspaceCss).toContain(".composeui-editor__output-menu-host")
