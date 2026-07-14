@@ -247,6 +247,12 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     const status = textElement("span", "composeui-editor__output-replay-status", state.status)
     status.dataset.testid = "replay-status"
     const difference = state.difference
+    const replayError = state.error
+    const error =
+      replayError === undefined
+        ? undefined
+        : textElement("p", "composeui-editor__output-replay-error", replayError)
+    if (error !== undefined) error.dataset.testid = "replay-error"
     if (difference !== undefined) {
       const detail = textElement("pre", "composeui-editor__output-replay-difference", "")
       detail.dataset.testid = "replay-difference"
@@ -261,6 +267,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     } else {
       replayHost.append(sequence, deterministic, status)
     }
+    if (error !== undefined) replayHost.append(error)
   }
 
   const replayButton = (
@@ -270,7 +277,9 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     action: () => void | Promise<unknown>,
   ): HTMLButtonElement => {
     const replayAction = button(testid, label, iconNode, () => {
-      void Promise.resolve(action()).catch((error) => showError(label, error))
+      void Promise.resolve()
+        .then(action)
+        .catch((error) => showError(label, error))
     })
     replayAction.disabled = !replayController?.getState().active
     return replayAction

@@ -1,6 +1,9 @@
 import {
   EditorSession,
+  EditorSessionReplayAdapter,
   OperationLogController,
+  ReplayController,
+  type EditorSessionState,
   createSessionOperationObserver,
   createLocalStorageLayoutStore,
   mountEditorWorkspace,
@@ -14,6 +17,9 @@ import {
   createCoreOperationObserver,
   exportLogBundle,
   hashCanonical,
+  importLogBundle,
+  ReplayEngine,
+  type ValidatedLogBundle,
 } from "@composeui/operation-log"
 import {
   ChevronsDownUp,
@@ -46,6 +52,7 @@ export interface PlaygroundOperationRuntime {
   readonly recorder: OperationRecorder
   readonly coordinator: OperationLogCoordinator
   readonly controller: OperationLogController
+  readonly replayController: ReplayController
   mount(root: HTMLElement): void
   dispose(): Promise<void>
 }
@@ -104,6 +111,34 @@ export async function createPlaygroundOperationRuntime(
     },
   })
   coordinator = startedCoordinator
+  const loadReplayBundle = async (): Promise<ValidatedLogBundle> => {
+    await startedCoordinator.flush()
+    const serialized = await exportLogBundle(store, {
+      sessionId: recorder.sessionId,
+      productVersion: "playground-replay",
+    })
+    return importLogBundle(serialized)
+  }
+  const replayController = new ReplayController({
+    createEngine: async (targetSequence) => {
+      const bundle = await loadReplayBundle()
+      return ReplayEngine.create({
+        bundle,
+        targetSequence,
+        createSession: (initialState) => {
+          const isolatedSession = new EditorSession()
+          const adapter = new EditorSessionReplayAdapter(isolatedSession)
+          const state = initialState as EditorSessionState
+          adapter.setSelection(state.selection)
+          adapter.setViewport(state.viewport)
+          adapter.setInteractionMode(state.interactionMode)
+          adapter.setGridVisible(state.gridVisible)
+          adapter.setExpanded(state.expanded)
+          return adapter
+        },
+      })
+    },
+  })
   const controller = new OperationLogController({
     store,
     sessionId: recorder.sessionId,
@@ -112,6 +147,7 @@ export async function createPlaygroundOperationRuntime(
         sessionId: recorder.sessionId,
         productVersion: "playground",
       }),
+    replayController,
   })
   let mounted: ReturnType<typeof mountEditorWorkspace> | undefined
   let disposed = false
@@ -123,6 +159,7 @@ export async function createPlaygroundOperationRuntime(
     recorder,
     coordinator: startedCoordinator,
     controller,
+    replayController,
     mount(root) {
       mounted = mountEditorWorkspace(root, scenario.editor, {
         pageId: scenario.pageId,

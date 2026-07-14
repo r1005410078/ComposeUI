@@ -9,6 +9,10 @@ import type { OperationLogControllerPort } from "../src/operation-log-controller
 import type { OperationLogControllerState } from "../src/operation-log-controller-port"
 import type { OperationEvent } from "@composeui/operation-log"
 import { ReplayController } from "../src/workspace/replay-controller"
+import type {
+  ReplayControllerPort,
+  ReplayControllerState,
+} from "../src/workspace/replay-controller"
 
 function createContext(
   resources?: WorkspaceContext["resources"],
@@ -563,6 +567,50 @@ describe("workspace panel renderers", () => {
     )
     expect(context.editor.getStore().all()).toEqual(originalStore)
     expect(root.querySelector("[data-testid='replay-step-backward']")).not.toBeNull()
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("catches synchronous replay button failures", async () => {
+    const state: ReplayControllerState = {
+      active: true,
+      status: "paused",
+      deterministic: true,
+      currentSequence: 1,
+    }
+    const replayController: ReplayControllerPort = {
+      start: vi.fn(async () => state),
+      stepBackward: vi.fn(() => {
+        throw new Error("step unavailable")
+      }),
+      stepForward: vi.fn(() => {
+        throw new Error("step unavailable")
+      }),
+      runTo: vi.fn(async () => state),
+      verify: vi.fn(async () => state),
+      continueBestEffort: vi.fn(async () => state),
+      stop: vi.fn(),
+      getState: vi.fn(() => state),
+      subscribe: vi.fn((callback) => {
+        callback(state)
+        return () => undefined
+      }),
+    }
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([operationEvent()]),
+      replayController,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "回放下一步失败",
+      ),
+    )
     if (typeof dispose === "function") dispose()
   })
 

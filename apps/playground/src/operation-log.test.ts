@@ -12,6 +12,7 @@ describe("playground operation log runtime", () => {
       databaseName: "composeui-playground-operation-log-test",
       indexedDB: new IDBFactory(),
     })
+    expect(runtime.replayController).toBe(runtime.controller.replayController)
 
     runtime.scenario.createNode()
     await runtime.coordinator.flush()
@@ -70,6 +71,28 @@ describe("playground operation log runtime", () => {
       Array.from({ length: events.length }, (_, index) => index + 1),
     )
 
+    await runtime.dispose()
+  })
+
+  it("creates replay engines from an imported bundle without changing the active editor", async () => {
+    const runtime = await createPlaygroundOperationRuntime({
+      databaseName: "composeui-playground-operation-log-replay-test",
+      indexedDB: new IDBFactory(),
+      checkpointEveryEvents: 1,
+    })
+    runtime.scenario.createNode()
+    await runtime.coordinator.flush()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await runtime.coordinator.flush()
+    const rows = await runtime.controller.query({ levels: [], categories: [], search: "" })
+    const target = rows.at(-1)?.sequence
+    expect(target).toBeDefined()
+    const activeBefore = runtime.scenario.editor.getStore().all()
+
+    const result = await runtime.replayController.start(target!)
+
+    expect(result.active).toBe(true)
+    expect(runtime.scenario.editor.getStore().all()).toEqual(activeBefore)
     await runtime.dispose()
   })
 

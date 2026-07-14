@@ -297,6 +297,12 @@
   color: var(--composeui-accent-danger);
 }
 
+.composeui-editor__output-replay-error {
+  color: var(--composeui-accent-danger);
+  flex: 1 1 100%;
+  margin: 0;
+}
+
 .composeui-editor__output-replay-difference {
   background: var(--composeui-surface-control);
   border: 1px solid var(--composeui-border-default);

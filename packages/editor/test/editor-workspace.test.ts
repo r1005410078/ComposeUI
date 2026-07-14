@@ -5,6 +5,7 @@ import { createEditor, createEmptyDocument } from "@composeui/core"
 import {
   createModeRegistry,
   mountEditorWorkspace,
+  ReplayController,
   type DockviewFactory,
   type EditorWorkspaceDockview,
 } from "../src/index"
@@ -224,6 +225,50 @@ function createEditorInstance() {
 }
 
 describe("editor workspace", () => {
+  it("disables save and run while isolated replay is active", async () => {
+    const replayController = new ReplayController({
+      createEngine: vi.fn(async () => ({
+        runTo: vi.fn(async () => ({
+          status: "paused" as const,
+          deterministic: true,
+          startedAtSequence: 0,
+          currentSequence: 1,
+          targetSequence: 1,
+        })),
+        step: vi.fn(),
+        verify: vi.fn(),
+        continueBestEffort: vi.fn(),
+        getState: vi.fn(() => ({})),
+      })),
+    })
+    const operationLog: OperationLogControllerPort = {
+      query: async () => [],
+      subscribe: () => () => undefined,
+      exportSession: async () => "",
+      importBundle: async () => undefined,
+      startReplay: () => undefined,
+      replayController,
+    }
+    const root = document.createElement("div")
+    const mounted = mountEditorWorkspace(root, createEditorInstance(), {
+      pageId: "page-1",
+      operationLog,
+      createDockview: createDockviewFake().factory,
+    })
+
+    const run = root.querySelector<HTMLButtonElement>('[data-testid="workspace-run"]')!
+    const save = root.querySelector<HTMLButtonElement>('[data-testid="workspace-save"]')!
+    expect(run.disabled).toBe(false)
+    expect(save.disabled).toBe(false)
+    await replayController.start(1)
+    expect(run.disabled).toBe(true)
+    expect(save.disabled).toBe(true)
+    replayController.stop()
+    expect(run.disabled).toBe(false)
+    expect(save.disabled).toBe(false)
+    mounted.dispose()
+  })
+
   it("passes the operation log controller unchanged to first-party panels", () => {
     let capturedContext: WorkspaceContext | undefined
     const operationLog: OperationLogControllerPort = {
