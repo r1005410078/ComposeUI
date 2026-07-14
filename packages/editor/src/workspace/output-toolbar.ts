@@ -34,6 +34,14 @@ const filterCategoryLabels: Record<OperationCategory, string> = {
 
 let nextFilterPopoverId = 0
 
+function isSelected<Value extends string>(selected: readonly Value[], value: Value): boolean {
+  return selected.length === 0 || selected.includes(value)
+}
+
+function normalize<Value extends string>(selected: readonly Value[], all: readonly Value[]): Value[] {
+  return selected.length === all.length ? [] : [...selected]
+}
+
 export interface OutputToolbarModel {
   readonly levels: readonly OperationStatus[]
   readonly categories: readonly OperationCategory[]
@@ -210,12 +218,6 @@ export function mountOutputToolbar(
     more.setAttribute("aria-expanded", "false")
     if (restoreFocus) more.focus()
   }
-  const isSelected = <Value extends string>(selected: readonly Value[], value: Value): boolean =>
-    selected.length === 0 || selected.includes(value)
-  const normalize = <Value extends string>(
-    selected: readonly Value[],
-    all: readonly Value[],
-  ): Value[] => (selected.length === all.length ? [] : [...selected])
   const changeFilter = <Value extends OperationStatus | OperationCategory>(
     selected: readonly Value[],
     all: readonly Value[],
