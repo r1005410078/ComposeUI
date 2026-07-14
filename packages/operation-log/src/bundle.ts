@@ -138,11 +138,24 @@ export async function exportLogBundle(
     (checkpoint) => checkpoint,
   )
   const redactedEvents = structuredClone(redactor(structuredClone(events)))
+  const workspaceHashesBySequence = new Map<number, string>()
   for (const checkpoint of redactedCheckpoints) {
     checkpoint.documentHash = await hashCanonical(checkpoint.document)
     checkpoint.sessionHash = await hashCanonical(checkpoint.sessionState)
     if (Object.hasOwn(checkpoint, "workspaceState")) {
       checkpoint.workspaceHash = await hashCanonical(checkpoint.workspaceState)
+      workspaceHashesBySequence.set(checkpoint.sequence, checkpoint.workspaceHash)
+    }
+  }
+  for (const event of redactedEvents) {
+    const workspaceHash = workspaceHashesBySequence.get(event.sequence)
+    if (
+      workspaceHash !== undefined &&
+      event.category === "system" &&
+      event.type === "system.checkpoint" &&
+      isRecord(event.payload)
+    ) {
+      event.payload = { ...event.payload, workspaceHash }
     }
   }
   validateBundleContents(structuredClone(redactedSession), redactedCheckpoints, redactedEvents, {
@@ -280,6 +293,15 @@ async function importLegacyBundle(parsed: Record<string, unknown>): Promise<Vali
     (await hashCanonical(session)) !== sectionHashes.session ||
     (await hashCanonical(checkpoints)) !== sectionHashes.checkpoints ||
     (await hashCanonical(events)) !== sectionHashes.events
+  ) {
+    throw integrityError()
+  }
+  if (
+    checkpoints.some(
+      (checkpoint) =>
+        isRecord(checkpoint) &&
+        (Object.hasOwn(checkpoint, "workspaceState") || Object.hasOwn(checkpoint, "workspaceHash")),
+    )
   ) {
     throw integrityError()
   }

@@ -1,4 +1,5 @@
 import type { PageDocument } from "@composeui/core"
+import { hashCanonical } from "./canonical"
 import type { OperationCheckpoint } from "./checkpoints"
 import type { OperationRecorder } from "./recorder"
 import type { OperationSession } from "./sessions"
@@ -157,22 +158,35 @@ export class OperationLogCoordinator {
   }
 
   async #writeCheckpoint(createdAt: string): Promise<void> {
-    const snapshot = await this.#snapshot()
-    const hasWorkspaceState = Object.hasOwn(snapshot, "workspaceState")
-    const hasWorkspaceHash = Object.hasOwn(snapshot, "workspaceHash")
-    if (hasWorkspaceState !== hasWorkspaceHash) throw new Error("INVALID_OPERATION_SNAPSHOT")
-    const checkpointSequence = this.#recorder.sequence + 1
-    const event = await this.#recorder.record({
-      category: "system",
-      type: "system.checkpoint",
-      status: "observed",
-      payload: {
-        sequence: checkpointSequence,
-        documentHash: snapshot.documentHash,
-        sessionHash: snapshot.sessionHash,
-        ...(hasWorkspaceHash ? { workspaceHash: snapshot.workspaceHash } : {}),
-      },
+    let snapshot: OperationSnapshot | undefined
+    let checkpointSequence: number | undefined
+    const event = await this.#recorder.recordDeferred(async () => {
+      snapshot = await this.#snapshot()
+      const hasWorkspaceState = Object.hasOwn(snapshot, "workspaceState")
+      const hasWorkspaceHash = Object.hasOwn(snapshot, "workspaceHash")
+      if (
+        hasWorkspaceState !== hasWorkspaceHash ||
+        (hasWorkspaceState &&
+          snapshot.workspaceHash !== (await hashCanonical(snapshot.workspaceState)))
+      ) {
+        throw new Error("INVALID_OPERATION_SNAPSHOT")
+      }
+      checkpointSequence = this.#recorder.sequence + 1
+      return {
+        category: "system",
+        type: "system.checkpoint",
+        status: "observed",
+        payload: {
+          sequence: checkpointSequence,
+          documentHash: snapshot.documentHash,
+          sessionHash: snapshot.sessionHash,
+          ...(hasWorkspaceHash ? { workspaceHash: snapshot.workspaceHash } : {}),
+        },
+      }
     })
+    if (snapshot === undefined || checkpointSequence === undefined) {
+      throw new Error("INVALID_OPERATION_SNAPSHOT")
+    }
     if (event.sequence !== checkpointSequence) {
       throw new Error("OPERATION_SEQUENCE_OUT_OF_SYNC")
     }

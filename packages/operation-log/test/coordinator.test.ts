@@ -4,6 +4,7 @@ import {
   MemoryOperationLogStore,
   OperationLogCoordinator,
   OperationRecorder,
+  hashCanonical,
 } from "@composeui/operation-log"
 
 const document = (): PageDocument => ({ schemaVersion: 1, rootPageId: "page-1", records: [] })
@@ -91,13 +92,14 @@ describe("OperationLogCoordinator", () => {
   it("persists a workspace snapshot and reports its hash in the checkpoint event", async () => {
     const { store, recorder } = create()
     const workspaceState = { panels: { inspector: true } }
+    const workspaceHash = await hashCanonical(workspaceState)
     const coordinator = await OperationLogCoordinator.start({
       store,
       recorder,
       snapshot: () => ({
         ...snapshot(),
         workspaceState,
-        workspaceHash: "workspace-hash",
+        workspaceHash,
       }),
       checkpointEveryEvents: 1,
     })
@@ -107,13 +109,13 @@ describe("OperationLogCoordinator", () => {
     expect(await store.getNearestCheckpoint("s1", 2)).toMatchObject({
       sequence: 2,
       workspaceState,
-      workspaceHash: "workspace-hash",
+      workspaceHash,
     })
     expect(await store.query({ sessionId: "s1" })).toMatchObject([
       { type: "system.sessionStarted" },
       {
         type: "system.checkpoint",
-        payload: { sequence: 2, workspaceHash: "workspace-hash" },
+        payload: { sequence: 2, workspaceHash },
       },
     ])
     await coordinator.end()
@@ -129,6 +131,70 @@ describe("OperationLogCoordinator", () => {
     })
 
     await expect(coordinator.documentEvent()).rejects.toThrow("INVALID_OPERATION_SNAPSHOT")
+    await coordinator.end()
+  })
+
+  it("rejects a workspace snapshot with a mismatched hash", async () => {
+    const { store, recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({
+      store,
+      recorder,
+      snapshot: () => ({
+        ...snapshot(),
+        workspaceState: { panels: { inspector: true } },
+        workspaceHash: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      }),
+      checkpointEveryEvents: 1,
+    })
+
+    await expect(coordinator.documentEvent()).rejects.toThrow("INVALID_OPERATION_SNAPSHOT")
+    await coordinator.end()
+  })
+
+  it("captures and appends a checkpoint before a concurrent workspace event", async () => {
+    const { store, recorder } = create()
+    const workspaceState = { panels: { inspector: true } }
+    const workspaceHash = await hashCanonical(workspaceState)
+    let releaseSnapshot!: () => void
+    let snapshotStarted!: () => void
+    const snapshotReady = new Promise<void>((resolve) => {
+      releaseSnapshot = resolve
+    })
+    const snapshotStartedPromise = new Promise<void>((resolve) => {
+      snapshotStarted = resolve
+    })
+    const coordinator = await OperationLogCoordinator.start({
+      store,
+      recorder,
+      snapshot: async () => {
+        snapshotStarted()
+        await snapshotReady
+        return { ...snapshot(), workspaceState, workspaceHash }
+      },
+      checkpointEveryEvents: 1,
+    })
+
+    const checkpointing = coordinator.documentEvent()
+    await snapshotStartedPromise
+    const workspaceEvent = recorder.record({
+      category: "workspace",
+      type: "workspace.layoutChanged",
+      status: "observed",
+      payload: { panel: "inspector" },
+    })
+    releaseSnapshot()
+    await Promise.all([checkpointing, workspaceEvent])
+
+    expect(await store.getNearestCheckpoint("s1", 2)).toMatchObject({
+      sequence: 2,
+      workspaceState,
+      workspaceHash,
+    })
+    expect(await store.query({ sessionId: "s1" })).toMatchObject([
+      { sequence: 1, type: "system.sessionStarted" },
+      { sequence: 2, type: "system.checkpoint", payload: { sequence: 2, workspaceHash } },
+      { sequence: 3, type: "workspace.layoutChanged" },
+    ])
     await coordinator.end()
   })
 

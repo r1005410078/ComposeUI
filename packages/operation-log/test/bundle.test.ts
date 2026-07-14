@@ -63,6 +63,34 @@ async function seededStoreWithWorkspace(): Promise<MemoryOperationLogStore> {
   return store
 }
 
+async function seededStoreWithWorkspaceCheckpointEvent(): Promise<MemoryOperationLogStore> {
+  const store = await seededStoreWithWorkspace()
+  const checkpoint = await store.getNearestCheckpoint("s1", 2)
+  if (checkpoint === undefined) throw new Error("checkpoint missing")
+  await store.putSession({ ...session, eventCount: 3 })
+  await store.putCheckpoint({ ...checkpoint, sequence: 3 })
+  await store.append([
+    {
+      schemaVersion: 1,
+      eventId: "e3",
+      sessionId: "s1",
+      projectId: "p1",
+      sequence: 3,
+      timestamp: "2026-07-13T00:00:03.000Z",
+      category: "system",
+      type: "system.checkpoint",
+      status: "observed",
+      payload: {
+        sequence: 3,
+        documentHash: checkpoint.documentHash,
+        sessionHash: checkpoint.sessionHash,
+        workspaceHash: checkpoint.workspaceHash,
+      },
+    },
+  ])
+  return store
+}
+
 async function rewriteBundle(
   encoded: string,
   mutate: (bundle: Record<string, any>) => void,
@@ -121,7 +149,8 @@ describe("log bundles", () => {
 
   it("recomputes a workspace hash after checkpoint redaction", async () => {
     const redactedWorkspaceState = { panels: { inspector: "[REDACTED]" } }
-    const encoded = await exportLogBundle(await seededStoreWithWorkspace(), {
+    const originalWorkspaceHash = await hashCanonical({ panels: { inspector: true } })
+    const encoded = await exportLogBundle(await seededStoreWithWorkspaceCheckpointEvent(), {
       sessionId: "s1",
       productVersion: "0.0.0",
       redactor: <T>(value: T): T => {
@@ -136,10 +165,16 @@ describe("log bundles", () => {
 
     const bundle = await importLogBundle(encoded)
 
-    expect(bundle.checkpoints[0]).toMatchObject({
+    const checkpoint = bundle.checkpoints.find((item) => item.sequence === 3)
+    const checkpointEvent = bundle.events.find((item) => item.type === "system.checkpoint")
+    const redactedWorkspaceHash = await hashCanonical(redactedWorkspaceState)
+    expect(checkpoint).toMatchObject({
       workspaceState: redactedWorkspaceState,
-      workspaceHash: await hashCanonical(redactedWorkspaceState),
+      workspaceHash: redactedWorkspaceHash,
     })
+    expect(checkpointEvent?.payload).toMatchObject({ workspaceHash: redactedWorkspaceHash })
+    expect(checkpointEvent?.payload).not.toMatchObject({ workspaceHash: originalWorkspaceHash })
+    expect(bundle.events[0]?.payload).toEqual({ nodeId: "node-1", token: "secret" })
   })
 
   it("imports the legacy V1 bundle emitted before the V2 manifest", async () => {
@@ -207,6 +242,20 @@ describe("log bundles", () => {
     expect(bundle.manifest.bundleVersion).toBe(1)
     if (bundle.manifest.bundleVersion !== 1) throw new Error("expected legacy bundle")
     expect(bundle.manifest.sectionHashes.events).toBe(sectionHashes.events)
+
+    const legacyWorkspace = JSON.parse(legacy) as Record<string, any>
+    legacyWorkspace.checkpoints[0].workspaceState = { panels: { inspector: true } }
+    legacyWorkspace.checkpoints[0].workspaceHash = await hashCanonical(
+      legacyWorkspace.checkpoints[0].workspaceState,
+    )
+    legacyWorkspace.manifest.sectionHashes.checkpoints = await hashCanonical(
+      legacyWorkspace.checkpoints,
+    )
+    const { manifestHash: _legacyManifestHash, ...legacyManifestWithoutHash } = legacyWorkspace.manifest
+    legacyWorkspace.manifest.manifestHash = await hashCanonical(legacyManifestWithoutHash)
+    await expect(importLogBundle(canonicalJson(legacyWorkspace))).rejects.toThrow(
+      "LOG_BUNDLE_INTEGRITY_FAILED",
+    )
 
     const unknownFieldBundle = JSON.parse(legacy) as Record<string, any>
     unknownFieldBundle.session.unexpected = true
