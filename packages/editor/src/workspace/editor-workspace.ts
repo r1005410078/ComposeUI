@@ -6,6 +6,7 @@ import {
 } from "dockview"
 import { Play, Save, createElement as createIconElement } from "lucide"
 import type { Editor } from "@composeui/core"
+import type { OperationLogControllerPort } from "../operation-log-controller-port"
 import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
@@ -54,6 +55,8 @@ export interface MountEditorWorkspaceOptions {
   mountSceneExtras?: (root: HTMLElement) => void | (() => void) | { destroy(): void }
   layoutStore?: WorkspaceLayoutStore
   resources?: WorkspaceResourceService
+  operationLog?: OperationLogControllerPort
+  session?: EditorSession
   panelRegistry?: PanelRegistry | WorkspacePanelRegistry
   modeRegistry?: ModeRegistry
   createDockview?: DockviewFactory
@@ -195,7 +198,7 @@ export function mountEditorWorkspace(
   editor: Editor,
   options: MountEditorWorkspaceOptions,
 ): MountedEditorWorkspace {
-  const session = new EditorSession()
+  const session = options.session ?? new EditorSession()
   const events = options.onEvent ?? (() => undefined)
   const pageId = options.pageId
   const registry = new Map<string, WorkspacePanelDescriptor>()
@@ -236,6 +239,15 @@ export function mountEditorWorkspace(
   const save = appBarButton("save", "保存项目", Save)
   save.addEventListener("click", () => options.onSave?.())
   actions.append(run, save)
+  const replayController = options.operationLog?.replayController
+  const updateReplayActions = (): void => {
+    const active = replayController?.getState().active ?? false
+    run.disabled = active
+    save.disabled = active
+    root.classList.toggle("composeui-editor__workspace-replay-active", active)
+  }
+  updateReplayActions()
+  const unsubscribeReplay = replayController?.subscribe(updateReplayActions)
   const dockviewHost = document.createElement("div")
   dockviewHost.className = "composeui-editor__dockview-host"
   header.append(title, modeSlot, actions)
@@ -307,6 +319,7 @@ export function mountEditorWorkspace(
               api: contextApi,
               emit: events,
               ...(options.resources === undefined ? {} : { resources: options.resources }),
+              ...(options.operationLog === undefined ? {} : { operationLog: options.operationLog }),
             }
             try {
               if (descriptor.id === CANVAS) {
@@ -564,6 +577,7 @@ export function mountEditorWorkspace(
       if (disposed) return
       disposed = true
       layoutSubscription?.dispose()
+      unsubscribeReplay?.()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()
       dockview.dispose()

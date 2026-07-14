@@ -10,7 +10,37 @@ export type { MountedEditor, MountEditorOptions } from "./editor-view"
 export { mountComponentTree } from "./component-tree"
 export type { MountComponentTreeOptions, MountedComponentTree } from "./component-tree"
 export { EditorSession } from "./session"
-export type { EditorSessionState, InteractionMode, Viewport } from "./session"
+export type {
+  EditorSessionOperationObserver,
+  EditorSessionOptions,
+  EditorSessionState,
+  InteractionMode,
+  SessionOperation,
+  Viewport,
+} from "./session"
+export { createSessionOperationObserver } from "./operation-log-adapter"
+export {
+  ReplayController,
+  EditorSessionReplayAdapter,
+  type ReplayControllerListener,
+  type ReplayControllerPort,
+  type ReplayControllerState,
+  type ReplayEngineFactory,
+  type ReplayEngineLike,
+} from "./workspace/replay-controller"
+export { formatOperation, registerOperationFormatter } from "./workspace/operation-formatters"
+export type { OperationFormatter } from "./workspace/operation-formatters"
+export { OperationLogController } from "./operation-log-controller"
+export type {
+  OperationLogControllerListener,
+  OperationLogControllerPort,
+  OperationLogControllerOptions,
+  OperationLogControllerState,
+  OperationLogFilter,
+  OperationLogFilterValue,
+  OperationLogLevel,
+  OperationLogViewQuery,
+} from "./operation-log-controller"
 
 export {
   PanelRegistry,

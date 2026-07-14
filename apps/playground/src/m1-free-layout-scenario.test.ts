@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { UserConfig } from "vite"
+import type { EditorOperation } from "@composeui/core"
 import viteConfig from "../vite.config"
 import { createM1Scenario } from "./m1-free-layout-scenario"
 import { createPlaygroundLayoutStore } from "./main"
@@ -50,6 +51,35 @@ describe("M1 Playground scenario", () => {
     expect(exported).not.toContain("viewport")
     expect(exported).not.toContain("selection")
     expect(exported.endsWith("\n")).toBe(true)
+  })
+
+  it("does not observe fixed initialization commands but observes created nodes", () => {
+    const operations: EditorOperation[] = []
+    const scenario = createM1Scenario({
+      operationObserver: { observe: (operation) => operations.push(operation) },
+    })
+
+    expect(operations).toEqual([])
+
+    expect(scenario.createNode().ok).toBe(true)
+    expect(operations).toHaveLength(2)
+    expect(operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "document.command",
+          status: "started",
+          command: expect.objectContaining({ id: "node.create" }),
+        }),
+        expect.objectContaining({
+          type: "document.command",
+          status: "succeeded",
+          command: expect.objectContaining({
+            id: "node.create",
+            payload: expect.objectContaining({ id: "node-created-1" }),
+          }),
+        }),
+      ]),
+    )
   })
 
   it("resolves workspace packages from source during development", () => {

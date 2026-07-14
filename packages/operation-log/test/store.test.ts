@@ -1,0 +1,141 @@
+import { describe, expect, it, vi } from "vitest"
+import type { Diagnostic } from "@composeui/core"
+import type { OperationEvent } from "@composeui/operation-log"
+import { MemoryOperationLogStore } from "@composeui/operation-log"
+
+const event = (overrides: Partial<OperationEvent> = {}): OperationEvent => ({
+  schemaVersion: 1,
+  eventId: "e1",
+  sessionId: "s1",
+  projectId: "p1",
+  sequence: 1,
+  timestamp: "2026-07-13T00:00:00.000Z",
+  category: "document",
+  type: "document.command",
+  status: "succeeded",
+  payload: { value: 1 },
+  diagnostics: [{ code: "TEST", severity: "warning", message: "test" } satisfies Diagnostic],
+  ...overrides,
+})
+
+describe("MemoryOperationLogStore", () => {
+  it("appends events in sequence order and rejects duplicate or non-contiguous events", async () => {
+    const store = new MemoryOperationLogStore()
+
+    await store.append([event()])
+
+    await expect(store.append([event({ eventId: "e1", sequence: 2 })])).rejects.toThrow(
+      "DUPLICATE_OPERATION_EVENT",
+    )
+    await expect(store.append([event({ eventId: "e2", sequence: 3 })])).rejects.toThrow(
+      "NON_CONTIGUOUS_OPERATION_SEQUENCE",
+    )
+    expect(await store.query({ sessionId: "s1" })).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
+  })
+
+  it("keeps batches atomic and notifies only after a successful append", async () => {
+    const store = new MemoryOperationLogStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    await expect(store.append([event(), event({ eventId: "e2", sequence: 3 })])).rejects.toThrow(
+      "NON_CONTIGUOUS_OPERATION_SEQUENCE",
+    )
+    expect(await store.query({ sessionId: "s1" })).toEqual([])
+    expect(listener).not.toHaveBeenCalled()
+
+    await store.append([event(), event({ eventId: "e2", sequence: 2 })])
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects duplicate event ids within one batch without writing any event", async () => {
+    const store = new MemoryOperationLogStore()
+
+    await expect(
+      store.append([event({ eventId: "e1", sequence: 1 }), event({ eventId: "e1", sequence: 2 })]),
+    ).rejects.toThrow("DUPLICATE_OPERATION_EVENT")
+    expect(await store.query({ sessionId: "s1" })).toEqual([])
+  })
+
+  it("keeps a batch atomic when an existing event id appears after a new event", async () => {
+    const store = new MemoryOperationLogStore()
+    await store.append([event({ eventId: "e1", sequence: 1 })])
+
+    await expect(
+      store.append([event({ eventId: "e2", sequence: 2 }), event({ eventId: "e1", sequence: 3 })]),
+    ).rejects.toThrow("DUPLICATE_OPERATION_EVENT")
+    expect(await store.query({ sessionId: "s1" })).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
+  })
+
+  it("clones input and query results, filters afterSequence, and tracks sequences per session", async () => {
+    const store = new MemoryOperationLogStore()
+    const payload = { nested: { value: 1 } }
+
+    await store.append([
+      event({ eventId: "e2", sessionId: "s2", sequence: 1, payload }),
+      event({ eventId: "e1", sessionId: "s1", sequence: 1 }),
+    ])
+    payload.nested.value = 99
+
+    const result = await store.query({ sessionId: "s2", afterSequence: 0 })
+    result[0]!.payload = { nested: { value: 42 } }
+
+    expect((await store.query({ sessionId: "s2" }))[0]!.payload).toEqual({
+      nested: { value: 1 },
+    })
+    expect(await store.query({ sessionId: "s1", afterSequence: 1 })).toEqual([])
+  })
+
+  it("rejects event ids globally across sessions", async () => {
+    const store = new MemoryOperationLogStore()
+
+    await store.append([event()])
+    await expect(
+      store.append([event({ sessionId: "s2", eventId: "e1", sequence: 1 })]),
+    ).rejects.toThrow("DUPLICATE_OPERATION_EVENT")
+  })
+
+  it("supports unsubscribing and exposes committed data during notification", async () => {
+    const store = new MemoryOperationLogStore()
+    const pendingSnapshots: Promise<OperationEvent[]>[] = []
+    const listener = vi.fn(() => {
+      pendingSnapshots.push(store.query({ sessionId: "s1" }))
+    })
+    const unsubscribe = store.subscribe(listener)
+
+    await store.append([event()])
+    unsubscribe()
+    await store.append([event({ eventId: "e2", sequence: 2 })])
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(await pendingSnapshots[0]).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
+  })
+
+  it("isolates listener errors, reports them, and still notifies later listeners with committed data", async () => {
+    const listenerError = new Error("listener failed")
+    const onListenerError = vi.fn()
+    const store = new MemoryOperationLogStore({ onListenerError })
+    const laterListenerSnapshots: Promise<OperationEvent[]>[] = []
+    const laterListener = vi.fn(() => {
+      laterListenerSnapshots.push(store.query({ sessionId: "s1" }))
+    })
+    store.subscribe(() => {
+      throw listenerError
+    })
+    store.subscribe(laterListener)
+
+    await expect(store.append([event()])).resolves.toBeUndefined()
+
+    expect(onListenerError).toHaveBeenCalledWith(listenerError)
+    expect(laterListener).toHaveBeenCalledTimes(1)
+    expect(await laterListenerSnapshots[0]).toEqual([
+      expect.objectContaining({ eventId: "e1", sequence: 1 }),
+    ])
+  })
+})

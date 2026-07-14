@@ -84,7 +84,7 @@ body {
 
 .playground-json-output {
   background: var(--composeui-surface-panel);
-  border: 1px solid var(--composeui-border-default);
+  border: 1px solid var(--composeui-border-strong);
   color: var(--composeui-text-primary);
   inset: var(--composeui-app-bar-height) var(--composeui-space-2) var(--composeui-space-2) auto;
   margin: 0;

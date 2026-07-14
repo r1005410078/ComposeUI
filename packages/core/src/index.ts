@@ -1,5 +1,6 @@
 export type { Diagnostic, Result } from "./diagnostics"
 export { createEditor } from "./commands"
+export type { EditorOperation, EditorOperationObserver } from "./operations"
 export type {
   CreateNodeCommand,
   DeleteNodeCommand,

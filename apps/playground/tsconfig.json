@@ -5,6 +5,10 @@
     "noEmit": true,
     "tsBuildInfoFile": "../../node_modules/.cache/playground.tsbuildinfo"
   },
-  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/editor" }],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/operation-log" },
+    { "path": "../../packages/editor" }
+  ],
   "include": ["src/**/*.ts", "vite.config.ts"]
 }

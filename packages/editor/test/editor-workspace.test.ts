@@ -5,14 +5,17 @@ import { createEditor, createEmptyDocument } from "@composeui/core"
 import {
   createModeRegistry,
   mountEditorWorkspace,
+  ReplayController,
   type DockviewFactory,
   type EditorWorkspaceDockview,
 } from "../src/index"
 import type {
   StoredWorkspaceLayout,
+  WorkspaceContext,
   WorkspacePanelDescriptor,
   WorkspacePanelRegistry,
 } from "../src/index"
+import type { OperationLogControllerPort, OperationLogViewQuery } from "../src/index"
 
 type FakePanel = {
   id: string
@@ -222,6 +225,84 @@ function createEditorInstance() {
 }
 
 describe("editor workspace", () => {
+  it("disables save and run while isolated replay is active", async () => {
+    const replayController = new ReplayController({
+      createEngine: vi.fn(async () => ({
+        runTo: vi.fn(async () => ({
+          status: "paused" as const,
+          deterministic: true,
+          startedAtSequence: 0,
+          currentSequence: 1,
+          targetSequence: 1,
+        })),
+        step: vi.fn(),
+        verify: vi.fn(),
+        continueBestEffort: vi.fn(),
+        getState: vi.fn(() => ({})),
+      })),
+    })
+    const operationLog: OperationLogControllerPort = {
+      query: async () => [],
+      subscribe: () => () => undefined,
+      exportSession: async () => "",
+      importBundle: async () => undefined,
+      startReplay: () => undefined,
+      replayController,
+    }
+    const root = document.createElement("div")
+    const mounted = mountEditorWorkspace(root, createEditorInstance(), {
+      pageId: "page-1",
+      operationLog,
+      createDockview: createDockviewFake().factory,
+    })
+
+    const run = root.querySelector<HTMLButtonElement>('[data-testid="workspace-run"]')!
+    const save = root.querySelector<HTMLButtonElement>('[data-testid="workspace-save"]')!
+    expect(run.disabled).toBe(false)
+    expect(save.disabled).toBe(false)
+    await replayController.start(1)
+    expect(run.disabled).toBe(true)
+    expect(save.disabled).toBe(true)
+    replayController.stop()
+    expect(run.disabled).toBe(false)
+    expect(save.disabled).toBe(false)
+    mounted.dispose()
+  })
+
+  it("passes the operation log controller unchanged to first-party panels", () => {
+    let capturedContext: WorkspaceContext | undefined
+    const operationLog: OperationLogControllerPort = {
+      query: async (_query: OperationLogViewQuery) => [],
+      subscribe: () => () => undefined,
+      exportSession: async () => "",
+      importBundle: async (_serialized: string) => undefined,
+      startReplay: (_sequence: number) => undefined,
+    }
+    const registry: WorkspacePanelRegistry = {
+      all: () => [
+        {
+          id: "context-probe",
+          title: "Context Probe",
+          closable: true,
+          defaultPosition: "bottom",
+          mount: (_root, context) => {
+            capturedContext = context
+          },
+        } satisfies WorkspacePanelDescriptor,
+      ],
+    }
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      operationLog,
+      panelRegistry: registry,
+      createDockview: createDockviewFake().factory,
+    })
+
+    expect(mounted.api.openPanel("context-probe")).toBe(true)
+    expect(capturedContext?.operationLog).toBe(operationLog)
+    mounted.dispose()
+  })
+
   it("creates the deterministic seven-panel 2D shell and protects 画布", () => {
     const fake = createDockviewFake()
     const root = document.createElement("div")
@@ -269,9 +350,7 @@ describe("editor workspace", () => {
     }
     expect(mounted.api.closePanel("canvas:page-1")).toBe(false)
     expect(root.querySelector("[data-testid='workspace-mode-bar']")).toBeNull()
-    expect(root.querySelector("[data-testid='workspace-project-title']")?.textContent).toBe(
-      "BMS",
-    )
+    expect(root.querySelector("[data-testid='workspace-project-title']")?.textContent).toBe("BMS")
     expect(root.querySelector("[data-testid='workspace-run']")).not.toBeNull()
     expect(root.querySelector("[data-testid='workspace-save']")).not.toBeNull()
     expect(

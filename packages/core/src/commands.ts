@@ -1,7 +1,9 @@
 import type { Diagnostic, Result } from "./diagnostics"
 import { History } from "./history"
 import type { HistoryEntry } from "./history"
+import type { EditorOperation, EditorOperationObserver } from "./operations"
 import type { NodeRecord, PageDocument, PageRecord } from "./schema"
+import { canonicalizeDocument } from "./snapshot"
 import { RecordStore } from "./store"
 import { transact } from "./transaction"
 import type {
@@ -92,6 +94,7 @@ export interface EditorChangeEvent {
 
 export interface EditorOptions {
   onDiagnostic?: (diagnostic: Diagnostic) => void
+  operationObserver?: EditorOperationObserver
 }
 
 export interface Editor {
@@ -583,6 +586,21 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
     }
   }
 
+  const observeOperation = (operation: EditorOperation): void => {
+    if (options.operationObserver === undefined) return
+    try {
+      options.operationObserver.observe(structuredClone(operation))
+    } catch (error) {
+      reportDiagnostic({
+        code: "EDITOR_OPERATION_OBSERVER_ERROR",
+        severity: "error",
+        message: safeErrorMessage(error),
+      })
+    }
+  }
+
+  const currentHistoryIndex = (): number => history.snapshot().currentIndex
+
   const emit = (event: EditorChangeEvent): void => {
     for (const listener of listeners) {
       try {
@@ -603,8 +621,23 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
 
   const applyHistory = (direction: "undo" | "redo"): Result<void> => {
     const result = direction === "undo" ? history.undo(store) : history.redo(store)
-    if (!result.ok) return result
+    const type = direction === "undo" ? "history.undo" : "history.redo"
+    if (!result.ok) {
+      observeOperation({
+        type,
+        status: "failed",
+        currentIndex: currentHistoryIndex(),
+        diagnostics: result.diagnostics,
+      })
+      return result
+    }
     store = result.value.store
+    observeOperation({
+      type,
+      status: "succeeded",
+      transactionId: result.value.entry.transactionId,
+      currentIndex: currentHistoryIndex(),
+    })
     emit({
       store,
       transaction: result.value.entry,
@@ -615,11 +648,30 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
 
   const jumpToHistory = (index: number): Result<void> => {
     if (index === history.snapshot().currentIndex) {
+      observeOperation({
+        type: "history.jump",
+        status: "succeeded",
+        currentIndex: currentHistoryIndex(),
+      })
       return { ok: true, value: undefined, diagnostics: [] }
     }
     const result = history.jumpTo(store, index)
-    if (!result.ok) return result
+    if (!result.ok) {
+      observeOperation({
+        type: "history.jump",
+        status: "failed",
+        currentIndex: currentHistoryIndex(),
+        diagnostics: result.diagnostics,
+      })
+      return result
+    }
     store = result.value.store
+    observeOperation({
+      type: "history.jump",
+      status: "succeeded",
+      transactionId: result.value.entry.transactionId,
+      currentIndex: currentHistoryIndex(),
+    })
     emit({
       store,
       transaction: result.value.entry,
@@ -629,17 +681,35 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
   }
 
   const dispatch = (command: EditorCommand): Result<void> => {
+    const before = structuredClone(canonicalizeDocument(store))
+    observeOperation({ type: "document.command", status: "started", command })
     const result = runCommand(store, command)
-    if (!result.ok) return { ok: false, diagnostics: result.diagnostics }
+    if (!result.ok) {
+      observeOperation({
+        type: "document.command",
+        status: "failed",
+        command,
+        diagnostics: result.diagnostics,
+      })
+      return { ok: false, diagnostics: result.diagnostics }
+    }
 
     store = result.store
-    if (isEmptyPatch(result.patch)) return { ok: true, value: undefined, diagnostics: [] }
     const entry: HistoryEntry = {
       transactionId: `transaction-${++transactionSequence}`,
       label: command.id,
       forward: result.patch,
       inverse: result.inverse,
     }
+    observeOperation({
+      type: "document.command",
+      status: "succeeded",
+      command,
+      transaction: entry,
+      before,
+      after: structuredClone(canonicalizeDocument(store)),
+    })
+    if (isEmptyPatch(result.patch)) return { ok: true, value: undefined, diagnostics: [] }
     history.record(entry)
     emit({ store, transaction: entry, origin: result.origin })
     return { ok: true, value: undefined, diagnostics: [] }

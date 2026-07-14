@@ -2,6 +2,7 @@ import type { EditorRecord, HistoryEntry } from "@composeui/core"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
+import { createOutputPanelMount } from "./output-panel"
 
 export type PanelId =
   | "scene"
@@ -18,8 +19,8 @@ const PANEL_META: Record<
   PanelId,
   Pick<WorkspacePanelDescriptor, "title" | "closable" | "defaultPosition">
 > = {
-  scene: { title: "场景", closable: false, defaultPosition: "left" },
-  resources: { title: "资源", closable: false, defaultPosition: "left" },
+  scene: { title: "场景", closable: true, defaultPosition: "left" },
+  resources: { title: "资源", closable: true, defaultPosition: "left" },
   history: { title: "历史", closable: false, defaultPosition: "left" },
   canvas: { title: "画布", closable: false, defaultPosition: "center" },
   inspector: { title: "检查器", closable: false, defaultPosition: "right" },
@@ -217,26 +218,7 @@ export function createHistoryPanel(): FirstPartyPanelDescriptor {
 }
 
 function createOutputPanel(): FirstPartyPanelDescriptor {
-  return descriptor("output", (root) => {
-    const panel = document.createElement("section")
-    panel.className = "composeui-editor__output"
-    panel.setAttribute("aria-label", "输出")
-    const messages = document.createElement("div")
-    messages.className = "composeui-editor__output-messages"
-    messages.dataset.testid = "output-messages"
-    const empty = document.createElement("p")
-    empty.dataset.testid = "empty-output"
-    empty.textContent = "暂无输出。"
-    messages.append(empty)
-    panel.append(messages)
-    root.replaceChildren(panel)
-    let disposed = false
-    return () => {
-      if (disposed) return
-      disposed = true
-      root.replaceChildren()
-    }
-  })
+  return descriptor("output", createOutputPanelMount())
 }
 
 export function createResourcesPanel(): FirstPartyPanelDescriptor {

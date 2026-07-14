@@ -9,6 +9,6 @@
     "rootDir": "src",
     "tsBuildInfoFile": "dist/editor.tsbuildinfo"
   },
-  "references": [{ "path": "../core" }],
+  "references": [{ "path": "../core" }, { "path": "../operation-log" }],
   "include": ["src/**/*.ts"]
 }
