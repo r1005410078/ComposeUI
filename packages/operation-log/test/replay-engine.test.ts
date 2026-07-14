@@ -134,7 +134,7 @@ async function importTestBundle(bundle: LogBundleV1) {
   return importLogBundle(encoded)
 }
 
-async function workspaceCheckpointBundle(workspaceState: unknown) {
+async function workspaceCheckpointBundle(workspaceState: unknown, events: OperationEvent[] = []) {
   const store = new MemoryOperationLogStore()
   const session = {
     sessionId: "session-1",
@@ -142,7 +142,7 @@ async function workspaceCheckpointBundle(workspaceState: unknown) {
     status: "ended" as const,
     startedAt: "2026-07-14T00:00:00.000Z",
     endedAt: "2026-07-14T00:01:00.000Z",
-    eventCount: 0,
+    eventCount: events.length,
     finalHash: "a".repeat(64),
   }
   const sessionState = sessionPort().state
@@ -158,6 +158,7 @@ async function workspaceCheckpointBundle(workspaceState: unknown) {
     workspaceState,
     workspaceHash: await hashCanonical(workspaceState),
   })
+  if (events.length > 0) await store.append(events)
   return importLogBundle(
     await exportLogBundle(store, {
       sessionId: session.sessionId,
@@ -354,6 +355,78 @@ describe("ReplayEngine", () => {
     })
     expect(legacy.getState().workspace).toBeUndefined()
     expect(legacyReceived).toEqual([undefined])
+  })
+
+  it("updates the default workspace state as panel and layout events replay", async () => {
+    const initialWorkspace = {
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["canvas"], activePanelId: "canvas" },
+    }
+    const nextLayout = {
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["canvas", "inspector"], activePanelId: "inspector" },
+    }
+    const events = [
+      {
+        ...event(1, { panelId: "inspector" }),
+        category: "workspace" as const,
+        type: "workspace.panel.opened",
+      },
+      {
+        ...event(2, { panelId: "inspector" }),
+        category: "workspace" as const,
+        type: "workspace.panel.activated",
+      },
+      {
+        ...event(3, { panelId: "canvas" }),
+        category: "workspace" as const,
+        type: "workspace.panel.closed",
+      },
+      {
+        ...event(4, { layout: nextLayout }),
+        category: "workspace" as const,
+        type: "workspace.layout.changed",
+      },
+      {
+        ...event(5, { layout: initialWorkspace }),
+        category: "workspace" as const,
+        type: "workspace.layout.reset",
+      },
+    ]
+    const engine = await ReplayEngine.create({
+      bundle: await workspaceCheckpointBundle(initialWorkspace, events),
+      createSession: () => sessionPort(),
+    })
+
+    expect((await engine.runTo(1)).state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["canvas", "inspector"],
+      activePanelId: "canvas",
+    })
+    expect((await engine.runTo(2)).state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["canvas", "inspector"],
+      activePanelId: "inspector",
+    })
+    expect((await engine.runTo(3)).state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["inspector"],
+      activePanelId: "inspector",
+    })
+    expect((await engine.runTo(4)).state?.workspace).toEqual({
+      layout: nextLayout,
+      panels: ["canvas", "inspector"],
+      activePanelId: "inspector",
+    })
+    const result = await engine.runTo(5)
+    expect(result).toMatchObject({ status: "completed", deterministic: true })
+    expect(result.state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["canvas"],
+      activePanelId: "canvas",
+    })
   })
 
   it("reports workspace factory failures separately from session failures", async () => {

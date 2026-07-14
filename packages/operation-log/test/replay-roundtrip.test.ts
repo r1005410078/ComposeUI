@@ -66,7 +66,7 @@ function createWorkspace(initialState: unknown): ReplayWorkspacePort {
   }
 }
 
-async function recordScenario() {
+async function recordScenario(options: { includeWorkspace?: boolean } = {}) {
   const store = new MemoryOperationLogStore()
   const recorder = new OperationRecorder({
     sessionId: "roundtrip-session",
@@ -75,16 +75,22 @@ async function recordScenario() {
     redactor: <T>(value: T) => structuredClone(value),
   })
   const initialDocument = createEmptyDocument({ documentId: "document-1", pageId: "page-1" })
+  const session = createSession()
+  const initialWorkspace = { version: 1, modeId: "2d", layout: { panels: [] } }
   await store.putCheckpoint({
     sessionId: recorder.sessionId,
     sequence: 0,
     createdAt: "2026-07-14T00:00:00.000Z",
     document: initialDocument,
-    sessionState: createSession().getState(),
+    sessionState: session.getState(),
     documentHash: await hashCanonical(initialDocument),
-    sessionHash: await hashCanonical(createSession().getState()),
-    workspaceState: { version: 1, modeId: "2d", layout: { panels: [] } },
-    workspaceHash: await hashCanonical({ version: 1, modeId: "2d", layout: { panels: [] } }),
+    sessionHash: await hashCanonical(session.getState()),
+    ...(options.includeWorkspace === false
+      ? {}
+      : {
+          workspaceState: initialWorkspace,
+          workspaceHash: await hashCanonical(initialWorkspace),
+        }),
   })
   const editor = createEditor(initialDocument, {
     operationObserver: createCoreOperationObserver(recorder),
@@ -95,17 +101,54 @@ async function recordScenario() {
     status: "observed",
     payload: {},
   })
+  if (options.includeWorkspace !== false) {
+    await recorder.record({
+      category: "workspace",
+      type: "workspace.panel.opened",
+      status: "observed",
+      payload: { panelId: "inspector" },
+    })
+    await recorder.record({
+      category: "workspace",
+      type: "workspace.layout.changed",
+      status: "observed",
+      payload: { layout: { version: 1, modeId: "2d", layout: { panels: ["inspector"] } } },
+    })
+  }
+  session.setSelection(["node-1"])
   await recorder.record({
-    category: "workspace",
-    type: "workspace.panel.opened",
+    category: "session",
+    type: "session.selection",
     status: "observed",
-    payload: { panelId: "inspector" },
+    payload: { ids: ["node-1"] },
   })
+  session.setViewport({ x: 40, y: 80, zoom: 1.5 })
   await recorder.record({
-    category: "workspace",
-    type: "workspace.layout.changed",
+    category: "session",
+    type: "session.viewport",
     status: "observed",
-    payload: { layout: { version: 1, modeId: "2d", layout: { panels: ["inspector"] } } },
+    payload: { x: 40, y: 80, zoom: 1.5 },
+  })
+  session.setInteractionMode("pan")
+  await recorder.record({
+    category: "session",
+    type: "session.tool",
+    status: "observed",
+    payload: { mode: "pan" },
+  })
+  session.setGridVisible(false)
+  await recorder.record({
+    category: "session",
+    type: "session.grid",
+    status: "observed",
+    payload: { visible: false },
+  })
+  session.setExpanded(["page-1", "node-1"])
+  await recorder.record({
+    category: "session",
+    type: "session.treeDisclosure",
+    status: "observed",
+    payload: { ids: ["page-1", "node-1"] },
   })
 
   expect(
@@ -156,6 +199,7 @@ async function recordScenario() {
     bundle,
     editor,
     finalDocument,
+    finalSession: session.getState(),
     finalWorkspace: { version: 1, modeId: "2d", layout: { panels: ["inspector"] } },
     eventCount: recorder.sequence,
     store,
@@ -163,7 +207,7 @@ async function recordScenario() {
 }
 
 describe("ReplayEngine public round trip", () => {
-  it("reconstructs create, move, rename, undo, redo and jump exactly", async () => {
+  it("reconstructs document, session, and workspace mutations exactly", async () => {
     const recorded = await recordScenario()
     const result = await (
       await ReplayEngine.create({
@@ -173,13 +217,33 @@ describe("ReplayEngine public round trip", () => {
       })
     ).verify()
     expect(result).toMatchObject({ status: "completed", deterministic: true })
-    expect(result.state?.document).toEqual(recorded.finalDocument)
-    expect(result.state?.workspace).toEqual(recorded.finalWorkspace)
+    expect(await hashCanonical(result.state?.document)).toBe(
+      await hashCanonical(recorded.finalDocument),
+    )
+    expect(await hashCanonical(result.state?.session)).toBe(
+      await hashCanonical(recorded.finalSession),
+    )
+    expect(await hashCanonical(result.state?.workspace)).toBe(
+      await hashCanonical(recorded.finalWorkspace),
+    )
     expect(result.currentSequence).toBe(recorded.eventCount)
     expect(canonicalizeDocument(recorded.editor.getStore())).toEqual(recorded.finalDocument)
     const sourceEvents = await recorded.store.query({
       sessionId: recorded.bundle.session.sessionId,
     })
     expect(sourceEvents.filter((event) => event.category === "document")).toHaveLength(6)
+  })
+
+  it("keeps workspace undefined through a legacy checkpoint without workspace fields", async () => {
+    const recorded = await recordScenario({ includeWorkspace: false })
+    const engine = await ReplayEngine.create({
+      bundle: recorded.bundle,
+      createSession,
+    })
+    expect(engine.getState().workspace).toBeUndefined()
+    const result = await engine.verify()
+
+    expect(result).toMatchObject({ status: "completed", deterministic: true })
+    expect(result.state?.workspace).toBeUndefined()
   })
 })

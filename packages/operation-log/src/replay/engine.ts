@@ -85,15 +85,42 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function workspaceLayoutState(layout: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(layout)) return undefined
+  return isRecord(layout.layout) ? layout.layout : layout
+}
+
+function workspacePanelIds(layout: unknown): string[] {
+  const panels = workspaceLayoutState(layout)?.panels
+  if (!Array.isArray(panels)) return []
+  return panels.filter((panelId): panelId is string => typeof panelId === "string")
+}
+
+function workspaceActivePanelId(layout: unknown): string | undefined {
+  const activePanelId = workspaceLayoutState(layout)?.activePanelId
+  return typeof activePanelId === "string" ? activePanelId : undefined
+}
+
 function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
-  let state = clone(initialState)
-  const panels = new Set<string>()
-  let activePanelId: string | undefined
+  let layout = clone(initialState)
+  const panels = new Set(workspacePanelIds(layout))
+  let activePanelId = workspaceActivePanelId(layout)
+
+  const applyLayout = (nextLayout: unknown): void => {
+    layout = clone(nextLayout)
+    panels.clear()
+    for (const panelId of workspacePanelIds(layout)) panels.add(panelId)
+    activePanelId = workspaceActivePanelId(layout)
+  }
 
   const snapshot = (): unknown => {
-    if (state !== undefined) return clone(state)
-    if (panels.size === 0 && activePanelId === undefined) return undefined
+    if (layout === undefined && panels.size === 0 && activePanelId === undefined) return undefined
     return {
+      layout: clone(layout),
       panels: [...panels],
       ...(activePanelId === undefined ? {} : { activePanelId }),
     }
@@ -110,11 +137,11 @@ function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
       panels.add(panelId)
       activePanelId = panelId
     },
-    applyLayout(layout) {
-      state = clone(layout)
+    applyLayout(nextLayout) {
+      applyLayout(nextLayout)
     },
-    resetLayout(layout) {
-      state = clone(layout)
+    resetLayout(nextLayout) {
+      applyLayout(nextLayout)
     },
     getState: snapshot,
   }
