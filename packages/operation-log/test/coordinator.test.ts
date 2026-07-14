@@ -88,6 +88,35 @@ describe("OperationLogCoordinator", () => {
     await coordinator.end()
   })
 
+  it("synchronizes session eventCount after flushing non-document events", async () => {
+    const { store, recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({ store, recorder, snapshot })
+
+    await recorder.record({
+      category: "session",
+      type: "session.selection",
+      status: "observed",
+      payload: { ids: ["node-1"] },
+    })
+    await coordinator.flush()
+
+    expect(await store.getSession("s1")).toMatchObject({ status: "active", eventCount: 2 })
+    await coordinator.end()
+  })
+
+  it("preserves ended status when flushing after session end", async () => {
+    const { store, recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({ store, recorder, snapshot })
+
+    await coordinator.end()
+    await coordinator.flush()
+
+    expect(await store.getSession("s1")).toMatchObject({
+      status: "ended",
+      eventCount: recorder.sequence,
+    })
+  })
+
   it("checkpoints when the time threshold is reached", async () => {
     const time = clock()
     const { store, recorder } = create()

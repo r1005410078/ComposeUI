@@ -212,6 +212,9 @@ export class OperationLogCoordinator {
   async flush(): Promise<void> {
     await this.#pending
     await this.#recorder.flush()
+    if (this.#session.eventCount === this.#recorder.sequence) return
+    this.#session.eventCount = this.#recorder.sequence
+    await this.#store.putSession(this.#session)
   }
 
   dispose(): void {
