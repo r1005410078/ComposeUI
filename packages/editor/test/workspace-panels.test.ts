@@ -628,7 +628,6 @@ describe("workspace panel renderers", () => {
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
     const file = { text: vi.fn(async () => "bundle") }
     Object.defineProperty(input, "files", { configurable: true, value: [file] })
-    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
@@ -693,7 +692,7 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
-  it("clears only the current view through More", async () => {
+  it("confirms clearing only the current view and preserves source events", async () => {
     const events = [operationEvent()]
     const operationLog = fakeOperationLogController(events)
     const root = document.createElement("div")
@@ -705,10 +704,130 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
 
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    expect(root.querySelector("[data-testid='output-clear-confirmation']")?.textContent).toContain(
+      "仅清空当前视图，持久化日志仍会保留。",
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear-confirm']")!.click()
+
     expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
     expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
     await expect(operationLog.query({ levels: [], categories: [], search: "" })).resolves.toEqual(
       events,
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("cancels clear confirmation when canceled or More closes", async () => {
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(
+      root,
+      createContext(undefined, fakeOperationLogController([operationEvent()])),
+    )
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+
+    more.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear-cancel']")!.click()
+    expect(
+      root.querySelector<HTMLElement>("[data-testid='output-clear-confirmation']")?.hidden,
+    ).toBe(true)
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    more.click()
+    expect(root.querySelector("[data-testid='output-more-menu']")).toBeNull()
+    more.click()
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")?.hidden).toBe(
+      false,
+    )
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("blocks duplicate export, import, and replay while each action is busy", async () => {
+    let resolveExport: ((value: string) => void) | undefined
+    let resolveImport: (() => void) | undefined
+    let resolveReplay: (() => void) | undefined
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      exportSession: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveExport = resolve
+          }),
+      ),
+      importBundle: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveImport = resolve
+          }),
+      ),
+      startReplay: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveReplay = resolve
+          }),
+      ),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+
+    more.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() => expect(operationLog.exportSession).toHaveBeenCalledOnce())
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-export']")?.disabled).toBe(
+      true,
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    expect(operationLog.exportSession).toHaveBeenCalledOnce()
+    resolveExport?.("bundle")
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-export']")?.disabled).toBe(
+        false,
+      ),
+    )
+
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledOnce())
+    expect(root.querySelector("[data-testid='output-import']")?.textContent).toContain("导入中")
+    input.dispatchEvent(new Event("change"))
+    expect(operationLog.importBundle).toHaveBeenCalledOnce()
+    resolveImport?.()
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-import']")?.disabled).toBe(
+        false,
+      ),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledOnce())
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
+      true,
+    )
+    expect(root.querySelector("[data-testid='output-replay']")?.textContent).toContain("回放中")
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    expect(operationLog.startReplay).toHaveBeenCalledOnce()
+    resolveReplay?.()
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
+        false,
+      ),
     )
     if (typeof dispose === "function") dispose()
   })
@@ -807,7 +926,7 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
-  it("surfaces import, export, and replay failures without unhandled rejections", async () => {
+  it("retains output context and surfaces import, export, and replay failures", async () => {
     const importBundle = vi.fn<OperationLogControllerPort["importBundle"]>()
     const exportSession = vi.fn<OperationLogControllerPort["exportSession"]>()
     const startReplay = vi.fn<OperationLogControllerPort["startReplay"]>()
@@ -826,6 +945,15 @@ describe("workspace panel renderers", () => {
     await vi.waitFor(() =>
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "document"
+    search.dispatchEvent(new Event("input"))
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+    filter.click()
+    root.querySelector<HTMLInputElement>("[data-filter-category='system']")!.click()
+    await vi.waitFor(() => expect(filter.textContent).toContain("筛选 5"))
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-close']")!.click()
 
     root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
@@ -834,6 +962,10 @@ describe("workspace panel renderers", () => {
         "导出日志失败",
       ),
     )
+    expect(root.querySelector("[data-testid='output-more-menu']")).not.toBeNull()
+    expect(search.value).toBe("document")
+    expect(filter.textContent).toContain("筛选 5")
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
 
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
     Object.defineProperty(input, "files", {
@@ -846,7 +978,6 @@ describe("workspace panel renderers", () => {
         },
       ],
     })
-    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() =>
@@ -865,6 +996,10 @@ describe("workspace panel renderers", () => {
         "导入日志失败",
       ),
     )
+    expect(root.querySelector("[data-testid='output-more-menu']")).not.toBeNull()
+    expect(search.value).toBe("document")
+    expect(filter.textContent).toContain("筛选 5")
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()

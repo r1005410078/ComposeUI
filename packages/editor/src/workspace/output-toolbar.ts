@@ -38,7 +38,10 @@ function isSelected<Value extends string>(selected: readonly Value[], value: Val
   return selected.length === 0 || selected.includes(value)
 }
 
-function normalize<Value extends string>(selected: readonly Value[], all: readonly Value[]): Value[] {
+function normalize<Value extends string>(
+  selected: readonly Value[],
+  all: readonly Value[],
+): Value[] {
   return selected.length === all.length ? [] : [...selected]
 }
 
@@ -49,7 +52,8 @@ export interface OutputToolbarModel {
   readonly autoScroll: boolean
   readonly selectedSequence?: number
   readonly canReplaySelection: boolean
-  readonly busyAction?: string
+  readonly confirmClear?: boolean
+  readonly busyAction?: string | readonly string[]
 }
 
 export interface OutputToolbarActions {
@@ -59,7 +63,9 @@ export interface OutputToolbarActions {
   onAutoScrollChange(autoScroll: boolean): void
   onImport(file: File): void
   onExport(): void
-  onClearView(): void
+  onRequestClear(): void
+  onCancelClear(): void
+  onConfirmClear(): void
   onReplaySelected(sequence: number): void
 }
 
@@ -96,6 +102,12 @@ function menuItem(testid: string, label: string, onClick: () => void): HTMLButto
   return item
 }
 
+function isBusy(busyAction: OutputToolbarModel["busyAction"], action: string): boolean {
+  return typeof busyAction === "string"
+    ? busyAction === action
+    : (busyAction?.includes(action) ?? false)
+}
+
 export function mountOutputToolbar(
   root: HTMLElement,
   actions: OutputToolbarActions,
@@ -104,12 +116,15 @@ export function mountOutputToolbar(
   root.dataset.testid = "output-toolbar"
 
   let disposed = false
+  let menuOpen = false
+  let filterOpen = false
   let model: OutputToolbarModel = {
     levels: [],
     categories: [],
     search: "",
     autoScroll: true,
     canReplaySelection: false,
+    confirmClear: false,
   }
   let pendingFilterFocus:
     | { readonly attribute: "filterLevel" | "filterCategory"; readonly value: string }
@@ -128,7 +143,7 @@ export function mountOutputToolbar(
   filterHost.className = "composeui-editor__output-filter-host"
   const filterPopoverId = `composeui-output-filter-popover-${++nextFilterPopoverId}`
   const filter = actionButton("output-filter-trigger", "筛选", Filter, () => {
-    if (filterPopover.isConnected) closeFilter(false)
+    if (filterOpen) closeFilter(false)
     else {
       closeMenu(false)
       openFilter()
@@ -142,7 +157,7 @@ export function mountOutputToolbar(
     actions.onAutoScrollChange(!model.autoScroll)
   })
   const more = actionButton("output-more-trigger", "更多操作", MoreHorizontal, () => {
-    if (menu.isConnected) closeMenu(false)
+    if (menuOpen) closeMenu(false)
     else openMenu()
   })
   more.setAttribute("aria-haspopup", "menu")
@@ -156,6 +171,7 @@ export function mountOutputToolbar(
   fileInput.hidden = true
   fileInput.dataset.testid = "output-import-input"
   fileInput.addEventListener("change", () => {
+    if (isBusy(model.busyAction, "import")) return
     const file = fileInput.files?.[0]
     if (file !== undefined) actions.onImport(file)
     fileInput.value = ""
@@ -166,11 +182,11 @@ export function mountOutputToolbar(
   menu.setAttribute("role", "menu")
   menu.setAttribute("aria-label", "更多操作")
   const importItem = menuItem("output-import", "导入日志", () => {
-    closeMenu(false)
+    if (isBusy(model.busyAction, "import")) return
     fileInput.click()
   })
   const exportItem = menuItem("output-export", "导出日志", () => {
-    closeMenu(false)
+    if (isBusy(model.busyAction, "export")) return
     actions.onExport()
   })
   const scrollItem = menuItem("output-menu-scroll", "", () => {
@@ -178,10 +194,22 @@ export function mountOutputToolbar(
     actions.onAutoScrollChange(!model.autoScroll)
   })
   const clearItem = menuItem("output-clear", "清空当前视图", () => {
-    closeMenu(false)
-    actions.onClearView()
+    actions.onRequestClear()
   })
-  menu.append(importItem, exportItem, scrollItem, clearItem)
+  const clearConfirmation = document.createElement("div")
+  clearConfirmation.className = "composeui-editor__output-clear-confirmation"
+  clearConfirmation.dataset.testid = "output-clear-confirmation"
+  clearConfirmation.setAttribute("role", "group")
+  clearConfirmation.setAttribute("aria-label", "确认清空当前视图")
+  const clearNotice = document.createElement("p")
+  clearNotice.textContent = "仅清空当前视图，持久化日志仍会保留。"
+  const cancelClear = menuItem("output-clear-cancel", "取消", () => actions.onCancelClear())
+  const confirmClear = menuItem("output-clear-confirm", "确认清空", () => actions.onConfirmClear())
+  const clearConfirmationActions = document.createElement("div")
+  clearConfirmationActions.className = "composeui-editor__output-clear-confirmation-actions"
+  clearConfirmationActions.append(cancelClear, confirmClear)
+  clearConfirmation.append(clearNotice, clearConfirmationActions)
+  menu.append(importItem, exportItem, scrollItem, clearItem, clearConfirmation)
   const filterPopover = document.createElement("div")
   filterPopover.className = "composeui-editor__output-filter-popover"
   filterPopover.id = filterPopoverId
@@ -207,14 +235,17 @@ export function mountOutputToolbar(
   filterActions.append(resetFilters, closeFilters)
   filterPopover.append(filterOptions, filterActions)
   const openMenu = (): void => {
-    if (disposed || menu.isConnected) return
+    if (disposed || menuOpen) return
     closeFilter(false)
     menuHost.append(menu)
+    menuOpen = true
     more.setAttribute("aria-expanded", "true")
   }
   const closeMenu = (restoreFocus: boolean): void => {
-    if (!menu.isConnected) return
+    if (!menuOpen) return
+    if (model.confirmClear) actions.onCancelClear()
     menu.remove()
+    menuOpen = false
     more.setAttribute("aria-expanded", "false")
     if (restoreFocus) more.focus()
   }
@@ -281,31 +312,33 @@ export function mountOutputToolbar(
     }
   }
   const openFilter = (): void => {
-    if (disposed || filterPopover.isConnected) return
+    if (disposed || filterOpen) return
     renderFilterOptions()
     filterHost.append(filterPopover)
+    filterOpen = true
     filter.setAttribute("aria-expanded", "true")
   }
   const closeFilter = (restoreFocus: boolean): void => {
-    if (!filterPopover.isConnected) return
+    if (!filterOpen) return
     filterPopover.remove()
+    filterOpen = false
     filter.setAttribute("aria-expanded", "false")
     if (restoreFocus) filter.focus()
   }
   const onDocumentKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && filterPopover.isConnected) {
+    if (event.key === "Escape" && filterOpen) {
       event.preventDefault()
       closeFilter(true)
-    } else if (event.key === "Escape" && menu.isConnected) {
+    } else if (event.key === "Escape" && menuOpen) {
       event.preventDefault()
       closeMenu(true)
     }
   }
   const onDocumentPointerDown = (event: PointerEvent): void => {
-    if (menu.isConnected && event.target instanceof Node && !root.contains(event.target)) {
+    if (menuOpen && event.target instanceof Node && !root.contains(event.target)) {
       closeMenu(false)
     }
-    if (filterPopover.isConnected && event.target instanceof Node && !root.contains(event.target)) {
+    if (filterOpen && event.target instanceof Node && !root.contains(event.target)) {
       closeFilter(false)
     }
   }
@@ -333,17 +366,32 @@ export function mountOutputToolbar(
       createElement(Filter),
       document.createTextNode(`筛选${activeFilterCount === 0 ? "" : ` ${activeFilterCount}`}`),
     )
-    if (filterPopover.isConnected) renderFilterOptions()
+    if (filterOpen) renderFilterOptions()
     autoScroll.setAttribute("aria-pressed", String(model.autoScroll))
-    autoScroll.disabled = model.busyAction === "auto-scroll"
+    autoScroll.disabled = isBusy(model.busyAction, "auto-scroll")
     scrollItem.textContent = model.autoScroll ? "自动滚动：开" : "自动滚动：关"
+    const importing = isBusy(model.busyAction, "import")
+    importItem.disabled = importing
+    importItem.textContent = importing ? "导入中..." : "导入日志"
+    const exporting = isBusy(model.busyAction, "export")
+    exportItem.disabled = exporting
+    exportItem.textContent = exporting ? "导出中..." : "导出日志"
+    clearItem.hidden = model.confirmClear === true
+    clearConfirmation.hidden = !model.confirmClear
     replayHost.replaceChildren()
     if (!model.canReplaySelection || model.selectedSequence === undefined) return
     const sequence = model.selectedSequence
-    const replay = actionButton("output-replay", "回放到此处", Play, () => {
-      actions.onReplaySelected(sequence)
-    })
-    replay.disabled = model.busyAction === "replay"
+    const replaying = isBusy(model.busyAction, "replay")
+    const replay = actionButton(
+      "output-replay",
+      replaying ? "回放中..." : "回放到此处",
+      Play,
+      () => {
+        if (replaying) return
+        actions.onReplaySelected(sequence)
+      },
+    )
+    replay.disabled = replaying
     replayHost.append(replay)
   }
 

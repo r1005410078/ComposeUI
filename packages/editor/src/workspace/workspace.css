@@ -476,6 +476,29 @@
   outline-offset: 1px;
 }
 
+.composeui-editor__output-menu-item:disabled {
+  color: var(--composeui-text-disabled);
+  cursor: default;
+}
+
+.composeui-editor__output-clear-confirmation {
+  border-top: 1px solid var(--composeui-border-subtle);
+  color: var(--composeui-text-secondary);
+  display: grid;
+  font-size: var(--composeui-font-size-compact);
+  gap: var(--composeui-space-1);
+  padding: var(--composeui-space-2) var(--composeui-space-1) var(--composeui-space-1);
+}
+
+.composeui-editor__output-clear-confirmation p {
+  margin: 0;
+}
+
+.composeui-editor__output-clear-confirmation-actions {
+  display: flex;
+  gap: var(--composeui-gap-compact);
+}
+
 .composeui-editor__output-button {
   align-items: center;
   background: transparent;

@@ -11,7 +11,9 @@ function actions() {
     onAutoScrollChange: vi.fn(),
     onImport: vi.fn(),
     onExport: vi.fn(),
-    onClearView: vi.fn(),
+    onRequestClear: vi.fn(),
+    onCancelClear: vi.fn(),
+    onConfirmClear: vi.fn(),
     onReplaySelected: vi.fn(),
   }
 }
@@ -199,11 +201,41 @@ describe("mountOutputToolbar", () => {
     root.remove()
   })
 
-  it("opens More actions and closes on Escape with trigger focus restored", () => {
+  it("requires confirmation before clearing and cancels it when More closes", () => {
     const root = document.createElement("div")
     document.body.append(root)
     const toolbarActions = actions()
-    mountOutputToolbar(root, toolbarActions)
+    const mounted = mountOutputToolbar(root, toolbarActions)
+    toolbarActions.onRequestClear.mockImplementation(() =>
+      mounted.update({
+        levels: [],
+        categories: [],
+        search: "",
+        autoScroll: true,
+        canReplaySelection: false,
+        confirmClear: true,
+      }),
+    )
+    toolbarActions.onCancelClear.mockImplementation(() =>
+      mounted.update({
+        levels: [],
+        categories: [],
+        search: "",
+        autoScroll: true,
+        canReplaySelection: false,
+        confirmClear: false,
+      }),
+    )
+    toolbarActions.onConfirmClear.mockImplementation(() =>
+      mounted.update({
+        levels: [],
+        categories: [],
+        search: "",
+        autoScroll: true,
+        canReplaySelection: false,
+        confirmClear: false,
+      }),
+    )
     const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
 
     more.click()
@@ -221,9 +253,24 @@ describe("mountOutputToolbar", () => {
     expect(toolbarActions.onAutoScrollChange).toHaveBeenCalledWith(false)
     more.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
-    expect(toolbarActions.onClearView).toHaveBeenCalledTimes(1)
+    expect(toolbarActions.onRequestClear).toHaveBeenCalledTimes(1)
+    expect(toolbarActions.onConfirmClear).not.toHaveBeenCalled()
+
+    const confirmation = root.querySelector("[data-testid='output-clear-confirmation']")!
+    expect(confirmation.textContent).toContain("仅清空当前视图，持久化日志仍会保留。")
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear-cancel']")!.click()
+    expect(toolbarActions.onCancelClear).toHaveBeenCalledTimes(1)
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    more.click()
+    expect(toolbarActions.onCancelClear).toHaveBeenCalledTimes(2)
+    expect(root.querySelector("[role='menu']")).toBeNull()
 
     more.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear-confirm']")!.click()
+    expect(toolbarActions.onConfirmClear).toHaveBeenCalledTimes(1)
+
     const outside = document.createElement("div")
     document.body.append(outside)
     outside.dispatchEvent(new Event("pointerdown", { bubbles: true }))
@@ -235,6 +282,29 @@ describe("mountOutputToolbar", () => {
     expect(document.activeElement).toBe(more)
     outside.remove()
     root.remove()
+  })
+
+  it("shows a progress label and blocks duplicate async menu actions", () => {
+    const root = document.createElement("div")
+    const toolbarActions = actions()
+    const mounted = mountOutputToolbar(root, toolbarActions)
+    mounted.update({
+      levels: [],
+      categories: [],
+      search: "",
+      autoScroll: true,
+      canReplaySelection: false,
+      busyAction: "export",
+    })
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    const exportAction = root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!
+    expect(exportAction.disabled).toBe(true)
+    expect(exportAction.textContent).toContain("导出中")
+    exportAction.click()
+    expect(toolbarActions.onExport).not.toHaveBeenCalled()
+
+    mounted.dispose()
   })
 
   it("shows selected replay and calls the action with its sequence", () => {

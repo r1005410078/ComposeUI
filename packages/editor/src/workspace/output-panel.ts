@@ -193,6 +193,8 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let categories: OperationCategory[] = []
   let search = ""
   let autoScroll = true
+  let confirmClear = false
+  const busyActions = new Set<string>()
   let latestRows: readonly OperationEvent[] = []
   const replayController = controller.replayController
   let unsubscribeReplay: (() => void) | undefined
@@ -314,6 +316,8 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       autoScroll,
       ...(selected === undefined ? {} : { selectedSequence: selected.sequence }),
       canReplaySelection: selected !== undefined,
+      confirmClear,
+      ...(busyActions.size === 0 ? {} : { busyAction: [...busyActions] }),
     })
   }
   const hasActiveRestriction = (): boolean =>
@@ -386,23 +390,34 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     void refresh()
   }
 
-  const handleImport = (file: File): void => {
+  const runAsyncAction = (
+    action: "import" | "export" | "replay",
+    label: string,
+    task: () => Promise<void>,
+  ): void => {
+    if (busyActions.has(action)) return
+    busyActions.add(action)
     clearError()
     void Promise.resolve()
-      .then(() => file.text())
-      .then((serialized) => controller.importBundle(serialized))
-      .then(() => clearError())
-      .catch((error) => showError("导入日志", error))
+      .then(task)
+      .then(clearError)
+      .catch((error) => showError(label, error))
+      .finally(() => {
+        busyActions.delete(action)
+        renderToolbar()
+      })
+    renderToolbar()
+  }
+  const handleImport = (file: File): void => {
+    runAsyncAction("import", "导入日志", async () => {
+      const serialized = await file.text()
+      await controller.importBundle(serialized)
+    })
   }
   const handleExport = (): void => {
-    clearError()
-    void Promise.resolve()
-      .then(() => controller.exportSession())
-      .then((serialized) => {
-        downloadExport(serialized)
-        clearError()
-      })
-      .catch((error) => showError("导出日志", error))
+    runAsyncAction("export", "导出日志", async () => {
+      downloadExport(await controller.exportSession())
+    })
   }
   const clearView = (): void => {
     clearedThroughSequence = Math.max(
@@ -416,15 +431,12 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     renderToolbar()
   }
   const startSelectedReplay = (sequence: number): void => {
-    clearError()
-    void Promise.resolve()
-      .then(() => controller.startReplay(sequence))
-      .then(() => {
-        if (replayController === undefined || replayController.getState().active) return undefined
-        return replayController.start(sequence)
-      })
-      .then(() => clearError())
-      .catch((error) => showError("回放操作", error))
+    runAsyncAction("replay", "回放操作", async () => {
+      await controller.startReplay(sequence)
+      if (replayController !== undefined && !replayController.getState().active) {
+        await replayController.start(sequence)
+      }
+    })
   }
   toolbarMount = mountOutputToolbar(toolbar, {
     onSearch(nextSearch) {
@@ -444,7 +456,18 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     },
     onImport: handleImport,
     onExport: handleExport,
-    onClearView: clearView,
+    onRequestClear() {
+      confirmClear = true
+      renderToolbar()
+    },
+    onCancelClear() {
+      confirmClear = false
+      renderToolbar()
+    },
+    onConfirmClear() {
+      confirmClear = false
+      clearView()
+    },
     onReplaySelected: startSelectedReplay,
   })
   renderToolbar()
