@@ -119,6 +119,67 @@ async function openScene(page: Page) {
   await page.getByRole("tab", { name: "场景" }).click()
 }
 
+async function openOutput(page: Page) {
+  await page.getByRole("tab", { name: "输出" }).click()
+  await expect(page.getByTestId("output-toolbar")).toBeVisible()
+}
+
+async function setOutputContainerWidth(page: Page, width: number) {
+  await page.getByTestId("output-toolbar").evaluate((toolbar, nextWidth) => {
+    const output = toolbar.closest<HTMLElement>(".composeui-editor__output")
+    if (output === null) throw new Error("output container was not rendered")
+    output.style.width = `${nextWidth}px`
+    output.style.minWidth = `${nextWidth}px`
+    output.style.maxWidth = `${nextWidth}px`
+  }, width)
+}
+
+async function expectOutputToolbarDoesNotOverflow(page: Page) {
+  const dimensions = await page.getByTestId("output-toolbar").evaluate((toolbar) => {
+    const output = toolbar.closest<HTMLElement>(".composeui-editor__output")
+    if (output === null) throw new Error("output container was not rendered")
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const outputRect = output.getBoundingClientRect()
+    return {
+      toolbarLeft: toolbarRect.left,
+      toolbarRight: toolbarRect.right,
+      outputLeft: outputRect.left,
+      outputRight: outputRect.right,
+      scrollWidth: toolbar.scrollWidth,
+      clientWidth: toolbar.clientWidth,
+    }
+  })
+  expect(dimensions.toolbarLeft).toBeGreaterThanOrEqual(dimensions.outputLeft - 1)
+  expect(dimensions.toolbarRight).toBeLessThanOrEqual(dimensions.outputRight + 1)
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1)
+}
+
+async function captureOutputContainer(page: Page, path: string) {
+  const output = page.getByTestId("output-toolbar").locator("..")
+  const inlineStyles = await output.evaluate((element) => ({
+    height: element.style.height,
+    left: element.style.left,
+    position: element.style.position,
+    top: element.style.top,
+    zIndex: element.style.zIndex,
+  }))
+  await output.evaluate((element) => {
+    element.style.height = "220px"
+    element.style.left = "0"
+    element.style.position = "fixed"
+    element.style.top = "0"
+    element.style.zIndex = "100"
+  })
+  await output.screenshot({ path })
+  await output.evaluate((element, styles) => {
+    element.style.height = styles.height
+    element.style.left = styles.left
+    element.style.position = styles.position
+    element.style.top = styles.top
+    element.style.zIndex = styles.zIndex
+  }, inlineStyles)
+}
+
 test.describe("Dockview canvas gesture coverage", () => {
   test("synchronizes selection, free-layout drag, undo and redo", async ({ page }) => {
     await page.goto("/")
@@ -784,6 +845,63 @@ test("persists operation output across reload", async ({ page }) => {
   await page.reload()
   await page.getByRole("tab", { name: "输出" }).click()
   await expect(page.getByTestId("output-entry").filter({ hasText: "创建" }).first()).toBeVisible()
+})
+
+test("shows contextual Output controls and replay only after selecting a row", async ({ page }) => {
+  await page.goto("/")
+  await openCanvas(page)
+  await page.getByTestId("create-node").click()
+  await openOutput(page)
+
+  await expect(page.getByRole("searchbox", { name: "搜索操作日志" })).toBeVisible()
+  await expect(page.getByTestId("output-filter-trigger")).toBeVisible()
+  await expect(page.getByTestId("output-more-trigger")).toBeVisible()
+  await expect(page.getByTestId("output-replay")).toHaveCount(0)
+  await expect(page.getByTestId("output-selection-replay")).toHaveCount(0)
+
+  await page.getByTestId("output-filter-trigger").click()
+  await expect(page.getByTestId("output-filter-popover")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("output-filter-popover")).toHaveCount(0)
+
+  await page.getByTestId("output-entry").first().click()
+  await expect(page.getByTestId("output-selection-replay")).toBeVisible()
+})
+
+test("adapts contextual Output controls to container width", async ({ page }, testInfo) => {
+  await page.goto("/")
+  await openCanvas(page)
+  await page.getByTestId("create-node").click()
+  await openOutput(page)
+  await page.getByTestId("output-entry").first().click()
+
+  await setOutputContainerWidth(page, 800)
+  await expect(page.getByTestId("output-auto-scroll")).toBeVisible()
+  await expect(page.getByTestId("output-replay")).toBeVisible()
+  await expectOutputToolbarDoesNotOverflow(page)
+
+  await setOutputContainerWidth(page, 640)
+  await expect(page.getByTestId("output-auto-scroll")).toBeHidden()
+  await page.getByTestId("output-more-trigger").click()
+  await expect(page.getByTestId("output-menu-scroll")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expectOutputToolbarDoesNotOverflow(page)
+
+  await setOutputContainerWidth(page, 500)
+  await expect(page.getByTestId("output-replay")).toBeHidden()
+  await expect(page.getByTestId("output-selection-replay")).toBeVisible()
+  await expectOutputToolbarDoesNotOverflow(page)
+
+  await setOutputContainerWidth(page, 800)
+  await expect(page.getByTestId("output-replay")).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
+  await captureOutputContainer(page, testInfo.outputPath("output-toolbar-wide.png"))
+
+  await setOutputContainerWidth(page, 500)
+  await page.getByTestId("output-entry").first().click()
+  await expect(page.getByTestId("output-selection-replay")).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
+  await captureOutputContainer(page, testInfo.outputPath("output-toolbar-narrow.png"))
 })
 
 test("creates an operation checkpoint after successful document commands", async ({ page }) => {
