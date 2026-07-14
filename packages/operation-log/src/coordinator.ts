@@ -84,6 +84,7 @@ export class OperationLogCoordinator {
   #documentEventsSinceCheckpoint = 0
   #ended = false
   #pending: Promise<void> = Promise.resolve()
+  #lifecyclePending: Promise<void> = Promise.resolve()
 
   private constructor(options: OperationLogCoordinatorOptions) {
     this.#store = options.store
@@ -182,39 +183,49 @@ export class OperationLogCoordinator {
     await this.#store.putSession(this.#session)
   }
 
-  async end(finalHash?: string): Promise<void> {
-    if (this.#ended) return
-    this.#ended = true
-    await this.#pending
-    await this.#recorder.flush()
-    const event = await this.#recorder.record({
-      category: "system",
-      type: "system.sessionEnded",
-      status: "observed",
-      payload: finalHash === undefined ? {} : { finalHash },
-    })
-    await this.#recorder.flush()
-    this.#session.status = "ended"
-    this.#session.endedAt = this.#clock.now()
-    this.#session.eventCount = Math.max(this.#session.eventCount, event.sequence)
-    if (finalHash === undefined) delete this.#session.finalHash
-    else this.#session.finalHash = finalHash
-    await this.#store.putSession(this.#session)
-    for (const cleanup of this.#cleanup.splice(0)) {
-      try {
-        cleanup()
-      } catch {
-        // Lifecycle cleanup must not prevent session finalization.
+  end(finalHash?: string): Promise<void> {
+    return this.#enqueueLifecycle(async () => {
+      if (this.#ended) return
+      this.#ended = true
+      await this.#pending
+      await this.#recorder.flush()
+      const event = await this.#recorder.record({
+        category: "system",
+        type: "system.sessionEnded",
+        status: "observed",
+        payload: finalHash === undefined ? {} : { finalHash },
+      })
+      await this.#recorder.flush()
+      this.#session.status = "ended"
+      this.#session.endedAt = this.#clock.now()
+      this.#session.eventCount = Math.max(this.#session.eventCount, event.sequence)
+      if (finalHash === undefined) delete this.#session.finalHash
+      else this.#session.finalHash = finalHash
+      await this.#store.putSession(this.#session)
+      for (const cleanup of this.#cleanup.splice(0)) {
+        try {
+          cleanup()
+        } catch {
+          // Lifecycle cleanup must not prevent session finalization.
+        }
       }
-    }
+    })
   }
 
-  async flush(): Promise<void> {
-    await this.#pending
-    await this.#recorder.flush()
-    if (this.#session.eventCount === this.#recorder.sequence) return
-    this.#session.eventCount = this.#recorder.sequence
-    await this.#store.putSession(this.#session)
+  flush(): Promise<void> {
+    return this.#enqueueLifecycle(async () => {
+      await this.#pending
+      await this.#recorder.flush()
+      if (this.#session.eventCount === this.#recorder.sequence) return
+      this.#session.eventCount = this.#recorder.sequence
+      await this.#store.putSession(this.#session)
+    })
+  }
+
+  #enqueueLifecycle(operation: () => Promise<void>): Promise<void> {
+    const task = this.#lifecyclePending.then(operation)
+    this.#lifecyclePending = task.catch(() => undefined)
+    return task
   }
 
   dispose(): void {

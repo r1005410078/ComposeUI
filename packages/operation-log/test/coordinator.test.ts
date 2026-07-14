@@ -117,6 +117,55 @@ describe("OperationLogCoordinator", () => {
     })
   })
 
+  it("serializes a concurrent flush behind end without overwriting the ended session", async () => {
+    const { store, recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({ store, recorder, snapshot })
+    await recorder.record({
+      category: "session",
+      type: "session.selection",
+      status: "observed",
+      payload: { ids: ["node-1"] },
+    })
+
+    let releaseActiveSessionWrite!: () => void
+    let activeSessionWriteStarted!: () => void
+    const activeSessionWriteReleased = new Promise<void>((resolve) => {
+      releaseActiveSessionWrite = resolve
+    })
+    const activeSessionWriteStartedPromise = new Promise<void>((resolve) => {
+      activeSessionWriteStarted = resolve
+    })
+    const putSession = store.putSession.bind(store)
+    vi.spyOn(store, "putSession").mockImplementation(async (session) => {
+      if (session.status === "active" && session.eventCount === 2) {
+        activeSessionWriteStarted()
+        await activeSessionWriteReleased
+      }
+      await putSession(session)
+    })
+
+    const ending = coordinator.end("final-hash")
+    const flushing = coordinator.flush()
+    const writeStartedBeforeEnd = await Promise.race([
+      activeSessionWriteStartedPromise.then(() => true),
+      ending.then(() => false),
+    ])
+    expect(writeStartedBeforeEnd).toBe(false)
+    releaseActiveSessionWrite()
+    await Promise.all([ending, flushing])
+
+    expect(await store.getSession("s1")).toMatchObject({
+      status: "ended",
+      eventCount: 3,
+      finalHash: "final-hash",
+    })
+    expect(await store.query({ sessionId: "s1" })).toMatchObject([
+      { sequence: 1, type: "system.sessionStarted" },
+      { sequence: 2, type: "session.selection" },
+      { sequence: 3, type: "system.sessionEnded" },
+    ])
+  })
+
   it("checkpoints when the time threshold is reached", async () => {
     const time = clock()
     const { store, recorder } = create()

@@ -71,11 +71,16 @@ export async function createPlaygroundOperationRuntime(
     staleAfterMs: 0,
   })
   const existingSession = await store.getSession(PLAYGROUND_SESSION_ID)
+  const existingEvents = await store.query({ sessionId: PLAYGROUND_SESSION_ID })
+  const eventTableSequence = existingEvents.reduce(
+    (maximum, event) => Math.max(maximum, event.sequence),
+    0,
+  )
   const recorder = new OperationRecorder({
     sessionId: PLAYGROUND_SESSION_ID,
     projectId: PLAYGROUND_PROJECT_ID,
     store,
-    initialSequence: existingSession?.eventCount ?? 0,
+    initialSequence: Math.max(existingSession?.eventCount ?? 0, eventTableSequence),
     redactor: <T>(value: T) => structuredClone(value),
   })
   const session = new EditorSession({ operationObserver: createSessionOperationObserver(recorder) })

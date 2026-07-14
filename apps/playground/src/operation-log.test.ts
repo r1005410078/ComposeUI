@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { IDBFactory, indexedDB } from "fake-indexeddb"
+import { IndexedDbOperationLogStore } from "@composeui/operation-log"
 import { createPlaygroundOperationRuntime } from "./main"
 
 describe("playground operation log runtime", () => {
@@ -46,6 +47,39 @@ describe("playground operation log runtime", () => {
     const after = await second.controller.query({ levels: [], categories: [], search: "" })
     expect(after.length).toBeGreaterThanOrEqual(before.length)
     expect(after.some((event) => event.type === "document.command")).toBe(true)
+    await second.dispose()
+  })
+
+  it("initializes the recorder from the event table when session metadata is stale", async () => {
+    const databaseName = "composeui-playground-operation-log-stale-session-test"
+    const factory = new IDBFactory()
+    const first = await createPlaygroundOperationRuntime({ databaseName, indexedDB: factory })
+    first.scenario.createNode()
+    await first.coordinator.flush()
+    await first.dispose()
+
+    const repairStore = await IndexedDbOperationLogStore.open({
+      databaseName,
+      indexedDB: factory,
+    })
+    const existingSession = await repairStore.getSession("playground-session")
+    const events = await repairStore.query({ sessionId: "playground-session" })
+    expect(existingSession).toBeDefined()
+    expect(events.length).toBeGreaterThan(0)
+    await repairStore.putSession({
+      ...existingSession!,
+      status: "active",
+      eventCount: events.length - 1,
+    })
+    await repairStore.close()
+
+    const second = await createPlaygroundOperationRuntime({ databaseName, indexedDB: factory })
+
+    expect(second.recorder.sequence).toBe(events.at(-1)!.sequence + 1)
+    expect((await second.store.query({ sessionId: "playground-session" })).at(-1)).toMatchObject({
+      type: "system.sessionStarted",
+      sequence: events.at(-1)!.sequence + 1,
+    })
     await second.dispose()
   })
 
