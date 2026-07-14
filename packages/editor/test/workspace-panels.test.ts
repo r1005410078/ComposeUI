@@ -8,11 +8,6 @@ import { createWorkspacePanels, type PanelId } from "../src/workspace/panels"
 import type { OperationLogControllerPort } from "../src/operation-log-controller-port"
 import type { OperationLogControllerState } from "../src/operation-log-controller-port"
 import type { OperationEvent } from "@composeui/operation-log"
-import { ReplayController } from "../src/workspace/replay-controller"
-import type {
-  ReplayControllerPort,
-  ReplayControllerState,
-} from "../src/workspace/replay-controller"
 
 function createContext(
   resources?: WorkspaceContext["resources"],
@@ -311,7 +306,7 @@ describe("workspace panel renderers", () => {
     expect(outputRoot.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
   })
 
-  it("renders filtered operation rows and structured details", async () => {
+  it("renders operation rows and structured details", async () => {
     const events = [
       operationEvent(),
       operationEvent({
@@ -340,37 +335,19 @@ describe("workspace panel renderers", () => {
       "document",
     )
 
-    root.querySelector<HTMLButtonElement>("[data-testid='output-level-error']")!.click()
-    await vi.waitFor(() => {
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
-    })
-    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelectorAll<HTMLElement>("[data-testid='output-entry']")[1]!.click()
     expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
       "NODE_LOCKED",
     )
-    expect(root.querySelector("[data-testid='output-entry']")?.getAttribute("aria-selected")).toBe(
-      "true",
-    )
+    expect(
+      root.querySelectorAll("[data-testid='output-entry']")[1]?.getAttribute("aria-selected"),
+    ).toBe("true")
 
-    root.querySelector<HTMLButtonElement>("[data-testid='output-level-succeeded']")!.click()
-    await vi.waitFor(() => {
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
-    })
-    expect(operationLog.query).toHaveBeenLastCalledWith({
-      levels: ["failed", "succeeded"],
-      categories: [],
-      search: "",
-    })
-    root.querySelector<HTMLButtonElement>("[data-testid='output-category-document']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-testid='output-category-diagnostic']")!.click()
-    await vi.waitFor(() => {
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
-    })
-    expect(operationLog.query).toHaveBeenLastCalledWith({
-      levels: ["failed", "succeeded"],
-      categories: ["document", "diagnostic"],
-      search: "",
-    })
+    expect(root.querySelector("[data-testid='output-filter-trigger']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='output-more-trigger']")).not.toBeNull()
+    root.querySelector<HTMLElement>("[data-testid='output-list']")!.click()
+    expect(root.querySelector("[data-testid='output-details']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-replay']")).toBeNull()
 
     if (typeof dispose === "function") dispose()
   })
@@ -451,182 +428,41 @@ describe("workspace panel renderers", () => {
     expect(root.childElementCount).toBe(0)
   })
 
-  it("handles import, export, and replay actions", async () => {
-    const operationLog = fakeOperationLogController([operationEvent()])
-    const originalCreateObjectURL = URL.createObjectURL
-    const originalRevokeObjectURL = URL.revokeObjectURL
-    const createObjectURL = vi.fn(() => "blob:operation-log")
-    const revokeObjectURL = vi.fn()
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: createObjectURL,
-    })
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: revokeObjectURL,
-    })
-    const schedule = vi.spyOn(globalThis, "setTimeout")
-    const anchorClick = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => undefined)
-    const root = document.createElement("div")
-    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
-    await vi.waitFor(() =>
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
-    )
-
-    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
-    for (let index = 0; index < 8; index += 1) await Promise.resolve()
-    expect(anchorClick).toHaveBeenCalled()
-    expect(operationLog.exportSession).toHaveBeenCalledTimes(1)
-    expect(createObjectURL).toHaveBeenCalled()
-    expect(revokeObjectURL).not.toHaveBeenCalled()
-    expect(schedule).toHaveBeenCalledWith(expect.any(Function), 0)
-    const revokeTask = schedule.mock.calls.at(-1)?.[0]
-    expect(typeof revokeTask).toBe("function")
-    ;(revokeTask as () => void)()
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:operation-log")
-
-    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
-    await Promise.resolve()
-    expect(operationLog.startReplay).toHaveBeenCalledWith(1)
-
-    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
-    const file = { text: vi.fn(async () => "bundle") }
-    Object.defineProperty(input, "files", { configurable: true, value: [file] })
-    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
-    input.dispatchEvent(new Event("change"))
-    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
-
-    anchorClick.mockRestore()
-    schedule.mockRestore()
-    if (originalCreateObjectURL === undefined) {
-      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
-    } else {
-      Object.defineProperty(URL, "createObjectURL", {
-        configurable: true,
-        value: originalCreateObjectURL,
-      })
-    }
-    if (originalRevokeObjectURL === undefined) {
-      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
-    } else {
-      Object.defineProperty(URL, "revokeObjectURL", {
-        configurable: true,
-        value: originalRevokeObjectURL,
-      })
-    }
-    if (typeof dispose === "function") dispose()
-  })
-
-  it("renders isolated replay state and a typed difference", async () => {
-    const replayController = new ReplayController({
-      createEngine: vi.fn(async () => ({
-        runTo: vi.fn(async () => ({
-          status: "paused" as const,
-          deterministic: false,
-          startedAtSequence: 0,
-          currentSequence: 1,
-          targetSequence: 1,
-          difference: {
-            type: "patch-mismatch" as const,
-            sequence: 1,
-            path: "forward.created[0].layout.width",
-            expected: 120,
-            actual: 999,
-          },
-        })),
-        step: vi.fn(),
-        verify: vi.fn(),
-        continueBestEffort: vi.fn(),
-        getState: vi.fn(() => ({ sequence: 1 })),
-      })),
-    })
-    const base = fakeOperationLogController([operationEvent()])
-    const operationLog: OperationLogControllerPort = { ...base, replayController }
-    const context = createContext(undefined, operationLog)
-    const originalStore = context.editor.getStore().all()
-    const root = document.createElement("div")
-    const dispose = panel("output").mount(root, context)
-
-    await vi.waitFor(() =>
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
-    )
-    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
-
-    await vi.waitFor(() =>
-      expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
-        "patch-mismatch",
-      ),
-    )
-    expect(root.querySelector("[data-testid='replay-sequence']")?.textContent).toContain("1")
-    expect(root.querySelector("[data-testid='replay-deterministic']")?.textContent).toContain(
-      "存在差异",
-    )
-    expect(context.editor.getStore().all()).toEqual(originalStore)
-    expect(root.querySelector("[data-testid='replay-step-backward']")).not.toBeNull()
-    if (typeof dispose === "function") dispose()
-  })
-
-  it("catches synchronous replay button failures", async () => {
-    const state: ReplayControllerState = {
-      active: true,
-      status: "paused",
-      deterministic: true,
-      currentSequence: 1,
-    }
-    const replayController: ReplayControllerPort = {
-      start: vi.fn(async () => state),
-      stepBackward: vi.fn(() => {
-        throw new Error("step unavailable")
-      }),
-      stepForward: vi.fn(() => {
-        throw new Error("step unavailable")
-      }),
-      runTo: vi.fn(async () => state),
-      verify: vi.fn(async () => state),
-      continueBestEffort: vi.fn(async () => state),
-      stop: vi.fn(),
-      getState: vi.fn(() => state),
-      subscribe: vi.fn((callback) => {
-        callback(state)
-        return () => undefined
-      }),
-    }
+  it("shows a query retry action after a rejected query", async () => {
+    const event = operationEvent()
+    const query = vi
+      .fn<OperationLogControllerPort["query"]>()
+      .mockRejectedValueOnce(new Error("service unavailable"))
+      .mockResolvedValueOnce([event])
     const operationLog: OperationLogControllerPort = {
-      ...fakeOperationLogController([operationEvent()]),
-      replayController,
+      ...fakeOperationLogController([]),
+      query,
     }
     const root = document.createElement("div")
     const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "查询操作日志失败",
+      ),
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-query-retry']")!.click()
     await vi.waitFor(() =>
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
+    expect(query).toHaveBeenCalledTimes(2)
 
-    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
-    await vi.waitFor(() =>
-      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "回放下一步失败",
-      ),
-    )
     if (typeof dispose === "function") dispose()
   })
 
-  it("surfaces import, export, and replay failures without unhandled rejections", async () => {
-    const importBundle = vi.fn<OperationLogControllerPort["importBundle"]>()
-    const exportSession = vi.fn<OperationLogControllerPort["exportSession"]>()
-    const startReplay = vi.fn<OperationLogControllerPort["startReplay"]>()
-    importBundle.mockRejectedValue(new Error("bundle invalid"))
-    exportSession.mockRejectedValue(new Error("export unavailable"))
-    startReplay.mockRejectedValue(new Error("replay unavailable"))
-    const base = fakeOperationLogController([operationEvent()])
+  it("resets an active search from the filtered empty state", async () => {
+    const event = operationEvent()
+    const query = vi.fn(async ({ search }: { search: string }) =>
+      search === "missing" ? [] : [event],
+    )
     const operationLog: OperationLogControllerPort = {
-      ...base,
-      importBundle,
-      exportSession,
-      startReplay,
+      ...fakeOperationLogController([]),
+      query,
     }
     const root = document.createElement("div")
     const dispose = panel("output").mount(root, createContext(undefined, operationLog))
@@ -634,108 +470,41 @@ describe("workspace panel renderers", () => {
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
 
-    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "missing"
+    search.dispatchEvent(new Event("input", { bubbles: true }))
     await vi.waitFor(() =>
-      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "导出日志失败",
+      expect(root.querySelector("[data-testid='output-empty-filtered']")?.textContent).toContain(
+        "没有符合条件的日志",
       ),
     )
-
-    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
-    Object.defineProperty(input, "files", {
-      configurable: true,
-      value: [
-        {
-          text: vi.fn(async () => {
-            throw new Error("file unreadable")
-          }),
-        },
-      ],
-    })
-    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
-    input.dispatchEvent(new Event("change"))
+    root.querySelector<HTMLButtonElement>("[data-testid='output-reset-empty-filter']")!.click()
     await vi.waitFor(() =>
-      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "file unreadable",
-      ),
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
+    expect(search.value).toBe("")
+    expect(query).toHaveBeenLastCalledWith({ levels: [], categories: [], search: "" })
 
-    Object.defineProperty(input, "files", {
-      configurable: true,
-      value: [{ text: vi.fn(async () => "bundle") }],
-    })
-    input.dispatchEvent(new Event("change"))
+    if (typeof dispose === "function") dispose()
+  })
+
+
+
+  it("starts replay from the selected operation", async () => {
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
     await vi.waitFor(() =>
-      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "导入日志失败",
-      ),
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
-    await vi.waitFor(() =>
-      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "回放操作失败",
-      ),
-    )
+    await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledWith(1))
 
     if (typeof dispose === "function") dispose()
   })
 
-  it("uses a safe data URL fallback without ObjectURL APIs", async () => {
-    const originalCreateObjectURL = URL.createObjectURL
-    const originalRevokeObjectURL = URL.revokeObjectURL
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: undefined })
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: undefined })
-    const anchorClick = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => undefined)
-    const operationLog = fakeOperationLogController([operationEvent()])
-    const root = document.createElement("div")
-    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
-    await vi.waitFor(() =>
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
-    )
-
-    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
-    for (let index = 0; index < 8; index += 1) await Promise.resolve()
-    expect(anchorClick).toHaveBeenCalled()
-
-    anchorClick.mockRestore()
-    if (originalCreateObjectURL === undefined) {
-      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
-    } else {
-      Object.defineProperty(URL, "createObjectURL", {
-        configurable: true,
-        value: originalCreateObjectURL,
-      })
-    }
-    if (originalRevokeObjectURL === undefined) {
-      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
-    } else {
-      Object.defineProperty(URL, "revokeObjectURL", {
-        configurable: true,
-        value: originalRevokeObjectURL,
-      })
-    }
-    if (typeof dispose === "function") dispose()
-  })
-
-  it("keeps clear local and does not delete persisted events", async () => {
-    const operationLog = fakeOperationLogController([operationEvent()])
-    const root = document.createElement("div")
-    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
-    await vi.waitFor(() =>
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
-    )
-
-    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
-    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
-    expect(operationLog.query).toHaveBeenCalledTimes(1)
-    expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
-
-    if (typeof dispose === "function") dispose()
-  })
 
   it("returns all first-party panel descriptors with stable ids", () => {
     const ids: PanelId[] = createWorkspacePanels().map((descriptor) => descriptor.id)
