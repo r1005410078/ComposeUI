@@ -3,8 +3,8 @@ import type { EditorOperationObserver } from "@composeui/core"
 
 export function createM1Scenario(options: { operationObserver?: EditorOperationObserver } = {}) {
   const pageId = "page-1"
-  const editor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId }), options)
-  editor.dispatch({
+  const initialEditor = createEditor(createEmptyDocument({ documentId: "doc-1", pageId }))
+  initialEditor.dispatch({
     id: "node.create",
     payload: {
       id: "node-red",
@@ -17,7 +17,7 @@ export function createM1Scenario(options: { operationObserver?: EditorOperationO
       fill: "#dc2626",
     },
   })
-  editor.dispatch({
+  initialEditor.dispatch({
     id: "node.create",
     payload: {
       id: "node-blue",
@@ -30,6 +30,7 @@ export function createM1Scenario(options: { operationObserver?: EditorOperationO
       fill: "#2563eb",
     },
   })
+  const editor = createEditor(canonicalizeDocument(initialEditor.getStore()), options)
   let createdCount = 0
   const createNode = () => {
     createdCount += 1
