@@ -224,7 +224,14 @@ Phase one includes:
 - Output filtering, search, details, and virtualized rows;
 - isolated single-step, run-to-event, and headless deterministic replay.
 
-Phase two adds complete workspace layout capture, richer interaction sampling, imported-bundle management, and continuous visual playback.
+Phase two status:
+
+- [x] Workspace panel and layout capture.
+- [x] Workspace persistence and backward-compatible bundles.
+- [x] Isolated Workspace replay.
+- [ ] Higher-frequency interaction sampling.
+- [ ] Imported-bundle management UI.
+- [ ] Continuous visual replay.
 
 ## Testing
 
