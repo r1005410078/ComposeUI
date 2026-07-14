@@ -407,24 +407,97 @@ describe("ReplayEngine", () => {
 
     expect(engine.getState().workspace).toEqual(initialWorkspace)
     expect((await engine.runTo(1)).state?.workspace).toEqual({
-      version: 1,
-      modeId: "2d",
-      layout: { panels: ["canvas", "inspector"], activePanelId: "canvas" },
+      layout: initialWorkspace,
+      panels: ["canvas", "inspector"],
+      activePanelId: "canvas",
     })
     expect((await engine.runTo(2)).state?.workspace).toEqual({
-      version: 1,
-      modeId: "2d",
-      layout: { panels: ["canvas", "inspector"], activePanelId: "inspector" },
+      layout: initialWorkspace,
+      panels: ["canvas", "inspector"],
+      activePanelId: "inspector",
     })
     expect((await engine.runTo(3)).state?.workspace).toEqual({
-      version: 1,
-      modeId: "2d",
-      layout: { panels: ["inspector"], activePanelId: "inspector" },
+      layout: initialWorkspace,
+      panels: ["inspector"],
+      activePanelId: "inspector",
     })
-    expect((await engine.runTo(4)).state?.workspace).toEqual(nextLayout)
+    expect((await engine.runTo(4)).state?.workspace).toEqual({
+      layout: nextLayout,
+      panels: ["canvas", "inspector"],
+      activePanelId: "inspector",
+    })
     const result = await engine.runTo(5)
     expect(result).toMatchObject({ status: "completed", deterministic: true })
-    expect(result.state?.workspace).toEqual(initialWorkspace)
+    expect(result.state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["canvas"],
+      activePanelId: "canvas",
+    })
+  })
+
+  it("keeps Dockview-shaped layouts unchanged while tracking panel operations separately", async () => {
+    const dockviewLayout = {
+      version: 1,
+      modeId: "2d",
+      layout: {
+        grid: { orientation: "horizontal", root: "group-main" },
+        panels: {
+          canvas: { id: "canvas", group: "group-main" },
+        },
+        activeGroup: "group-main",
+      },
+    }
+    const nextLayout = {
+      version: 1,
+      modeId: "2d",
+      layout: {
+        grid: { orientation: "vertical", root: "group-inspector" },
+        panels: {
+          canvas: { id: "canvas", group: "group-main" },
+          inspector: { id: "inspector", group: "group-inspector" },
+        },
+        activeGroup: "group-inspector",
+      },
+    }
+    const engine = await ReplayEngine.create({
+      bundle: await workspaceCheckpointBundle(dockviewLayout, [
+        {
+          ...event(1, { panelId: "inspector" }),
+          category: "workspace",
+          type: "workspace.panel.opened",
+          status: "observed",
+        },
+        {
+          ...event(2, { panelId: "inspector" }),
+          category: "workspace",
+          type: "workspace.panel.activated",
+          status: "observed",
+        },
+        {
+          ...event(3, { layout: nextLayout }),
+          category: "workspace",
+          type: "workspace.layout.changed",
+          status: "observed",
+        },
+      ]),
+      createSession: () => sessionPort(),
+    })
+
+    const intermediate = await engine.runTo(2)
+    const expectedIntermediate = {
+      layout: dockviewLayout,
+      panels: ["inspector"],
+      activePanelId: "inspector",
+    }
+    expect(intermediate.state?.workspace).toEqual(expectedIntermediate)
+    expect(await hashCanonical(intermediate.state?.workspace)).toBe(
+      await hashCanonical(expectedIntermediate),
+    )
+    expect((intermediate.state?.workspace as { layout: unknown }).layout).toEqual(dockviewLayout)
+    expect((await engine.runTo(3)).state?.workspace).toEqual({
+      layout: nextLayout,
+      panels: [],
+    })
   })
 
   it("reports workspace port method and state failures as workspace differences", async () => {

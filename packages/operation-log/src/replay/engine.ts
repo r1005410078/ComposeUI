@@ -89,15 +89,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-function isWorkspaceLayoutWrapper(value: unknown): value is Record<string, unknown> {
-  return (
-    isRecord(value) &&
-    Object.hasOwn(value, "version") &&
-    Object.hasOwn(value, "modeId") &&
-    Object.hasOwn(value, "layout")
-  )
-}
-
 function workspaceLayoutState(layout: unknown): Record<string, unknown> | undefined {
   if (!isRecord(layout)) return undefined
   return isRecord(layout.layout) ? layout.layout : layout
@@ -118,25 +109,7 @@ function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
   let layout = clone(initialState)
   const panels = new Set(workspacePanelIds(layout))
   let activePanelId = workspaceActivePanelId(layout)
-
-  const synchronizePanelState = (): void => {
-    const layoutRecord = isRecord(layout) ? layout : {}
-    layout = layoutRecord
-    let state: Record<string, unknown>
-    if (isWorkspaceLayoutWrapper(layoutRecord)) {
-      const nestedLayout = layoutRecord.layout
-      if (isRecord(nestedLayout)) state = nestedLayout
-      else {
-        state = {}
-        layoutRecord.layout = state
-      }
-    } else {
-      state = layoutRecord
-    }
-    state.panels = [...panels]
-    if (activePanelId === undefined) delete state.activePanelId
-    else state.activePanelId = activePanelId
-  }
+  let hasPanelOverlay = false
 
   const applyLayout = (nextLayout: unknown): void => {
     layout = clone(nextLayout)
@@ -147,22 +120,27 @@ function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
 
   const snapshot = (): unknown => {
     if (layout === undefined && panels.size === 0 && activePanelId === undefined) return undefined
-    return clone(layout)
+    if (!hasPanelOverlay) return clone(layout)
+    return {
+      layout: clone(layout),
+      panels: [...panels],
+      ...(activePanelId === undefined ? {} : { activePanelId }),
+    }
   }
   return {
     openPanel(panelId) {
       panels.add(panelId)
-      synchronizePanelState()
+      hasPanelOverlay = true
     },
     closePanel(panelId) {
       panels.delete(panelId)
       if (activePanelId === panelId) activePanelId = undefined
-      synchronizePanelState()
+      hasPanelOverlay = true
     },
     activatePanel(panelId) {
       panels.add(panelId)
       activePanelId = panelId
-      synchronizePanelState()
+      hasPanelOverlay = true
     },
     applyLayout(nextLayout) {
       applyLayout(nextLayout)
