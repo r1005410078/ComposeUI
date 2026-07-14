@@ -478,6 +478,10 @@
   cursor: default;
 }
 
+.composeui-editor__output-menu-auto-scroll {
+  display: none;
+}
+
 .composeui-editor__output-clear-confirmation {
   border-top: 1px solid var(--composeui-border-subtle);
   color: var(--composeui-text-secondary);

@@ -88,4 +88,14 @@ describe("operation output workspace styles", () => {
     expect(compactRules).toContain(".composeui-editor__output-selection-action")
     expect(compactRules).toContain("display: flex")
   })
+
+  it("scopes the More menu auto-scroll action to the compact toolbar", () => {
+    const menuAutoScrollRule = workspaceCss.match(
+      /\.composeui-editor__output-menu-auto-scroll\s*\{([\s\S]*?)\n\}/,
+    )?.[1]
+    expect(menuAutoScrollRule).toContain("display: none")
+    expect(workspaceCss).toMatch(
+      /@container \(max-width: 760px\) \{[\s\S]*?\.composeui-editor__output-menu-auto-scroll\s*\{[\s\S]*?display: block/,
+    )
+  })
 })
