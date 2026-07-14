@@ -25,6 +25,12 @@ export type {
   RecordOperationInput,
 } from "./recorder"
 export { createCoreOperationObserver } from "./adapters/core-observer"
+export { createWorkspaceOperationObserver } from "./adapters/workspace-observer"
+export type {
+  WorkspaceOperationObserver,
+  WorkspaceOperationRecorder,
+  WorkspaceOperationSourceEvent,
+} from "./adapters/workspace-observer"
 export { IndexedDbOperationLogStore } from "./indexeddb-store"
 export type { IndexedDbOperationLogStoreOptions } from "./indexeddb-store"
 export { OperationLogCoordinator } from "./coordinator"
@@ -63,6 +69,7 @@ export type {
   ReplayHandlerContext,
   ReplayHandlerResolution,
   ReplaySessionPort,
+  ReplayWorkspacePort,
 } from "./replay/types"
 export {
   builtinReplayHandlers,
@@ -70,6 +77,7 @@ export {
   handleHistoryOperation,
   handleSessionOperation,
   handleSystemOperation,
+  handleWorkspaceOperation,
 } from "./replay/builtin-handlers"
 export { ReplayEngine } from "./replay/engine"
 export type {

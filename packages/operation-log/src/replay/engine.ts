@@ -11,12 +11,14 @@ import type {
   ReplayHandler,
   ReplayHandlerContext,
   ReplaySessionPort,
+  ReplayWorkspacePort,
 } from "./types"
 
 export interface ReplayEngineCreateOptions {
   bundle: ValidatedLogBundle
   targetSequence?: number
   createSession: (initialState: unknown) => ReplaySessionPort | Promise<ReplaySessionPort>
+  createWorkspace?: (initialState: unknown) => ReplayWorkspacePort | Promise<ReplayWorkspacePort>
   createEditor?: (document: PageDocument) => Editor
   approvedHandlers?: ReadonlyMap<string, ReplayHandler> | Readonly<Record<string, ReplayHandler>>
 }
@@ -27,6 +29,7 @@ export interface ReplayState {
   sequence: number
   document: PageDocument
   session: unknown
+  workspace: unknown
 }
 
 export interface ReplayResult {
@@ -82,6 +85,74 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function workspaceLayoutState(layout: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(layout)) return undefined
+  return isRecord(layout.layout) ? layout.layout : layout
+}
+
+function workspacePanelIds(layout: unknown): string[] {
+  const panels = workspaceLayoutState(layout)?.panels
+  if (!Array.isArray(panels)) return []
+  return panels.filter((panelId): panelId is string => typeof panelId === "string")
+}
+
+function workspaceActivePanelId(layout: unknown): string | undefined {
+  const activePanelId = workspaceLayoutState(layout)?.activePanelId
+  return typeof activePanelId === "string" ? activePanelId : undefined
+}
+
+function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
+  let layout = clone(initialState)
+  const panels = new Set(workspacePanelIds(layout))
+  let activePanelId = workspaceActivePanelId(layout)
+  let hasPanelOverlay = false
+
+  const applyLayout = (nextLayout: unknown): void => {
+    layout = clone(nextLayout)
+    panels.clear()
+    for (const panelId of workspacePanelIds(layout)) panels.add(panelId)
+    activePanelId = workspaceActivePanelId(layout)
+    hasPanelOverlay = false
+  }
+
+  const snapshot = (): unknown => {
+    if (layout === undefined && panels.size === 0 && activePanelId === undefined) return undefined
+    if (!hasPanelOverlay) return clone(layout)
+    return {
+      layout: clone(layout),
+      panels: [...panels],
+      ...(activePanelId === undefined ? {} : { activePanelId }),
+    }
+  }
+  return {
+    openPanel(panelId) {
+      panels.add(panelId)
+      hasPanelOverlay = true
+    },
+    closePanel(panelId) {
+      panels.delete(panelId)
+      if (activePanelId === panelId) activePanelId = undefined
+      hasPanelOverlay = true
+    },
+    activatePanel(panelId) {
+      panels.add(panelId)
+      activePanelId = panelId
+      hasPanelOverlay = true
+    },
+    applyLayout(nextLayout) {
+      applyLayout(nextLayout)
+    },
+    resetLayout(nextLayout) {
+      applyLayout(nextLayout)
+    },
+    getState: snapshot,
+  }
+}
+
 /**
  * Replays a validated bundle in a newly-created core/session runtime.
  * No host adapters are accepted by this class; handlers always receive disabled side effects.
@@ -89,6 +160,7 @@ function errorMessage(error: unknown): string {
 export class ReplayEngine {
   readonly #editor: Editor | undefined
   readonly #session: ReplaySessionPort | undefined
+  readonly #workspace: ReplayWorkspacePort | undefined
   readonly #registry: ReplayHandlerRegistry
   readonly #events: OperationEvent[]
   readonly #startedAtSequence: number
@@ -123,6 +195,7 @@ export class ReplayEngine {
         options.bundle,
         undefined,
         undefined,
+        undefined,
         registry,
         targetSequence,
         targetSequence,
@@ -140,18 +213,42 @@ export class ReplayEngine {
     const editor = createIsolatedEditor(clone(checkpoint.document))
     try {
       const session = await options.createSession(clone(checkpoint.sessionState))
-      return new ReplayEngine(
-        options.bundle,
-        editor,
-        session,
-        registry,
-        checkpoint.sequence,
-        targetSequence,
-      )
+      try {
+        const workspace =
+          options.createWorkspace === undefined
+            ? createInMemoryWorkspace(checkpoint.workspaceState)
+            : await options.createWorkspace(clone(checkpoint.workspaceState))
+        return new ReplayEngine(
+          options.bundle,
+          editor,
+          session,
+          workspace,
+          registry,
+          checkpoint.sequence,
+          targetSequence,
+        )
+      } catch (error) {
+        return new ReplayEngine(
+          options.bundle,
+          editor,
+          session,
+          undefined,
+          registry,
+          checkpoint.sequence,
+          targetSequence,
+          {
+            type: "workspace-error",
+            sequence: checkpoint.sequence,
+            eventType: "workspace.create",
+            message: errorMessage(error),
+          },
+        )
+      }
     } catch (error) {
       return new ReplayEngine(
         options.bundle,
         editor,
+        undefined,
         undefined,
         registry,
         checkpoint.sequence,
@@ -170,6 +267,7 @@ export class ReplayEngine {
     bundle: ValidatedLogBundle,
     editor: Editor | undefined,
     session: ReplaySessionPort | undefined,
+    workspace: ReplayWorkspacePort | undefined,
     registry: ReplayHandlerRegistry,
     startedAtSequence: number,
     targetSequence: number,
@@ -177,6 +275,7 @@ export class ReplayEngine {
   ) {
     this.#editor = editor
     this.#session = session
+    this.#workspace = workspace
     this.#registry = registry
     this.#startedAtSequence = startedAtSequence
     this.#currentSequence = startedAtSequence
@@ -200,7 +299,11 @@ export class ReplayEngine {
 
   async step(targetSequence = this.#defaultTargetSequence): Promise<ReplayResult> {
     if (this.#paused && !this.#bestEffort) return this.#result({ status: "paused" }, targetSequence)
-    if (this.#editor === undefined || this.#session === undefined) {
+    if (
+      this.#editor === undefined ||
+      this.#session === undefined ||
+      this.#workspace === undefined
+    ) {
       return this.#result({ status: "paused" }, targetSequence)
     }
     const event = this.#nextEvent(targetSequence)
@@ -214,6 +317,7 @@ export class ReplayEngine {
       const context: ReplayHandlerContext = {
         editor: this.#editor,
         session: this.#session,
+        workspace: this.#workspace,
         sideEffects: "disabled",
       }
       try {
@@ -231,7 +335,12 @@ export class ReplayEngine {
         }
       } catch (error) {
         difference = {
-          type: event.category === "session" ? "session-error" : "handler-error",
+          type:
+            event.category === "session"
+              ? "session-error"
+              : event.category === "workspace"
+                ? "workspace-error"
+                : "handler-error",
           sequence: event.sequence,
           eventType: event.type,
           message: errorMessage(error),
@@ -287,19 +396,32 @@ export class ReplayEngine {
   }
 
   getState(): ReplayState {
-    if (this.#editor === undefined || this.#session === undefined) {
+    if (
+      this.#editor === undefined ||
+      this.#session === undefined ||
+      this.#workspace === undefined
+    ) {
       throw new Error("REPLAY_STATE_UNAVAILABLE")
     }
     return {
       sequence: this.#currentSequence,
       document: clone(snapshotDocument(this.#editor)),
       session: clone(this.#session.getState()),
+      workspace: this.#workspaceState(),
     }
   }
 
   #nextEvent(targetSequence: number): OperationEvent | undefined {
     const event = this.#events[this.#eventIndex]
     return event !== undefined && event.sequence <= targetSequence ? event : undefined
+  }
+
+  #workspaceState(): unknown {
+    try {
+      return clone(this.#workspace!.getState())
+    } catch (error) {
+      throw new ReplayWorkspaceStateError(errorMessage(error))
+    }
   }
 
   #result(options: InternalResultOptions, targetSequence: number): ReplayResult {
@@ -309,9 +431,10 @@ export class ReplayEngine {
     } catch (error) {
       if (this.#firstDifference === undefined) {
         this.#recordDifference({
-          type: "session-error",
+          type: error instanceof ReplayWorkspaceStateError ? "workspace-error" : "session-error",
           sequence: this.#currentSequence,
-          eventType: "session.state",
+          eventType:
+            error instanceof ReplayWorkspaceStateError ? "workspace.state" : "session.state",
           message: errorMessage(error),
         })
       }
@@ -336,3 +459,5 @@ export class ReplayEngine {
     this.#nondeterministicFromSequence ??= difference.sequence
   }
 }
+
+class ReplayWorkspaceStateError extends Error {}

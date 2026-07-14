@@ -12,15 +12,18 @@ import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
 import { createWorkspacePanels } from "./panels"
 import { mountWorkspaceToolbar } from "./toolbar"
+import { serializeWorkspaceError } from "./types"
 import type {
   WorkspaceCommand,
   WorkspaceCommandApi,
   WorkspaceContext,
   WorkspaceEvent,
+  SerializedWorkspaceEvent,
   WorkspaceLayoutStore,
   WorkspacePanelDescriptor,
   WorkspacePanelMount,
   WorkspaceResourceService,
+  StoredWorkspaceLayout,
 } from "./types"
 
 export interface WorkspacePanelRegistry {
@@ -31,6 +34,15 @@ export interface EditorWorkspaceDockview {
   readonly onDidLayoutChange?:
     | ((listener: () => void) => { dispose(): void })
     | { subscribe(listener: () => void): { dispose(): void } }
+  readonly onDidActivePanelChange?:
+    | ((
+        listener: (panel: { id: string } | { panel: { id: string } | undefined } | undefined) => void,
+      ) => { dispose(): void })
+    | {
+        subscribe(
+          listener: (panel: { id: string } | { panel: { id: string } | undefined } | undefined) => void,
+        ): { dispose(): void }
+      }
   addPanel(options: AddPanelOptions): { id: string; focus?(): void }
   getPanel(id: string): { id: string; focus?(): void } | undefined
   removePanel(panel: { id: string }): void
@@ -62,7 +74,8 @@ export interface MountEditorWorkspaceOptions {
   createDockview?: DockviewFactory
   onRun?: () => void
   onSave?: () => void
-  onEvent?: (event: WorkspaceEvent) => void
+  onEvent?: (event: SerializedWorkspaceEvent) => void
+  layoutChangeDelayMs?: number
 }
 
 export interface MountedEditorWorkspace {
@@ -79,6 +92,8 @@ export interface EditorWorkspaceApi {
   closePanel(panelId: string): boolean
   focusPanel(panelId: string): void
   resetLayout(): Promise<void>
+  flushLayout(): Promise<void>
+  getLayoutSnapshot(): StoredWorkspaceLayout
 }
 
 const CANVAS = "canvas"
@@ -200,6 +215,13 @@ export function mountEditorWorkspace(
 ): MountedEditorWorkspace {
   const session = options.session ?? new EditorSession()
   const events = options.onEvent ?? (() => undefined)
+  const emitContextEvent = (event: WorkspaceEvent): void => {
+    if (event.type === "layout-failure" || event.type === "panel-failure") {
+      events({ ...event, error: serializeWorkspaceError(event.error) })
+      return
+    }
+    events(event)
+  }
   const pageId = options.pageId
   const registry = new Map<string, WorkspacePanelDescriptor>()
   for (const panel of createWorkspacePanels()) registry.set(panel.id, panel)
@@ -219,6 +241,17 @@ export function mountEditorWorkspace(
   let disposed = false
   let applyingLayout = false
   let layoutDirty = false
+  let activePanelId: string | undefined
+  let pendingLayout: StoredWorkspaceLayout | undefined
+  let layoutTimer: ReturnType<typeof setTimeout> | undefined
+  let layoutPersistence: Promise<void> = Promise.resolve()
+  let resetPersistence: Promise<void> = Promise.resolve()
+  let layoutEpoch = 0
+  let resettingLayout = false
+  let resetGeneration = 0
+  let suppressPanelTransitions = false
+  const observedPanelIds = new Set<string>()
+  const layoutChangeDelayMs = options.layoutChangeDelayMs ?? 150
 
   root.classList.add("composeui-editor__workspace-host")
   root.style.setProperty("--composeui-workspace-min-height", "320px")
@@ -294,7 +327,7 @@ export function mountEditorWorkspace(
               events({
                 type: "panel-failure",
                 panelId: name,
-                error: new Error(`Unknown panel: ${name}`),
+                error: serializeWorkspaceError(new Error(`Unknown panel: ${name}`)),
               })
               return
             }
@@ -317,7 +350,7 @@ export function mountEditorWorkspace(
               session,
               pageId,
               api: contextApi,
-              emit: events,
+              emit: emitContextEvent,
               ...(options.resources === undefined ? {} : { resources: options.resources }),
               ...(options.operationLog === undefined ? {} : { operationLog: options.operationLog }),
             }
@@ -367,7 +400,11 @@ export function mountEditorWorkspace(
             } catch (error) {
               if (descriptor.id === CANVAS) errorPanel(containerElement, "画布不可用", CANVAS_ERROR)
               else errorPanel(containerElement, descriptor.title, `无法加载${descriptor.title}。`)
-              events({ type: "panel-failure", panelId: descriptor.id, error })
+              events({
+                type: "panel-failure",
+                panelId: descriptor.id,
+                error: serializeWorkspaceError(error),
+              })
             }
           },
           dispose: release,
@@ -381,6 +418,7 @@ export function mountEditorWorkspace(
   )
 
   let layoutSubscription: { dispose(): void } | undefined
+  let activePanelSubscription: { dispose(): void } | undefined
 
   const addPanel = (id: string): void => {
     const actualId = panelId(id, pageId)
@@ -454,15 +492,74 @@ export function mountEditorWorkspace(
     "output",
   ]
 
+  const syncObservedPanelIds = (): void => {
+    observedPanelIds.clear()
+    for (const id of new Set([CANVAS, ...registry.keys()])) {
+      const actualId = panelId(id, pageId)
+      if (dockview.getPanel(actualId) !== undefined) observedPanelIds.add(actualId)
+    }
+  }
+
+  const emitStructuralPanelTransitions = (): void => {
+    if (suppressPanelTransitions) return
+    for (const id of new Set([CANVAS, ...registry.keys()])) {
+      const actualId = panelId(id, pageId)
+      const isPresent = dockview.getPanel(actualId) !== undefined
+      const wasPresent = observedPanelIds.has(actualId)
+      if (isPresent && !wasPresent) events({ type: "panel-opened", panelId: actualId })
+      if (!isPresent && wasPresent) events({ type: "panel-closed", panelId: actualId })
+      if (isPresent) observedPanelIds.add(actualId)
+      else observedPanelIds.delete(actualId)
+    }
+  }
+
   const applyDefaultLayout = (): void => {
     const wasApplyingLayout = applyingLayout
     applyingLayout = true
     try {
       dockview.clear?.()
       for (const id of defaultPanelIds) addPanel(id)
+      syncObservedPanelIds()
     } finally {
       applyingLayout = wasApplyingLayout
     }
+  }
+
+  const getLayoutSnapshot = (): StoredWorkspaceLayout =>
+    structuredClone({ version: 1, modeId: "2d", layout: dockview.toJSON() })
+
+  const flushLayout = (): Promise<void> => {
+    if (layoutTimer !== undefined) {
+      clearTimeout(layoutTimer)
+      layoutTimer = undefined
+    }
+    const layout = pendingLayout
+    pendingLayout = undefined
+    if (layout === undefined) return layoutPersistence
+    events({ type: "layout-changed", layout })
+    const epoch = layoutEpoch
+    layoutPersistence = layoutPersistence.then(async () => {
+      if (epoch !== layoutEpoch) return
+      try {
+        await options.layoutStore?.save(layout)
+      } catch (error) {
+        if (!disposed) {
+          events({ type: "layout-failure", operation: "save", error: serializeWorkspaceError(error) })
+        }
+      }
+    })
+    return layoutPersistence
+  }
+
+  const scheduleLayout = (): void => {
+    try {
+      pendingLayout = getLayoutSnapshot()
+    } catch (error) {
+      events({ type: "layout-failure", operation: "save", error: serializeWorkspaceError(error) })
+      return
+    }
+    if (layoutTimer !== undefined) clearTimeout(layoutTimer)
+    layoutTimer = setTimeout(() => void flushLayout(), layoutChangeDelayMs)
   }
 
   const api: EditorWorkspaceApi = {
@@ -489,12 +586,23 @@ export function mountEditorWorkspace(
     redo: () => editor.redo(),
     openPanel(id) {
       const actualId = panelId(id, pageId)
-      if (isCanvas(id) || registry.has(id)) {
-        layoutDirty = true
-        addPanel(id)
-        return dockview.getPanel(actualId) !== undefined
+      const existing = dockview.getPanel(actualId)
+      if (existing !== undefined) {
+        existing.focus?.()
+        return false
       }
-      return false
+      if (!isCanvas(id) && !registry.has(id)) return false
+      layoutDirty = true
+      suppressPanelTransitions = true
+      try {
+        addPanel(id)
+      } finally {
+        suppressPanelTransitions = false
+      }
+      if (dockview.getPanel(actualId) === undefined) return false
+      syncObservedPanelIds()
+      events({ type: "panel-opened", panelId: actualId })
+      return true
     },
     closePanel(id) {
       const actualId = panelId(id, pageId)
@@ -503,40 +611,80 @@ export function mountEditorWorkspace(
       const panel = dockview.getPanel(actualId)
       if (panel === undefined) return false
       layoutDirty = true
-      dockview.removePanel(panel)
+      suppressPanelTransitions = true
+      try {
+        dockview.removePanel(panel)
+      } finally {
+        suppressPanelTransitions = false
+      }
+      syncObservedPanelIds()
+      events({ type: "panel-closed", panelId: actualId })
       return true
     },
     focusPanel(id) {
       dockview.getPanel(panelId(id, pageId))?.focus?.()
     },
     resetLayout: async () => {
-      try {
-        await options.layoutStore?.remove()
-      } catch (error) {
-        events({ type: "layout-failure", operation: "remove", error })
-      }
-      layoutDirty = true
-      applyDefaultLayout()
+      const generation = ++resetGeneration
+      resettingLayout = true
+      layoutEpoch += 1
+      if (layoutTimer !== undefined) clearTimeout(layoutTimer)
+      layoutTimer = undefined
+      pendingLayout = undefined
+      const reset = resetPersistence.then(async () => {
+        try {
+          await layoutPersistence
+          try {
+            await options.layoutStore?.remove()
+          } catch (error) {
+            if (!disposed) {
+              events({
+                type: "layout-failure",
+                operation: "remove",
+                error: serializeWorkspaceError(error),
+              })
+            }
+          }
+          if (disposed || generation !== resetGeneration) return
+          layoutDirty = true
+          applyDefaultLayout()
+          events({ type: "layout-reset", layout: getLayoutSnapshot() })
+        } finally {
+          if (generation === resetGeneration) resettingLayout = false
+        }
+      })
+      resetPersistence = reset.catch(() => undefined)
+      return reset
     },
+    flushLayout,
+    getLayoutSnapshot,
   }
 
   applyDefaultLayout()
   const onLayoutChange = (): void => {
-    if (options.layoutStore === undefined || disposed) return
-    if (applyingLayout) return
+    if (disposed || applyingLayout || resettingLayout) return
+    emitStructuralPanelTransitions()
     layoutDirty = true
-    void Promise.resolve()
-      .then(() =>
-        options.layoutStore!.save({ version: 1, modeId: "2d", layout: dockview.toJSON() }),
-      )
-      .catch((error) => {
-        events({ type: "layout-failure", operation: "save", error })
-      })
+    scheduleLayout()
   }
   if (typeof dockview.onDidLayoutChange === "function") {
     layoutSubscription = dockview.onDidLayoutChange(onLayoutChange)
   } else if (dockview.onDidLayoutChange !== undefined) {
     layoutSubscription = dockview.onDidLayoutChange.subscribe(onLayoutChange)
+  }
+  const onActivePanelChange = (
+    value: { id: string } | { panel: { id: string } | undefined } | undefined,
+  ): void => {
+    if (disposed || applyingLayout) return
+    const panel = value !== undefined && "panel" in value ? value.panel : value
+    if (panel === undefined || panel.id === activePanelId) return
+    activePanelId = panel.id
+    events({ type: "panel-activated", panelId: panel.id })
+  }
+  if (typeof dockview.onDidActivePanelChange === "function") {
+    activePanelSubscription = dockview.onDidActivePanelChange(onActivePanelChange)
+  } else if (dockview.onDidActivePanelChange !== undefined) {
+    activePanelSubscription = dockview.onDidActivePanelChange.subscribe(onActivePanelChange)
   }
 
   void Promise.resolve()
@@ -550,23 +698,30 @@ export function mountEditorWorkspace(
         applyingLayout = true
         try {
           dockview.fromJSON(layout)
+          syncObservedPanelIds()
           if (dockview.getPanel(canvasId(pageId)) === undefined) {
             events({
               type: "layout-failure",
               operation: "load",
-              error: new Error(`Restored layout is missing ${canvasId(pageId)}`),
+              error: serializeWorkspaceError(
+                new Error(`Restored layout is missing ${canvasId(pageId)}`),
+              ),
             })
             applyDefaultLayout()
+          } else {
+            events({ type: "layout-loaded", layout: getLayoutSnapshot() })
           }
         } catch (error) {
-          events({ type: "layout-failure", operation: "load", error })
+          events({ type: "layout-failure", operation: "load", error: serializeWorkspaceError(error) })
           applyDefaultLayout()
         } finally {
           applyingLayout = wasApplyingLayout
         }
       },
       (error) => {
-        if (!disposed) events({ type: "layout-failure", operation: "load", error })
+        if (!disposed) {
+          events({ type: "layout-failure", operation: "load", error: serializeWorkspaceError(error) })
+        }
       },
     )
 
@@ -575,8 +730,10 @@ export function mountEditorWorkspace(
     api,
     dispose() {
       if (disposed) return
+      void flushLayout()
       disposed = true
       layoutSubscription?.dispose()
+      activePanelSubscription?.dispose()
       unsubscribeReplay?.()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()

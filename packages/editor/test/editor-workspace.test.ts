@@ -8,6 +8,9 @@ import {
   ReplayController,
   type DockviewFactory,
   type EditorWorkspaceDockview,
+  type SerializedWorkspaceEvent,
+  type WorkspaceEvent,
+  type WorkspaceError,
 } from "../src/index"
 import type {
   StoredWorkspaceLayout,
@@ -16,6 +19,7 @@ import type {
   WorkspacePanelRegistry,
 } from "../src/index"
 import type { OperationLogControllerPort, OperationLogViewQuery } from "../src/index"
+import { serializeWorkspaceError } from "../src/workspace/types"
 
 type FakePanel = {
   id: string
@@ -56,6 +60,8 @@ function createDockviewFake(
   >
   tabs: Map<string, HTMLElement>
   triggerLayoutChange: () => void
+  triggerActivePanelChange: (panelId: string | undefined) => void
+  setLayoutSnapshot: (layout: unknown) => void
 } {
   const panels = new Map<string, FakePanel>()
   const panelOptions = new Map<
@@ -80,6 +86,8 @@ function createDockviewFake(
   })
   let layout = initialLayout
   let layoutListener: (() => void) | undefined
+  const activePanelListeners = new Set<(panel: { id: string } | undefined) => void>()
+  let layoutSnapshot: unknown | undefined
   let componentFactory:
     | ((options: { id: string; name: string }) => {
         element: HTMLElement
@@ -110,6 +118,10 @@ function createDockviewFake(
         layoutListener = listener
         return { dispose: vi.fn() }
       },
+    },
+    onDidActivePanelChange(listener) {
+      activePanelListeners.add(listener)
+      return { dispose: () => activePanelListeners.delete(listener) }
     },
     addPanel(options) {
       const panel = { id: options.id, focus: vi.fn() }
@@ -171,6 +183,7 @@ function createDockviewFake(
       layoutListener?.()
     }),
     toJSON() {
+      if (layoutSnapshot !== undefined) return layoutSnapshot
       return {
         panels: [...panels.keys()].map((id) => ({
           id,
@@ -217,6 +230,13 @@ function createDockviewFake(
     triggerLayoutChange() {
       layoutListener?.()
     },
+    triggerActivePanelChange(panelId) {
+      const panel = panelId === undefined ? undefined : panels.get(panelId)
+      activePanelListeners.forEach((listener) => listener({ panel }))
+    },
+    setLayoutSnapshot(nextLayout) {
+      layoutSnapshot = nextLayout
+    },
   }
 }
 
@@ -225,6 +245,40 @@ function createEditorInstance() {
 }
 
 describe("editor workspace", () => {
+  it("keeps legacy workspace failure producers type-compatible", () => {
+    const event: WorkspaceEvent = {
+      type: "panel-failure",
+      panelId: "resources",
+      error: new Error("legacy producer"),
+    }
+
+    expect(event.error).toBeInstanceOf(Error)
+  })
+
+  it("exports serialized workspace event types for onEvent adapters", () => {
+    const error: WorkspaceError = { name: "Error", message: "serialized" }
+    const event: SerializedWorkspaceEvent = {
+      type: "layout-failure",
+      operation: "save",
+      error,
+    }
+
+    expect(event.error).toEqual(error)
+  })
+
+  it("serializes errors without retaining unsafe values", () => {
+    const error = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("unreadable")
+        },
+      },
+    )
+
+    expect(serializeWorkspaceError(error)).toEqual({ name: "Error", message: "Unknown error" })
+  })
+
   it("disables save and run while isolated replay is active", async () => {
     const replayController = new ReplayController({
       createEngine: vi.fn(async () => ({
@@ -634,10 +688,305 @@ describe("editor workspace", () => {
 
     fake.triggerLayoutChange()
     await vi.waitFor(() =>
-      expect(events).toContainEqual({ type: "layout-failure", operation: "save", error: failure }),
+      expect(events).toContainEqual({
+        type: "layout-failure",
+        operation: "save",
+        error: { name: "Error", message: "quota exceeded" },
+      }),
     )
     mounted.dispose()
     mounted.dispose()
     expect(fake.dockview.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it("emits panel events only for real open, close, and activation transitions", () => {
+    const fake = createDockviewFake()
+    const events: unknown[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    expect(mounted.api.openPanel("resources")).toBe(false)
+    expect(mounted.api.closePanel("resources")).toBe(true)
+    expect(mounted.api.closePanel("resources")).toBe(false)
+    expect(mounted.api.openPanel("resources")).toBe(true)
+    fake.triggerActivePanelChange("resources")
+    fake.triggerActivePanelChange("resources")
+    fake.triggerActivePanelChange("scene")
+
+    expect(events).toEqual([
+      { type: "panel-closed", panelId: "resources" },
+      { type: "panel-opened", panelId: "resources" },
+      { type: "panel-activated", panelId: "resources" },
+      { type: "panel-activated", panelId: "scene" },
+    ])
+    mounted.dispose()
+    const eventCountAfterDispose = events.length
+    fake.triggerActivePanelChange("resources")
+    expect(events).toHaveLength(eventCountAfterDispose)
+  })
+
+  it("coalesces layout events and flushes the final cloneable snapshot", async () => {
+    vi.useFakeTimers()
+    try {
+      const fake = createDockviewFake()
+      const layoutStore = {
+        load: vi.fn().mockResolvedValue(undefined),
+        save: vi.fn().mockResolvedValue(undefined),
+        remove: vi.fn().mockResolvedValue(undefined),
+      }
+      const events: unknown[] = []
+      const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+        pageId: "page-1",
+        layoutStore,
+        layoutChangeDelayMs: 150,
+        createDockview: fake.factory,
+        onEvent: (event) => events.push(event),
+      })
+
+      fake.setLayoutSnapshot({ revision: 1 })
+      fake.triggerLayoutChange()
+      fake.setLayoutSnapshot({ revision: 2 })
+      fake.triggerLayoutChange()
+      fake.setLayoutSnapshot({ revision: 3 })
+      fake.triggerLayoutChange()
+      await vi.advanceTimersByTimeAsync(149)
+      expect(events).toEqual([])
+      await vi.advanceTimersByTimeAsync(1)
+
+      const snapshot = { version: 1, modeId: "2d", layout: { revision: 3 } }
+      expect(events).toEqual([{ type: "layout-changed", layout: snapshot }])
+      expect(layoutStore.save).toHaveBeenCalledWith(snapshot)
+      expect(() => structuredClone(events[0])).not.toThrow()
+
+      fake.setLayoutSnapshot({ revision: 4 })
+      fake.triggerLayoutChange()
+      expect(mounted.api.getLayoutSnapshot()).toEqual({
+        version: 1,
+        modeId: "2d",
+        layout: { revision: 4 },
+      })
+      await mounted.api.flushLayout()
+      expect(events).toContainEqual({
+        type: "layout-changed",
+        layout: { version: 1, modeId: "2d", layout: { revision: 4 } },
+      })
+      fake.setLayoutSnapshot({ revision: 5 })
+      fake.triggerLayoutChange()
+      mounted.dispose()
+      await vi.advanceTimersByTimeAsync(150)
+      expect(events).toContainEqual({
+        type: "layout-changed",
+        layout: { version: 1, modeId: "2d", layout: { revision: 5 } },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("emits cloneable layout lifecycle and failure events", async () => {
+    const failure = Object.assign(new Error("quota exceeded"), { code: "QUOTA" })
+    const fake = createDockviewFake(
+      { panels: [{ id: "canvas:page-1", component: "canvas:page-1" }] },
+      ["canvas:page-1"],
+    )
+    const layoutStore = {
+      load: vi.fn().mockResolvedValue({
+        version: 1,
+        modeId: "2d",
+        layout: { panels: [{ id: "canvas:page-1", component: "canvas:page-1" }] },
+      } satisfies StoredWorkspaceLayout),
+      save: vi.fn().mockRejectedValue(failure),
+      remove: vi.fn().mockRejectedValue(failure),
+    }
+    const events: unknown[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore,
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "layout-loaded" })))
+    await mounted.api.resetLayout()
+    fake.triggerLayoutChange()
+    await vi.waitFor(() =>
+      expect(events).toContainEqual({
+        type: "layout-failure",
+        operation: "save",
+        error: { name: "Error", message: "quota exceeded", code: "QUOTA" },
+      }),
+    )
+    expect(events).toContainEqual(expect.objectContaining({ type: "layout-reset" }))
+    expect(events).toContainEqual({
+      type: "layout-failure",
+      operation: "remove",
+      error: { name: "Error", message: "quota exceeded", code: "QUOTA" },
+    })
+    for (const event of events) expect(() => structuredClone(event)).not.toThrow()
+    mounted.dispose()
+  })
+
+  it("serializes layout saves so an older save cannot finish after a newer snapshot", async () => {
+    let resolveFirstSave!: () => void
+    let resolveSecondSave!: () => void
+    const save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          if (save.mock.calls.length === 1) resolveFirstSave = resolve
+          else resolveSecondSave = resolve
+        }),
+    )
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove: vi.fn() },
+      createDockview: fake.factory,
+    })
+
+    fake.setLayoutSnapshot({ revision: 1 })
+    fake.triggerLayoutChange()
+    const firstFlush = mounted.api.flushLayout()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    fake.setLayoutSnapshot({ revision: 2 })
+    fake.triggerLayoutChange()
+    const secondFlush = mounted.api.flushLayout()
+    expect(save).toHaveBeenCalledTimes(1)
+
+    resolveFirstSave()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+    resolveSecondSave()
+    await Promise.all([firstFlush, secondFlush])
+    expect(save.mock.calls.map(([layout]) => layout.layout)).toEqual([{ revision: 1 }, { revision: 2 }])
+    mounted.dispose()
+  })
+
+  it("fences pending saves before resetting the stored layout", async () => {
+    let resolveSave!: () => void
+    let resolveRemove!: () => void
+    const save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve
+        }),
+    )
+    const remove = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRemove = resolve
+        }),
+    )
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove },
+      createDockview: fake.factory,
+    })
+
+    fake.setLayoutSnapshot({ revision: "before-reset" })
+    fake.triggerLayoutChange()
+    void mounted.api.flushLayout()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    fake.setLayoutSnapshot({ revision: "pending-before-reset" })
+    fake.triggerLayoutChange()
+    const reset = mounted.api.resetLayout()
+    expect(remove).not.toHaveBeenCalled()
+
+    resolveSave()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+    resolveRemove()
+    await reset
+    await mounted.api.flushLayout()
+    expect(save).toHaveBeenCalledTimes(1)
+    mounted.dispose()
+  })
+
+  it("flushes a pending layout during disposal and suppresses late save failures", async () => {
+    let rejectSave!: (error: Error) => void
+    const save = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject
+        }),
+    )
+    const fake = createDockviewFake()
+    const events: unknown[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutChangeDelayMs: 10_000,
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove: vi.fn() },
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    fake.setLayoutSnapshot({ revision: "dispose" })
+    fake.triggerLayoutChange()
+    mounted.dispose()
+    const completion = mounted.api.flushLayout()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ layout: { revision: "dispose" } })))
+    rejectSave(new Error("late failure"))
+    await completion
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: "layout-failure", operation: "save" }),
+    )
+  })
+
+  it("derives native panel closure from the structural layout callback", () => {
+    const fake = createDockviewFake()
+    const events: unknown[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    fake.dockview.removePanel(fake.panels.get("resources")!)
+    expect(events).toContainEqual({ type: "panel-closed", panelId: "resources" })
+    mounted.dispose()
+  })
+
+  it("serializes overlapping removes before allowing a subsequent layout save", async () => {
+    let resolveFirstRemove!: () => void
+    let resolveSecondRemove!: () => void
+    let storedLayout: StoredWorkspaceLayout | undefined
+    const firstRemove = new Promise<void>((resolve) => {
+      resolveFirstRemove = resolve
+    })
+    const secondRemove = new Promise<void>((resolve) => {
+      resolveSecondRemove = resolve
+    })
+    const remove = vi.fn(
+      () =>
+        (remove.mock.calls.length === 1 ? firstRemove : secondRemove).then(() => {
+          storedLayout = undefined
+        }),
+    )
+    const save = vi.fn(async (layout: StoredWorkspaceLayout) => {
+      storedLayout = layout
+    })
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove },
+      createDockview: fake.factory,
+    })
+
+    const firstReset = mounted.api.resetLayout()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+    const secondReset = mounted.api.resetLayout()
+    await Promise.resolve()
+    resolveSecondRemove()
+    expect(remove).toHaveBeenCalledTimes(1)
+    resolveFirstRemove()
+    await Promise.all([firstReset, secondReset])
+    expect(remove).toHaveBeenCalledTimes(2)
+
+    fake.setLayoutSnapshot({ revision: "post-reset" })
+    fake.triggerLayoutChange()
+    await mounted.api.flushLayout()
+    expect(storedLayout).toEqual({ version: 1, modeId: "2d", layout: { revision: "post-reset" } })
+    mounted.dispose()
   })
 })

@@ -150,6 +150,26 @@ function formatDiagnostic(event: OperationEvent): string {
   return `诊断：${formatDiagnostics(event).replace(/^ · /, "") || "无"} · ${formatStatus(event.status)}`
 }
 
+function formatWorkspace(event: OperationEvent): string {
+  const panelId = stringValue(asRecord(event.payload)?.panelId) ?? "未知"
+  switch (event.type) {
+    case "workspace.panel.opened":
+      return `打开面板：${panelId}`
+    case "workspace.panel.closed":
+      return `关闭面板：${panelId}`
+    case "workspace.panel.activated":
+      return `激活面板：${panelId}`
+    case "workspace.layout.changed":
+      return "更新工作区布局"
+    case "workspace.layout.loaded":
+      return "加载工作区布局"
+    case "workspace.layout.reset":
+      return "重置工作区布局"
+    default:
+      return `${event.type} · ${formatStatus(event.status)}`
+  }
+}
+
 function formatDiagnostics(event: OperationEvent): string {
   if (!event.diagnostics || event.diagnostics.length === 0) return ""
   return ` · ${event.diagnostics.map((item) => `${item.code}：${item.message}`).join("；")}`
@@ -232,6 +252,12 @@ registerOperationFormatter("session.interactionMode", formatSession)
 registerOperationFormatter("session.hoveredId", formatSession)
 registerOperationFormatter("diagnostic", formatDiagnostic)
 registerOperationFormatter("diagnostic.reported", formatDiagnostic)
+registerOperationFormatter("workspace.panel.opened", formatWorkspace)
+registerOperationFormatter("workspace.panel.closed", formatWorkspace)
+registerOperationFormatter("workspace.panel.activated", formatWorkspace)
+registerOperationFormatter("workspace.layout.changed", formatWorkspace)
+registerOperationFormatter("workspace.layout.loaded", formatWorkspace)
+registerOperationFormatter("workspace.layout.reset", formatWorkspace)
 registerOperationFormatter(
   "system",
   (event) => `系统操作 · ${formatStatus(event.status)}${formatDiagnostics(event)}`,

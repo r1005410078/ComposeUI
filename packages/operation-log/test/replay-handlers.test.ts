@@ -5,8 +5,13 @@ import {
   handleDocumentCommand,
   handleHistoryOperation,
   handleSessionOperation,
+  handleWorkspaceOperation,
 } from "@composeui/operation-log"
-import type { ReplayHandlerContext, ReplaySessionPort } from "@composeui/operation-log"
+import type {
+  ReplayHandlerContext,
+  ReplaySessionPort,
+  ReplayWorkspacePort,
+} from "@composeui/operation-log"
 
 const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
 
@@ -20,7 +25,25 @@ function context(
     getState: vi.fn(() => ({})),
   },
 ): ReplayHandlerContext {
-  return { editor: createEditor(document), session, sideEffects: "disabled" }
+  return {
+    editor: createEditor(document),
+    session,
+    workspace: workspacePort(),
+    sideEffects: "disabled",
+  }
+}
+
+function workspacePort(): ReplayWorkspacePort & { calls: unknown[][] } {
+  const calls: unknown[][] = []
+  return {
+    calls,
+    openPanel: (panelId) => calls.push(["open", panelId]),
+    closePanel: (panelId) => calls.push(["close", panelId]),
+    activatePanel: (panelId) => calls.push(["activate", panelId]),
+    applyLayout: (layout) => calls.push(["apply", layout]),
+    resetLayout: (layout) => calls.push(["reset", layout]),
+    getState: () => structuredClone(calls),
+  }
 }
 
 function event<T>(type: string, status: OperationEvent["status"], payload: T): OperationEvent<T> {
@@ -40,6 +63,14 @@ function event<T>(type: string, status: OperationEvent["status"], payload: T): O
     status,
     payload,
   }
+}
+
+function workspaceEvent<T>(
+  type: string,
+  status: OperationEvent["status"],
+  payload: T,
+): OperationEvent<T> {
+  return { ...event(type, status, payload), category: "workspace" }
 }
 
 const createCommand = (id = "node-1") => ({
@@ -226,5 +257,92 @@ describe("built-in replay handlers", () => {
     expect(session.setInteractionMode).toHaveBeenCalledWith("pan")
     expect(session.setGridVisible).toHaveBeenCalledWith(true)
     expect(session.setExpanded).toHaveBeenCalledWith(["a"])
+  })
+
+  it("routes workspace panel and versioned layout operations through the workspace port", async () => {
+    const replay = context()
+    const layout = { version: 1, modeId: "2d", layout: { panels: ["inspector"] } }
+
+    await handleWorkspaceOperation(
+      workspaceEvent("workspace.panel.opened", "observed", { panelId: "inspector" }),
+      replay,
+    )
+    await handleWorkspaceOperation(
+      workspaceEvent("workspace.panel.closed", "observed", { panelId: "signals" }),
+      replay,
+    )
+    await handleWorkspaceOperation(
+      workspaceEvent("workspace.panel.activated", "observed", { panelId: "canvas" }),
+      replay,
+    )
+    await handleWorkspaceOperation(
+      workspaceEvent("workspace.layout.changed", "observed", { layout }),
+      replay,
+    )
+    await handleWorkspaceOperation(
+      workspaceEvent("workspace.layout.loaded", "observed", { layout }),
+      replay,
+    )
+    await handleWorkspaceOperation(
+      workspaceEvent("workspace.layout.reset", "observed", { layout }),
+      replay,
+    )
+
+    expect(replay.workspace.getState()).toEqual([
+      ["open", "inspector"],
+      ["close", "signals"],
+      ["activate", "canvas"],
+      ["apply", layout],
+      ["apply", layout],
+      ["reset", layout],
+    ])
+  })
+
+  it("rejects malformed workspace payloads without changing workspace state", async () => {
+    const replay = context()
+    const invalidEvents = [
+      workspaceEvent("workspace.panel.opened", "observed", { panelId: "" }),
+      workspaceEvent("workspace.layout.changed", "observed", {
+        layout: { version: 2, modeId: "2d", layout: {} },
+      }),
+      workspaceEvent("workspace.layout.reset", "observed", {
+        layout: { version: 1, modeId: "3d", layout: {} },
+      }),
+    ]
+
+    for (const invalid of invalidEvents) {
+      await expect(handleWorkspaceOperation(invalid, replay)).resolves.toMatchObject({
+        type: "schema-incompatible",
+      })
+    }
+    expect(replay.workspace.getState()).toEqual([])
+  })
+
+  it("keeps diagnostics as workspace no-ops", async () => {
+    const replay = context()
+    expect(
+      await handleWorkspaceOperation(
+        event("diagnostic.reported", "observed", { panelId: "inspector" }),
+        replay,
+      ),
+    ).toBeUndefined()
+    expect(replay.workspace.getState()).toEqual([])
+  })
+
+  it("rejects workspace operations with a non-workspace envelope without mutation", async () => {
+    const replay = context()
+    await expect(
+      handleWorkspaceOperation(
+        event("workspace.panel.opened", "observed", { panelId: "inspector" }),
+        replay,
+      ),
+    ).resolves.toMatchObject({ type: "schema-incompatible" })
+    await expect(
+      handleWorkspaceOperation(
+        workspaceEvent("workspace.panel.opened", "started", { panelId: "inspector" }),
+        replay,
+      ),
+    ).resolves.toMatchObject({ type: "schema-incompatible" })
+    expect(replay.workspace.getState()).toEqual([])
   })
 })

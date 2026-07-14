@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
-import type { LogBundleV1, OperationEvent, ReplaySessionPort } from "../src/index"
-import { canonicalJson, hashCanonical, importLogBundle } from "../src/index"
+import type {
+  LogBundleV1,
+  OperationEvent,
+  ReplaySessionPort,
+  ReplayWorkspacePort,
+} from "../src/index"
+import {
+  MemoryOperationLogStore,
+  canonicalJson,
+  exportLogBundle,
+  hashCanonical,
+  importLogBundle,
+} from "../src/index"
 import { ReplayEngine } from "../src/index"
 
 const document = createEmptyDocument({ documentId: "document-1", pageId: "page-1" })
@@ -30,6 +41,22 @@ function sessionPort(): ReplaySessionPort & { state: Record<string, unknown> } {
     },
     setExpanded: (ids) => {
       state.expanded = [...ids]
+    },
+    getState: () => structuredClone(state),
+  }
+}
+
+function workspacePort(initialState: unknown): ReplayWorkspacePort {
+  let state = initialState
+  return {
+    openPanel: () => undefined,
+    closePanel: () => undefined,
+    activatePanel: () => undefined,
+    applyLayout: (layout) => {
+      state = layout
+    },
+    resetLayout: (layout) => {
+      state = layout
     },
     getState: () => structuredClone(state),
   }
@@ -105,6 +132,40 @@ async function importTestBundle(bundle: LogBundleV1) {
     },
   })
   return importLogBundle(encoded)
+}
+
+async function workspaceCheckpointBundle(workspaceState: unknown, events: OperationEvent[] = []) {
+  const store = new MemoryOperationLogStore()
+  const session = {
+    sessionId: "session-1",
+    projectId: "project-1",
+    status: "ended" as const,
+    startedAt: "2026-07-14T00:00:00.000Z",
+    endedAt: "2026-07-14T00:01:00.000Z",
+    eventCount: events.length,
+    finalHash: "a".repeat(64),
+  }
+  const sessionState = sessionPort().state
+  await store.putSession(session)
+  await store.putCheckpoint({
+    sessionId: session.sessionId,
+    sequence: 0,
+    createdAt: session.startedAt,
+    document,
+    sessionState,
+    documentHash: await hashCanonical(document),
+    sessionHash: await hashCanonical(sessionState),
+    workspaceState,
+    workspaceHash: await hashCanonical(workspaceState),
+  })
+  if (events.length > 0) await store.append(events)
+  return importLogBundle(
+    await exportLogBundle(store, {
+      sessionId: session.sessionId,
+      productVersion: "test",
+      exportedAt: session.endedAt,
+    }),
+  )
 }
 
 describe("ReplayEngine", () => {
@@ -267,5 +328,225 @@ describe("ReplayEngine", () => {
     })
     expect((await engine.runTo(1)).targetSequence).toBe(1)
     expect((await engine.runTo(2)).targetSequence).toBe(2)
+  })
+
+  it("creates an isolated workspace from a checkpoint and initializes old checkpoints with undefined", async () => {
+    const checkpointState = { version: 1, modeId: "2d", layout: { panels: ["inspector"] } }
+    const received: unknown[] = []
+    const current = await ReplayEngine.create({
+      bundle: await workspaceCheckpointBundle(checkpointState),
+      createSession: () => sessionPort(),
+      createWorkspace: (initialState) => {
+        received.push(initialState)
+        return workspacePort(initialState)
+      },
+    })
+    expect(current.getState().workspace).toEqual(checkpointState)
+    expect(received).toEqual([checkpointState])
+
+    const legacyReceived: unknown[] = []
+    const legacy = await ReplayEngine.create({
+      bundle: await importTestBundle(bundleWithCheckpoints([])),
+      createSession: () => sessionPort(),
+      createWorkspace: (initialState) => {
+        legacyReceived.push(initialState)
+        return workspacePort(initialState)
+      },
+    })
+    expect(legacy.getState().workspace).toBeUndefined()
+    expect(legacyReceived).toEqual([undefined])
+  })
+
+  it("updates the default workspace state as panel and layout events replay", async () => {
+    const initialWorkspace = {
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["canvas"], activePanelId: "canvas" },
+    }
+    const nextLayout = {
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["canvas", "inspector"], activePanelId: "inspector" },
+    }
+    const events = [
+      {
+        ...event(1, { panelId: "inspector" }),
+        category: "workspace" as const,
+        type: "workspace.panel.opened",
+        status: "observed" as const,
+      },
+      {
+        ...event(2, { panelId: "inspector" }),
+        category: "workspace" as const,
+        type: "workspace.panel.activated",
+        status: "observed" as const,
+      },
+      {
+        ...event(3, { panelId: "canvas" }),
+        category: "workspace" as const,
+        type: "workspace.panel.closed",
+        status: "observed" as const,
+      },
+      {
+        ...event(4, { layout: nextLayout }),
+        category: "workspace" as const,
+        type: "workspace.layout.changed",
+        status: "observed" as const,
+      },
+      {
+        ...event(5, { layout: initialWorkspace }),
+        category: "workspace" as const,
+        type: "workspace.layout.reset",
+        status: "observed" as const,
+      },
+    ]
+    const engine = await ReplayEngine.create({
+      bundle: await workspaceCheckpointBundle(initialWorkspace, events),
+      createSession: () => sessionPort(),
+    })
+
+    expect(engine.getState().workspace).toEqual(initialWorkspace)
+    expect((await engine.runTo(1)).state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["canvas", "inspector"],
+      activePanelId: "canvas",
+    })
+    expect((await engine.runTo(2)).state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["canvas", "inspector"],
+      activePanelId: "inspector",
+    })
+    expect((await engine.runTo(3)).state?.workspace).toEqual({
+      layout: initialWorkspace,
+      panels: ["inspector"],
+      activePanelId: "inspector",
+    })
+    expect((await engine.runTo(4)).state?.workspace).toEqual(nextLayout)
+    const result = await engine.runTo(5)
+    expect(result).toMatchObject({ status: "completed", deterministic: true })
+    expect(result.state?.workspace).toEqual(initialWorkspace)
+  })
+
+  it("keeps Dockview-shaped layouts unchanged while tracking panel operations separately", async () => {
+    const dockviewLayout = {
+      version: 1,
+      modeId: "2d",
+      layout: {
+        grid: { orientation: "horizontal", root: "group-main" },
+        panels: {
+          canvas: { id: "canvas", group: "group-main" },
+        },
+        activeGroup: "group-main",
+      },
+    }
+    const nextLayout = {
+      version: 1,
+      modeId: "2d",
+      layout: {
+        grid: { orientation: "vertical", root: "group-inspector" },
+        panels: {
+          canvas: { id: "canvas", group: "group-main" },
+          inspector: { id: "inspector", group: "group-inspector" },
+        },
+        activeGroup: "group-inspector",
+      },
+    }
+    const engine = await ReplayEngine.create({
+      bundle: await workspaceCheckpointBundle(dockviewLayout, [
+        {
+          ...event(1, { panelId: "inspector" }),
+          category: "workspace",
+          type: "workspace.panel.opened",
+          status: "observed",
+        },
+        {
+          ...event(2, { panelId: "inspector" }),
+          category: "workspace",
+          type: "workspace.panel.activated",
+          status: "observed",
+        },
+        {
+          ...event(3, { layout: nextLayout }),
+          category: "workspace",
+          type: "workspace.layout.changed",
+          status: "observed",
+        },
+      ]),
+      createSession: () => sessionPort(),
+    })
+
+    const intermediate = await engine.runTo(2)
+    const expectedIntermediate = {
+      layout: dockviewLayout,
+      panels: ["inspector"],
+      activePanelId: "inspector",
+    }
+    expect(intermediate.state).toBeDefined()
+    const intermediateWorkspace = intermediate.state!.workspace
+    expect(intermediateWorkspace).toEqual(expectedIntermediate)
+    expect(await hashCanonical(intermediateWorkspace)).toBe(
+      await hashCanonical(expectedIntermediate),
+    )
+    expect((intermediateWorkspace as { layout: unknown }).layout).toEqual(dockviewLayout)
+    expect((await engine.runTo(3)).state?.workspace).toEqual(nextLayout)
+  })
+
+  it("reports workspace port method and state failures as workspace differences", async () => {
+    const methodEngine = await ReplayEngine.create({
+      bundle: await importTestBundle(
+        bundleWithCheckpoints([
+          {
+            ...event(1, { panelId: "inspector" }),
+            category: "workspace",
+            type: "workspace.panel.opened",
+            status: "observed",
+          },
+        ]),
+      ),
+      createSession: () => sessionPort(),
+      createWorkspace: () => ({
+        ...workspacePort(undefined),
+        openPanel: () => {
+          throw new Error("open boom")
+        },
+      }),
+    })
+    expect((await methodEngine.verify()).difference).toMatchObject({
+      type: "workspace-error",
+      eventType: "workspace.panel.opened",
+      message: "open boom",
+    })
+
+    const stateEngine = await ReplayEngine.create({
+      bundle: await importTestBundle(bundleWithCheckpoints([])),
+      createSession: () => sessionPort(),
+      createWorkspace: () => ({
+        ...workspacePort(undefined),
+        getState: () => {
+          throw new Error("state boom")
+        },
+      }),
+    })
+    expect((await stateEngine.verify()).difference).toMatchObject({
+      type: "workspace-error",
+      eventType: "workspace.state",
+      message: "state boom",
+    })
+  })
+
+  it("reports workspace factory failures separately from session failures", async () => {
+    const engine = await ReplayEngine.create({
+      bundle: await importTestBundle(bundleWithCheckpoints([])),
+      createSession: () => sessionPort(),
+      createWorkspace: () => {
+        throw new Error("workspace boom")
+      },
+    })
+    const result = await engine.verify()
+    expect(result.difference).toMatchObject({
+      type: "workspace-error",
+      eventType: "workspace.create",
+      message: "workspace boom",
+    })
   })
 })

@@ -82,6 +82,43 @@ export interface StoredWorkspaceLayout {
   layout: unknown
 }
 
+export interface WorkspaceError {
+  name: string
+  message: string
+  code?: string
+}
+
+export function serializeWorkspaceError(error: unknown): WorkspaceError {
+  if (error !== null && typeof error === "object") {
+    const name = readStringProperty(error, "name")
+    const message = readStringProperty(error, "message")
+    const code = readStringProperty(error, "code")
+    return {
+      name: name ?? "Error",
+      message: message ?? toErrorMessage(error),
+      ...(code === undefined ? {} : { code }),
+    }
+  }
+  return { name: "Error", message: toErrorMessage(error) }
+}
+
+function readStringProperty(error: object, key: "name" | "message" | "code"): string | undefined {
+  try {
+    const value = (error as Record<string, unknown>)[key]
+    return typeof value === "string" ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function toErrorMessage(error: unknown): string {
+  try {
+    return String(error)
+  } catch {
+    return "Unknown error"
+  }
+}
+
 export interface WorkspaceLayoutFailureEvent {
   type: "layout-failure"
   operation: "load" | "save" | "remove"
@@ -94,7 +131,20 @@ export interface WorkspacePanelFailureEvent {
   error: unknown
 }
 
-export type WorkspaceEvent = WorkspaceLayoutFailureEvent | WorkspacePanelFailureEvent
+export type WorkspaceEvent =
+  | { type: "panel-opened"; panelId: string }
+  | { type: "panel-closed"; panelId: string }
+  | { type: "panel-activated"; panelId: string }
+  | { type: "layout-changed"; layout: StoredWorkspaceLayout }
+  | { type: "layout-loaded"; layout: StoredWorkspaceLayout }
+  | { type: "layout-reset"; layout: StoredWorkspaceLayout }
+  | WorkspaceLayoutFailureEvent
+  | WorkspacePanelFailureEvent
+
+export type SerializedWorkspaceEvent =
+  | Exclude<WorkspaceEvent, WorkspaceLayoutFailureEvent | WorkspacePanelFailureEvent>
+  | { type: "layout-failure"; operation: "load" | "save" | "remove"; error: WorkspaceError }
+  | { type: "panel-failure"; panelId: string; error: WorkspaceError }
 
 export interface MountedWorkspace {
   readonly session: EditorSession

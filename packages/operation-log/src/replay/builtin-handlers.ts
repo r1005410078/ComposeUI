@@ -131,6 +131,93 @@ function validateStarted(event: OperationEvent): boolean {
   return commandFrom(event) !== undefined
 }
 
+function schemaIncompatible(event: OperationEvent): ReplayDifference {
+  return { type: "schema-incompatible", sequence: event.sequence, version: event.schemaVersion }
+}
+
+function hasOnlyKeys(value: UnknownRecord, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key))
+}
+
+function panelIdFrom(event: OperationEvent): string | undefined {
+  const payload = payloadRecord(event)
+  const panelId = payload?.panelId
+  return payload !== undefined &&
+    hasOnlyKeys(payload, ["panelId"]) &&
+    typeof panelId === "string" &&
+    panelId.trim().length > 0
+    ? panelId
+    : undefined
+}
+
+function layoutFrom(event: OperationEvent): unknown | undefined {
+  const payload = payloadRecord(event)
+  if (payload === undefined || !hasOnlyKeys(payload, ["layout"]) || !isRecord(payload.layout))
+    return undefined
+  const layout = payload.layout
+  if (
+    !hasOnlyKeys(layout, ["version", "modeId", "layout"]) ||
+    layout.version !== 1 ||
+    layout.modeId !== "2d" ||
+    !Object.hasOwn(layout, "layout")
+  ) {
+    return undefined
+  }
+  return layout
+}
+
+export async function handleWorkspaceOperation(
+  event: OperationEvent,
+  context: ReplayHandlerContext,
+): Promise<ReplayDifference | undefined> {
+  if (context.sideEffects !== "disabled") {
+    return {
+      type: "environment-mismatch",
+      sequence: event.sequence,
+      requirement: "sideEffects=disabled",
+    }
+  }
+  if (event.type === "diagnostic.reported") return undefined
+  if (event.category !== "workspace" || event.status !== "observed") {
+    return schemaIncompatible(event)
+  }
+  switch (event.type) {
+    case "workspace.panel.opened": {
+      const panelId = panelIdFrom(event)
+      if (panelId === undefined) return schemaIncompatible(event)
+      context.workspace.openPanel(panelId)
+      return undefined
+    }
+    case "workspace.panel.closed": {
+      const panelId = panelIdFrom(event)
+      if (panelId === undefined) return schemaIncompatible(event)
+      context.workspace.closePanel(panelId)
+      return undefined
+    }
+    case "workspace.panel.activated": {
+      const panelId = panelIdFrom(event)
+      if (panelId === undefined) return schemaIncompatible(event)
+      context.workspace.activatePanel(panelId)
+      return undefined
+    }
+    case "workspace.layout.changed":
+    case "workspace.layout.loaded": {
+      const layout = layoutFrom(event)
+      if (layout === undefined) return schemaIncompatible(event)
+      context.workspace.applyLayout(layout)
+      return undefined
+    }
+    case "workspace.layout.reset": {
+      const layout = layoutFrom(event)
+      if (layout === undefined) return schemaIncompatible(event)
+      context.workspace.resetLayout(layout)
+      return undefined
+    }
+    default:
+      return { type: "missing-handler", sequence: event.sequence, eventType: event.type }
+  }
+}
+
 export async function handleDocumentCommand(
   event: OperationEvent,
   context: ReplayHandlerContext,
@@ -412,6 +499,13 @@ export const builtinReplayHandlers = {
   "session.tool": handleSessionOperation,
   "session.grid": handleSessionOperation,
   "session.treeDisclosure": handleSessionOperation,
+  "workspace.panel.opened": handleWorkspaceOperation,
+  "workspace.panel.closed": handleWorkspaceOperation,
+  "workspace.panel.activated": handleWorkspaceOperation,
+  "workspace.layout.changed": handleWorkspaceOperation,
+  "workspace.layout.loaded": handleWorkspaceOperation,
+  "workspace.layout.reset": handleWorkspaceOperation,
+  "diagnostic.reported": handleSystemOperation,
   "system.sessionStarted": handleSystemOperation,
   "system.checkpoint": handleSystemOperation,
   "system.sessionEnded": handleSystemOperation,

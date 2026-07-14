@@ -1,11 +1,64 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest"
 import { IDBFactory, indexedDB } from "fake-indexeddb"
 import { IndexedDbOperationLogStore } from "@composeui/operation-log"
-import { createPlaygroundOperationRuntime } from "./main"
+import type { DockviewFactory, EditorWorkspaceDockview } from "@composeui/editor"
+import {
+  createPlaygroundOperationRuntime,
+  type PlaygroundOperationRuntime,
+} from "./main"
+
+function createDockviewFake(): DockviewFactory {
+  return (_root, _options) => {
+    const panels = new Map<string, { id: string; focus(): void }>()
+    const layoutListeners = new Set<() => void>()
+    const notifyLayout = (): void => {
+      for (const listener of layoutListeners) listener()
+    }
+    const dockview: EditorWorkspaceDockview = {
+      onDidLayoutChange: {
+        subscribe(listener) {
+          layoutListeners.add(listener)
+          return { dispose: () => layoutListeners.delete(listener) }
+        },
+      },
+      addPanel(options) {
+        const panel = { id: options.id, focus: () => undefined }
+        panels.set(options.id, panel)
+        notifyLayout()
+        return panel
+      },
+      getPanel(id) {
+        return panels.get(id)
+      },
+      removePanel(panel) {
+        panels.delete(panel.id)
+        notifyLayout()
+      },
+      toJSON() {
+        return { panels: [...panels.keys()] }
+      },
+      fromJSON() {},
+      clear() {
+        panels.clear()
+        notifyLayout()
+      },
+      dispose() {},
+    }
+    return dockview
+  }
+}
 
 describe("playground operation log runtime", () => {
   beforeEach(() => {
     indexedDB.deleteDatabase("composeui-playground-operation-log-test")
+  })
+
+  it("accepts a workspace mount without options", () => {
+    expectTypeOf<PlaygroundOperationRuntime["mount"]>().toBeCallableWith(
+      document.createElement("div"),
+    )
   })
 
   it("creates one recorder/coordinator and persists editor operations", async () => {
@@ -26,6 +79,45 @@ describe("playground operation log runtime", () => {
       search: "",
     })
     expect(rows.filter((event) => event.type === "document.command")).not.toHaveLength(0)
+
+    await runtime.dispose()
+  })
+
+  it("persists workspace panel events and includes the workspace snapshot in checkpoints", async () => {
+    const runtime = await createPlaygroundOperationRuntime({
+      databaseName: "composeui-playground-operation-log-workspace-test",
+      indexedDB: new IDBFactory(),
+      checkpointEveryEvents: 1,
+    })
+    const layoutStore = {
+      load: async () => undefined,
+      save: async () => undefined,
+      remove: async () => undefined,
+    }
+    const workspace = runtime.mount(document.createElement("div"), {
+      layoutStore,
+      createDockview: createDockviewFake(),
+      layoutChangeDelayMs: 0,
+    })
+
+    expect(workspace.api.closePanel("scene")).toBe(true)
+    expect(workspace.api.openPanel("scene")).toBe(true)
+    await workspace.api.flushLayout()
+    runtime.scenario.createNode()
+    await runtime.flush()
+
+    const events = await runtime.store.query({ sessionId: runtime.recorder.sessionId })
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "workspace.panel.closed", payload: { panelId: "scene" } }),
+        expect.objectContaining({ type: "workspace.panel.opened", payload: { panelId: "scene" } }),
+        expect.objectContaining({ type: "workspace.layout.changed" }),
+      ]),
+    )
+    await expect(runtime.store.getNearestCheckpoint(runtime.recorder.sessionId, 100)).resolves.toMatchObject({
+      workspaceState: workspace.api.getLayoutSnapshot(),
+      workspaceHash: expect.any(String),
+    })
 
     await runtime.dispose()
   })
