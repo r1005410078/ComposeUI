@@ -1071,9 +1071,10 @@ describe("workspace panel renderers", () => {
     }
     const base = fakeOperationLogController([operationEvent()])
     const exportSession = vi.fn(
-      () => new Promise<string>((resolve) => {
-        resolveExport = resolve
-      }),
+      () =>
+        new Promise<string>((resolve) => {
+          resolveExport = resolve
+        }),
     )
     const operationLog: OperationLogControllerPort = {
       ...base,
@@ -1088,9 +1089,15 @@ describe("workspace panel renderers", () => {
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     expect(root.querySelector("[data-testid='replay-host']")).toHaveProperty("hidden", true)
-    expect(root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-step-forward']")).toBeNull()
-    expect(root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-verify']")).toBeNull()
-    expect(root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-stop']")).toBeNull()
+    expect(
+      root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-step-forward']"),
+    ).toBeNull()
+    expect(
+      root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-verify']"),
+    ).toBeNull()
+    expect(
+      root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-stop']"),
+    ).toBeNull()
 
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
     await vi.waitFor(() => expect(replayController.start).toHaveBeenCalledWith(1))
@@ -1102,12 +1109,14 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     await vi.waitFor(() => expect(exportSession).toHaveBeenCalledOnce())
-    expect(root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button")).toSatisfy(
-      (buttons) => [...buttons].every((button) => button.disabled),
-    )
+    expect(
+      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
+    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
     resolveExport?.("bundle")
     await vi.waitFor(() =>
-      expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(false),
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(
+        false,
+      ),
     )
 
     publish({
