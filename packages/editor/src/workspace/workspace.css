@@ -411,6 +411,7 @@
   display: grid;
   gap: var(--composeui-gap-compact);
   min-inline-size: calc(var(--composeui-space-4) * 8);
+  max-inline-size: calc(100cqi - var(--composeui-space-4));
   padding: var(--composeui-space-1);
   position: absolute;
   right: 0;
@@ -426,6 +427,7 @@
   display: grid;
   gap: var(--composeui-space-2);
   min-inline-size: calc(var(--composeui-space-4) * 10);
+  max-inline-size: calc(100cqi - var(--composeui-space-4));
   padding: var(--composeui-space-2);
   position: absolute;
   top: calc(100% + var(--composeui-space-1));
@@ -590,7 +592,21 @@
   overflow: hidden;
 }
 
+.composeui-editor__output-selection-action {
+  align-items: center;
+  background: var(--composeui-surface-panel-raised);
+  border-bottom: 1px solid var(--composeui-border-default);
+  display: none;
+  gap: var(--composeui-gap-compact);
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+  padding: var(--composeui-space-1) var(--composeui-space-2);
+}
+
 .composeui-editor__output-list {
+  grid-column: 1;
+  grid-row: 1;
   min-height: 0;
   min-width: 0;
   overflow: auto;
@@ -689,6 +705,8 @@
 .composeui-editor__output-details-host {
   background: var(--composeui-surface-panel-raised);
   border-left: 1px solid var(--composeui-border-default);
+  grid-column: 2;
+  grid-row: 1;
   min-height: 0;
   min-width: 0;
   overflow: auto;
@@ -858,6 +876,45 @@
 
   .composeui-editor__output-details-host {
     display: none;
+  }
+}
+
+@container (max-width: 760px) {
+  .composeui-editor__output-auto-scroll-primary {
+    display: none;
+  }
+
+  .composeui-editor__output-menu-auto-scroll {
+    display: block;
+  }
+}
+
+@container (max-width: 520px) {
+  .composeui-editor__output-replay-primary {
+    display: none;
+  }
+
+  .composeui-editor__output-search {
+    flex-basis: 0;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .composeui-editor__output-filter-popover {
+    left: auto;
+    right: 0;
+  }
+
+  .composeui-editor__output-body {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .composeui-editor__output-selection-action {
+    display: flex;
+  }
+
+  .composeui-editor__output-list {
+    grid-row: 2;
   }
 }
 

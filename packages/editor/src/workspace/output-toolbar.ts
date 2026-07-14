@@ -150,6 +150,7 @@ export function mountOutputToolbar(
   const autoScroll = actionButton("output-auto-scroll", "自动滚动", RotateCcw, () => {
     actions.onAutoScrollChange(!model.autoScroll)
   })
+  autoScroll.classList.add("composeui-editor__output-auto-scroll-primary")
   const more = actionButton("output-more-trigger", "更多操作", MoreHorizontal, () => {
     if (menuOpen) closeMenu(false)
     else openMenu()
@@ -187,6 +188,7 @@ export function mountOutputToolbar(
     closeMenu(false)
     actions.onAutoScrollChange(!model.autoScroll)
   })
+  scrollItem.classList.add("composeui-editor__output-menu-auto-scroll")
   const clearItem = menuItem("output-clear", "清空当前视图", () => {
     actions.onRequestClear()
   })
@@ -386,6 +388,7 @@ export function mountOutputToolbar(
   document.addEventListener("keydown", onDocumentKeydown)
   document.addEventListener("pointerdown", onDocumentPointerDown)
   const replayHost = document.createElement("span")
+  replayHost.className = "composeui-editor__output-replay-host"
   replayHost.dataset.testid = "output-replay-host"
   root.replaceChildren(searchLabel, filterHost, autoScroll, menuHost, replayHost, fileInput)
 
@@ -422,6 +425,7 @@ export function mountOutputToolbar(
         actions.onReplaySelected(sequence)
       },
     )
+    replay.classList.add("composeui-editor__output-replay-primary")
     replay.disabled = busy
     replayHost.append(replay)
   }

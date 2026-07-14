@@ -142,6 +142,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   errorState.hidden = true
   const body = document.createElement("div")
   body.className = "composeui-editor__output-body"
+  body.dataset.testid = "output-body"
+  const selectionAction = document.createElement("div")
+  selectionAction.className = "composeui-editor__output-selection-action"
+  selectionAction.dataset.testid = "output-selection-action"
   const list = document.createElement("div")
   list.className = "composeui-editor__output-list"
   list.dataset.testid = "output-list"
@@ -219,6 +223,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       confirmClear,
       ...(busyAction === undefined ? {} : { busyAction }),
     })
+    renderSelectionAction()
     replayBar?.update({ busy: busyAction !== undefined })
   }
   const hasActiveRestriction = (): boolean =>
@@ -339,6 +344,23 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
         if (state.error !== undefined) throw new Error(state.error)
       }
     })
+  }
+  const renderSelectionAction = (): void => {
+    selectionAction.replaceChildren()
+    if (selected === undefined) {
+      selectionAction.remove()
+      return
+    }
+    const replay = document.createElement("button")
+    replay.type = "button"
+    replay.className = "composeui-editor__output-button"
+    replay.dataset.testid = "output-selection-replay"
+    replay.textContent = busyAction === "replay" ? "正在回放…" : "回放到此处"
+    replay.setAttribute("aria-label", replay.textContent)
+    replay.disabled = busyAction !== undefined
+    replay.addEventListener("click", () => startSelectedReplay(selected!.sequence))
+    selectionAction.append(replay)
+    body.insertBefore(selectionAction, list)
   }
   toolbarMount = mountOutputToolbar(toolbar, {
     onSearch(nextSearch) {

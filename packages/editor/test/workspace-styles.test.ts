@@ -74,4 +74,18 @@ describe("operation output workspace styles", () => {
     expect(workspaceCss).toContain(".composeui-editor__output-menu-host")
     expect(workspaceCss).toContain("position: relative")
   })
+
+  it("adapts output controls through the existing output container", () => {
+    expect(workspaceCss).toContain("@container (max-width: 760px)")
+    expect(workspaceCss).toContain(".composeui-editor__output-auto-scroll-primary")
+    expect(workspaceCss).toContain("@container (max-width: 520px)")
+    expect(workspaceCss).toContain(".composeui-editor__output-replay-primary")
+    expect(workspaceCss).toContain(".composeui-editor__output-selection-action")
+
+    const compactRules = workspaceCss.match(/@container \(max-width: 520px\) \{([\s\S]*?)\n\}/)?.[1]
+    expect(compactRules).toContain(".composeui-editor__output-replay-primary")
+    expect(compactRules).toContain("display: none")
+    expect(compactRules).toContain(".composeui-editor__output-selection-action")
+    expect(compactRules).toContain("display: flex")
+  })
 })

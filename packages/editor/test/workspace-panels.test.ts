@@ -956,6 +956,42 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("renders a selected replay action outside the details column", async () => {
+    const startReplay = vi.fn(async () => undefined)
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([operationEvent()]),
+      startReplay,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    expect(root.querySelector("[data-testid='output-selection-action']")).toBeNull()
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    expect(
+      root
+        .querySelector("[data-testid='output-auto-scroll']")
+        ?.classList.contains("composeui-editor__output-auto-scroll-primary"),
+    ).toBe(true)
+    expect(
+      root
+        .querySelector("[data-testid='output-replay']")
+        ?.classList.contains("composeui-editor__output-replay-primary"),
+    ).toBe(true)
+    const selectionAction = root.querySelector<HTMLElement>(
+      "[data-testid='output-selection-action']",
+    )
+    expect(selectionAction?.textContent).toContain("回放到此处")
+    expect(selectionAction?.parentElement?.getAttribute("data-testid")).toBe("output-body")
+    selectionAction?.querySelector<HTMLButtonElement>("button")!.click()
+
+    await vi.waitFor(() => expect(startReplay).toHaveBeenCalledWith(1))
+    if (typeof dispose === "function") dispose()
+  })
+
   it("catches synchronous replay button failures", async () => {
     const state: ReplayControllerState = {
       active: true,
