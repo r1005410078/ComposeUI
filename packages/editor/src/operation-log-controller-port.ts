@@ -1,4 +1,5 @@
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
+import type { ReplayControllerPort } from "./workspace/replay-controller"
 
 export type OperationLogLevel = OperationStatus
 
@@ -32,4 +33,5 @@ export interface OperationLogControllerPort {
   exportSession(): Promise<string>
   importBundle(serialized: string): Promise<void>
   startReplay(sequence: number): void | Promise<void>
+  replayController?: ReplayControllerPort
 }

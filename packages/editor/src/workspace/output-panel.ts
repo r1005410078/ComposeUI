@@ -13,6 +13,7 @@ import {
 } from "lucide"
 import { formatOperation } from "./operation-formatters"
 import type { OperationLogControllerState } from "../operation-log-controller-port"
+import type { ReplayControllerState } from "./replay-controller"
 import type { WorkspaceContext, WorkspacePanelMount } from "./types"
 
 const LEVELS: readonly OperationStatus[] = ["observed", "started", "succeeded", "failed"]
@@ -195,7 +196,11 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   const detailsHost = document.createElement("div")
   detailsHost.className = "composeui-editor__output-details-host"
   body.append(list, detailsHost)
-  panel.append(toolbar, errorState, body)
+  const replayHost = document.createElement("div")
+  replayHost.className = "composeui-editor__output-replay"
+  replayHost.dataset.testid = "replay-host"
+  replayHost.hidden = true
+  panel.append(toolbar, errorState, replayHost, body)
   root.replaceChildren(panel)
 
   const controller = context.operationLog
@@ -218,6 +223,58 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let search = ""
   let autoScroll = true
   let latestRows: readonly OperationEvent[] = []
+  const replayController = controller.replayController
+  let unsubscribeReplay: (() => void) | undefined
+
+  const renderReplay = (state: ReplayControllerState): void => {
+    if (replayController === undefined) return
+    replayHost.hidden = !state.active
+    if (!state.active) return
+    replayHost.replaceChildren()
+    const sequence = textElement(
+      "span",
+      "composeui-editor__output-replay-sequence",
+      `当前序号：${state.currentSequence === undefined ? "-" : state.currentSequence}`,
+    )
+    sequence.dataset.testid = "replay-sequence"
+    const deterministic = textElement(
+      "span",
+      "composeui-editor__output-replay-deterministic",
+      state.deterministic ? "回放一致" : "回放存在差异",
+    )
+    deterministic.dataset.testid = "replay-deterministic"
+    deterministic.dataset.deterministic = String(state.deterministic)
+    const status = textElement("span", "composeui-editor__output-replay-status", state.status)
+    status.dataset.testid = "replay-status"
+    const difference = state.difference
+    if (difference !== undefined) {
+      const detail = textElement("pre", "composeui-editor__output-replay-difference", "")
+      detail.dataset.testid = "replay-difference"
+      detail.textContent = [
+        `type: ${difference.type}`,
+        `sequence: ${difference.sequence}`,
+        ...("path" in difference ? [`path: ${difference.path}`] : []),
+        ...("expected" in difference ? [`expected: ${safeText(difference.expected)}`] : []),
+        ...("actual" in difference ? [`actual: ${safeText(difference.actual)}`] : []),
+      ].join("\n")
+      replayHost.append(sequence, deterministic, status, detail)
+    } else {
+      replayHost.append(sequence, deterministic, status)
+    }
+  }
+
+  const replayButton = (
+    testid: string,
+    label: string,
+    iconNode: Parameters<typeof import("lucide").createElement>[0],
+    action: () => void | Promise<unknown>,
+  ): HTMLButtonElement => {
+    const replayAction = button(testid, label, iconNode, () => {
+      void Promise.resolve(action()).catch((error) => showError(label, error))
+    })
+    replayAction.disabled = !replayController?.getState().active
+    return replayAction
+  }
 
   const clearError = (): void => {
     errorState.hidden = true
@@ -368,10 +425,38 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       clearError()
       void Promise.resolve()
         .then(() => controller.startReplay(sequence))
+        .then(() => replayController?.start(sequence))
         .then(() => clearError())
         .catch((error) => showError("回放操作", error))
     }),
   )
+
+  if (replayController !== undefined) {
+    toolbar.append(
+      replayButton("replay-step-backward", "回放上一步", RotateCcw, () =>
+        replayController.stepBackward(),
+      ),
+      replayButton("replay-step-forward", "回放下一步", Play, () => replayController.stepForward()),
+      replayButton("replay-run-to", "回放到选中操作", Play, () => {
+        if (selected === undefined) throw new Error("未选择操作")
+        return replayController.runTo(selected.sequence)
+      }),
+      replayButton("replay-verify", "验证回放", Check, () => replayController.verify()),
+      replayButton("replay-continue", "继续非确定性回放", Play, () =>
+        replayController.continueBestEffort(),
+      ),
+      button("replay-stop", "停止回放", Trash2, () => replayController.stop()),
+    )
+    unsubscribeReplay = replayController.subscribe((state) => {
+      if (disposed) return
+      renderReplay(state)
+      for (const element of toolbar.querySelectorAll<HTMLButtonElement>(
+        "[data-testid^='replay-']",
+      )) {
+        element.disabled = !state.active
+      }
+    })
+  }
 
   const fileInput = document.createElement("input")
   fileInput.type = "file"
@@ -412,6 +497,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     disposed = true
     queryGeneration += 1
     unsubscribe()
+    unsubscribeReplay?.()
     root.replaceChildren()
   }
 }

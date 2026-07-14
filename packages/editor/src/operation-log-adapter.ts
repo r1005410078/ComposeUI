@@ -1,5 +1,6 @@
 import type { OperationRecorder } from "@composeui/operation-log"
 import type { EditorSessionOperationObserver, SessionOperation } from "./session"
+export { EditorSessionReplayAdapter } from "./workspace/replay-controller"
 
 export function createSessionOperationObserver(
   recorder: OperationRecorder,

@@ -8,6 +8,7 @@ import { createWorkspacePanels, type PanelId } from "../src/workspace/panels"
 import type { OperationLogControllerPort } from "../src/operation-log-controller-port"
 import type { OperationLogControllerState } from "../src/operation-log-controller-port"
 import type { OperationEvent } from "@composeui/operation-log"
+import { ReplayController } from "../src/workspace/replay-controller"
 
 function createContext(
   resources?: WorkspaceContext["resources"],
@@ -512,6 +513,56 @@ describe("workspace panel renderers", () => {
         value: originalRevokeObjectURL,
       })
     }
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("renders isolated replay state and a typed difference", async () => {
+    const replayController = new ReplayController({
+      createEngine: vi.fn(async () => ({
+        runTo: vi.fn(async () => ({
+          status: "paused" as const,
+          deterministic: false,
+          startedAtSequence: 0,
+          currentSequence: 1,
+          targetSequence: 1,
+          difference: {
+            type: "patch-mismatch" as const,
+            sequence: 1,
+            path: "forward.created[0].layout.width",
+            expected: 120,
+            actual: 999,
+          },
+        })),
+        step: vi.fn(),
+        verify: vi.fn(),
+        continueBestEffort: vi.fn(),
+        getState: vi.fn(() => ({ sequence: 1 })),
+      })),
+    })
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = { ...base, replayController }
+    const context = createContext(undefined, operationLog)
+    const originalStore = context.editor.getStore().all()
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, context)
+
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
+        "patch-mismatch",
+      ),
+    )
+    expect(root.querySelector("[data-testid='replay-sequence']")?.textContent).toContain("1")
+    expect(root.querySelector("[data-testid='replay-deterministic']")?.textContent).toContain(
+      "存在差异",
+    )
+    expect(context.editor.getStore().all()).toEqual(originalStore)
+    expect(root.querySelector("[data-testid='replay-step-backward']")).not.toBeNull()
     if (typeof dispose === "function") dispose()
   })
 

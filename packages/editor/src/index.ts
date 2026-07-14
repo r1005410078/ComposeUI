@@ -19,6 +19,15 @@ export type {
   Viewport,
 } from "./session"
 export { createSessionOperationObserver } from "./operation-log-adapter"
+export {
+  ReplayController,
+  EditorSessionReplayAdapter,
+  type ReplayControllerListener,
+  type ReplayControllerPort,
+  type ReplayControllerState,
+  type ReplayEngineFactory,
+  type ReplayEngineLike,
+} from "./workspace/replay-controller"
 export { formatOperation, registerOperationFormatter } from "./workspace/operation-formatters"
 export type { OperationFormatter } from "./workspace/operation-formatters"
 export { OperationLogController } from "./operation-log-controller"

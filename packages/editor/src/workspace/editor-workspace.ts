@@ -239,6 +239,15 @@ export function mountEditorWorkspace(
   const save = appBarButton("save", "保存项目", Save)
   save.addEventListener("click", () => options.onSave?.())
   actions.append(run, save)
+  const replayController = options.operationLog?.replayController
+  const updateReplayActions = (): void => {
+    const active = replayController?.getState().active ?? false
+    run.disabled = active
+    save.disabled = active
+    root.classList.toggle("composeui-editor__workspace-replay-active", active)
+  }
+  updateReplayActions()
+  const unsubscribeReplay = replayController?.subscribe(updateReplayActions)
   const dockviewHost = document.createElement("div")
   dockviewHost.className = "composeui-editor__dockview-host"
   header.append(title, modeSlot, actions)
@@ -568,6 +577,7 @@ export function mountEditorWorkspace(
       if (disposed) return
       disposed = true
       layoutSubscription?.dispose()
+      unsubscribeReplay?.()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()
       dockview.dispose()

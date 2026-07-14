@@ -7,6 +7,7 @@ import type {
   OperationLogFilterValue,
   OperationLogViewQuery,
 } from "./operation-log-controller-port"
+import type { ReplayControllerPort } from "./workspace/replay-controller"
 
 export type {
   OperationLogControllerListener,
@@ -24,6 +25,7 @@ export interface OperationLogControllerOptions {
   exportSession?: () => Promise<string>
   importBundle?: (serialized: string) => Promise<void>
   startReplay?: (sequence: number) => void | Promise<void>
+  replayController?: ReplayControllerPort
 }
 
 export class OperationLogController implements OperationLogControllerPort {
@@ -32,6 +34,7 @@ export class OperationLogController implements OperationLogControllerPort {
   readonly #exportSession: () => Promise<string>
   readonly #importBundle: (serialized: string) => Promise<void>
   readonly #startReplay: (sequence: number) => void | Promise<void>
+  readonly replayController?: ReplayControllerPort
   readonly #listeners = new Set<OperationLogControllerListener>()
   readonly #unsubscribeStore: () => void
   #rows: readonly OperationEvent[] = []
@@ -47,6 +50,7 @@ export class OperationLogController implements OperationLogControllerPort {
     this.#exportSession = options.exportSession ?? (async () => "")
     this.#importBundle = options.importBundle ?? (async () => undefined)
     this.#startReplay = options.startReplay ?? (() => undefined)
+    if (options.replayController !== undefined) this.replayController = options.replayController
     this.#unsubscribeStore = options.store.subscribe(() => {
       void this.#refresh().catch(() => undefined)
     })
