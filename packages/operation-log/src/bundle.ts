@@ -81,18 +81,14 @@ export type ValidatedLogBundle =
   | (LogBundleV1 & { readonly [validatedLogBundleBrand]: true })
   | (LogBundleV2 & { readonly [validatedLogBundleBrand]: true })
 
-const validatedBundleBrand = Symbol("composeui.validated-log-bundle")
+const validatedBundles = new WeakSet<object>()
 
 export function isValidatedLogBundle(value: unknown): value is ValidatedLogBundle {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    (value as Record<PropertyKey, unknown>)[validatedBundleBrand] === true
-  )
+  return value !== null && typeof value === "object" && validatedBundles.has(value)
 }
 
 function markValidatedLogBundle<T extends LogBundleV1 | LogBundleV2>(value: T): ValidatedLogBundle {
-  Object.defineProperty(value, validatedBundleBrand, { value: true })
+  validatedBundles.add(value)
   return value as ValidatedLogBundle
 }
 

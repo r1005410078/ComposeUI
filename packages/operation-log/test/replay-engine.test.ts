@@ -198,6 +198,13 @@ describe("ReplayEngine", () => {
     const futureCheckpointBundle = bundleWithCheckpoints([event(1, { gridVisible: true })])
     futureCheckpointBundle.checkpoints[0]!.sequence = 1
     const bundle = await importTestBundle(futureCheckpointBundle)
+    expect(Object.getOwnPropertySymbols(bundle)).toHaveLength(0)
+    await expect(
+      ReplayEngine.create({
+        bundle: structuredClone(bundle),
+        createSession: () => sessionPort(),
+      }),
+    ).rejects.toThrow("REPLAY_BUNDLE_NOT_VALIDATED")
     await expect(
       ReplayEngine.create({
         bundle: { ...bundle },
