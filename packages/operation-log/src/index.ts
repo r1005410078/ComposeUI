@@ -58,3 +58,9 @@ export type {
   ReplayHandlerResolution,
   ReplaySessionPort,
 } from "./replay/types"
+export {
+  builtinReplayHandlers,
+  handleDocumentCommand,
+  handleHistoryOperation,
+  handleSessionOperation,
+} from "./replay/builtin-handlers"
