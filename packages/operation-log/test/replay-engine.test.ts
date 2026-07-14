@@ -481,11 +481,13 @@ describe("ReplayEngine", () => {
       panels: ["inspector"],
       activePanelId: "inspector",
     }
-    expect(intermediate.state?.workspace).toEqual(expectedIntermediate)
-    expect(await hashCanonical(intermediate.state?.workspace)).toBe(
+    expect(intermediate.state).toBeDefined()
+    const intermediateWorkspace = intermediate.state!.workspace
+    expect(intermediateWorkspace).toEqual(expectedIntermediate)
+    expect(await hashCanonical(intermediateWorkspace)).toBe(
       await hashCanonical(expectedIntermediate),
     )
-    expect((intermediate.state?.workspace as { layout: unknown }).layout).toEqual(dockviewLayout)
+    expect((intermediateWorkspace as { layout: unknown }).layout).toEqual(dockviewLayout)
     expect((await engine.runTo(3)).state?.workspace).toEqual(nextLayout)
   })
 
