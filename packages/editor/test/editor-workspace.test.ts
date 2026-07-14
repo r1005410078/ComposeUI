@@ -947,15 +947,25 @@ describe("editor workspace", () => {
     mounted.dispose()
   })
 
-  it("keeps layout changes suppressed until the final overlapping reset completes", async () => {
-    const removeResolvers: Array<() => void> = []
+  it("serializes overlapping removes before allowing a subsequent layout save", async () => {
+    let resolveFirstRemove!: () => void
+    let resolveSecondRemove!: () => void
+    let storedLayout: StoredWorkspaceLayout | undefined
+    const firstRemove = new Promise<void>((resolve) => {
+      resolveFirstRemove = resolve
+    })
+    const secondRemove = new Promise<void>((resolve) => {
+      resolveSecondRemove = resolve
+    })
     const remove = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          removeResolvers.push(resolve)
+        (remove.mock.calls.length === 1 ? firstRemove : secondRemove).then(() => {
+          storedLayout = undefined
         }),
     )
-    const save = vi.fn().mockResolvedValue(undefined)
+    const save = vi.fn(async (layout: StoredWorkspaceLayout) => {
+      storedLayout = layout
+    })
     const fake = createDockviewFake()
     const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
       pageId: "page-1",
@@ -966,17 +976,17 @@ describe("editor workspace", () => {
     const firstReset = mounted.api.resetLayout()
     await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
     const secondReset = mounted.api.resetLayout()
-    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(2))
-    removeResolvers[0]!()
-    await firstReset
+    await Promise.resolve()
+    resolveSecondRemove()
+    expect(remove).toHaveBeenCalledTimes(1)
+    resolveFirstRemove()
+    await Promise.all([firstReset, secondReset])
+    expect(remove).toHaveBeenCalledTimes(2)
 
-    fake.setLayoutSnapshot({ revision: "between-resets" })
+    fake.setLayoutSnapshot({ revision: "post-reset" })
     fake.triggerLayoutChange()
     await mounted.api.flushLayout()
-    expect(save).not.toHaveBeenCalled()
-
-    removeResolvers[1]!()
-    await secondReset
+    expect(storedLayout).toEqual({ version: 1, modeId: "2d", layout: { revision: "post-reset" } })
     mounted.dispose()
   })
 })

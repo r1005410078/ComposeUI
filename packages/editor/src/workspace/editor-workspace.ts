@@ -245,6 +245,7 @@ export function mountEditorWorkspace(
   let pendingLayout: StoredWorkspaceLayout | undefined
   let layoutTimer: ReturnType<typeof setTimeout> | undefined
   let layoutPersistence: Promise<void> = Promise.resolve()
+  let resetPersistence: Promise<void> = Promise.resolve()
   let layoutEpoch = 0
   let resettingLayout = false
   let resetGeneration = 0
@@ -630,26 +631,30 @@ export function mountEditorWorkspace(
       if (layoutTimer !== undefined) clearTimeout(layoutTimer)
       layoutTimer = undefined
       pendingLayout = undefined
-      try {
-        await layoutPersistence
+      const reset = resetPersistence.then(async () => {
         try {
-          await options.layoutStore?.remove()
-        } catch (error) {
-          if (!disposed) {
-            events({
-              type: "layout-failure",
-              operation: "remove",
-              error: serializeWorkspaceError(error),
-            })
+          await layoutPersistence
+          try {
+            await options.layoutStore?.remove()
+          } catch (error) {
+            if (!disposed) {
+              events({
+                type: "layout-failure",
+                operation: "remove",
+                error: serializeWorkspaceError(error),
+              })
+            }
           }
+          if (disposed || generation !== resetGeneration) return
+          layoutDirty = true
+          applyDefaultLayout()
+          events({ type: "layout-reset", layout: getLayoutSnapshot() })
+        } finally {
+          if (generation === resetGeneration) resettingLayout = false
         }
-        if (disposed || generation !== resetGeneration) return
-        layoutDirty = true
-        applyDefaultLayout()
-        events({ type: "layout-reset", layout: getLayoutSnapshot() })
-      } finally {
-        if (generation === resetGeneration) resettingLayout = false
-      }
+      })
+      resetPersistence = reset.catch(() => undefined)
+      return reset
     },
     flushLayout,
     getLayoutSnapshot,
