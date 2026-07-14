@@ -1,4 +1,5 @@
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
+import { Check, Play, RotateCcw, Trash2, createElement } from "lucide"
 import { formatOperation } from "./operation-formatters"
 import type { OperationLogControllerState } from "../operation-log-controller-port"
 import type { ReplayControllerState } from "./replay-controller"
@@ -241,6 +242,24 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       replayHost.append(sequence, deterministic, status)
     }
     if (error !== undefined) replayHost.append(error)
+    const controls = document.createElement("div")
+    controls.className = "composeui-editor__output-replay-controls"
+    controls.append(
+      replayAction("replay-step-backward", "回放上一步", RotateCcw, () =>
+        replayController.stepBackward(),
+      ),
+      replayAction("replay-step-forward", "回放下一步", Play, () => replayController.stepForward()),
+      replayAction("replay-run-to", "回放到选中操作", Play, () => {
+        if (selected === undefined) throw new Error("未选择操作")
+        return replayController.runTo(selected.sequence)
+      }),
+      replayAction("replay-verify", "验证回放", Check, () => replayController.verify()),
+      replayAction("replay-continue", "继续非确定性回放", Play, () =>
+        replayController.continueBestEffort(),
+      ),
+      replayAction("replay-stop", "停止回放", Trash2, () => replayController.stop()),
+    )
+    replayHost.append(controls)
   }
 
   const clearError = (): void => {
@@ -251,6 +270,27 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     if (disposed) return
     errorState.hidden = false
     errorState.textContent = `${action}失败：${errorText(error)}`
+  }
+
+  const replayAction = (
+    testid: string,
+    label: string,
+    icon: Parameters<typeof createElement>[0],
+    action: () => void | Promise<unknown>,
+  ): HTMLButtonElement => {
+    const button = document.createElement("button")
+    button.type = "button"
+    button.className = "composeui-editor__output-button"
+    button.dataset.testid = testid
+    button.title = label
+    button.setAttribute("aria-label", label)
+    button.append(createElement(icon), document.createTextNode(label))
+    button.addEventListener("click", () => {
+      void Promise.resolve()
+        .then(action)
+        .catch((error) => showError(label, error))
+    })
+    return button
   }
 
   const showQueryError = (error: unknown): void => {
@@ -429,6 +469,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
 
   const unsubscribe = controller.subscribe((state: OperationLogControllerState) => {
     if (disposed) return
+    queryGeneration += 1
     selected = state.detail ?? state.selection
     renderRows(
       selected !== undefined && !state.rows.some((event) => event.eventId === selected?.eventId)
@@ -441,7 +482,6 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       detailsHost.replaceChildren(eventDetails(selected))
     }
     renderToolbar()
-    void refresh()
   })
   void refresh()
 

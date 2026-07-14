@@ -8,6 +8,11 @@ import { createWorkspacePanels, type PanelId } from "../src/workspace/panels"
 import type { OperationLogControllerPort } from "../src/operation-log-controller-port"
 import type { OperationLogControllerState } from "../src/operation-log-controller-port"
 import type { OperationEvent } from "@composeui/operation-log"
+import { ReplayController } from "../src/workspace/replay-controller"
+import type {
+  ReplayControllerPort,
+  ReplayControllerState,
+} from "../src/workspace/replay-controller"
 
 function createContext(
   resources?: WorkspaceContext["resources"],
@@ -396,6 +401,51 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("keeps notified rows and detail when an earlier query resolves later", async () => {
+    let notify: ((state: OperationLogControllerState) => void) | undefined
+    let resolveQuery: ((rows: readonly OperationEvent[]) => void) | undefined
+    const stale = operationEvent()
+    const notified = operationEvent({
+      eventId: "event-2",
+      sequence: 2,
+      category: "diagnostic",
+      type: "diagnostic.reported",
+      status: "failed",
+    })
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([]),
+      query: vi.fn(
+        () =>
+          new Promise<readonly OperationEvent[]>((resolve) => {
+            resolveQuery = resolve
+          }),
+      ),
+      subscribe: vi.fn((listener) => {
+        notify = listener
+        return () => undefined
+      }),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    notify?.({
+      rows: [notified],
+      query: { levels: [], categories: [], search: "" },
+      filter: {},
+      detail: notified,
+      selection: notified,
+    })
+    resolveQuery?.([stale])
+    await Promise.resolve()
+
+    expect(operationLog.query).toHaveBeenCalledTimes(1)
+    expect(root.querySelector("[data-testid='output-entry']")?.textContent).toContain("2")
+    expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
+      "diagnostic.reported",
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
   it("ignores stale queries and async work after dispose", async () => {
     const pending: Array<{ resolve: (events: readonly OperationEvent[]) => void }> = []
     const eventOne = operationEvent()
@@ -501,6 +551,237 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
     await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledWith(1))
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("handles import, export, and replay actions", async () => {
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    const createObjectURL = vi.fn(() => "blob:operation-log")
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    })
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    })
+    const schedule = vi.spyOn(globalThis, "setTimeout")
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    for (let index = 0; index < 8; index += 1) await Promise.resolve()
+    expect(anchorClick).toHaveBeenCalled()
+    expect(operationLog.exportSession).toHaveBeenCalledTimes(1)
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), 0)
+    const revokeTask = schedule.mock.calls.at(-1)?.[0]
+    expect(typeof revokeTask).toBe("function")
+    ;(revokeTask as () => void)()
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:operation-log")
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await Promise.resolve()
+    expect(operationLog.startReplay).toHaveBeenCalledWith(1)
+
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    const file = { text: vi.fn(async () => "bundle") }
+    Object.defineProperty(input, "files", { configurable: true, value: [file] })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
+
+    anchorClick.mockRestore()
+    schedule.mockRestore()
+    if (originalCreateObjectURL === undefined) {
+      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
+    } else {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectURL,
+      })
+    }
+    if (originalRevokeObjectURL === undefined) {
+      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
+    } else {
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      })
+    }
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("renders isolated replay state and a typed difference", async () => {
+    const replayController = new ReplayController({
+      createEngine: vi.fn(async () => ({
+        runTo: vi.fn(async () => ({
+          status: "paused" as const,
+          deterministic: false,
+          startedAtSequence: 0,
+          currentSequence: 1,
+          targetSequence: 1,
+          difference: {
+            type: "patch-mismatch" as const,
+            sequence: 1,
+            path: "forward.created[0].layout.width",
+            expected: 120,
+            actual: 999,
+          },
+        })),
+        step: vi.fn(),
+        verify: vi.fn(),
+        continueBestEffort: vi.fn(),
+        getState: vi.fn(() => ({ sequence: 1 })),
+      })),
+    })
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = { ...base, replayController }
+    const context = createContext(undefined, operationLog)
+    const originalStore = context.editor.getStore().all()
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, context)
+
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
+        "patch-mismatch",
+      ),
+    )
+    expect(root.querySelector("[data-testid='replay-sequence']")?.textContent).toContain("1")
+    expect(root.querySelector("[data-testid='replay-deterministic']")?.textContent).toContain(
+      "存在差异",
+    )
+    expect(context.editor.getStore().all()).toEqual(originalStore)
+    expect(root.querySelector("[data-testid='replay-step-backward']")).not.toBeNull()
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("catches synchronous replay button failures", async () => {
+    const state: ReplayControllerState = {
+      active: true,
+      status: "paused",
+      deterministic: true,
+      currentSequence: 1,
+    }
+    const replayController: ReplayControllerPort = {
+      start: vi.fn(async () => state),
+      stepBackward: vi.fn(() => {
+        throw new Error("step unavailable")
+      }),
+      stepForward: vi.fn(() => {
+        throw new Error("step unavailable")
+      }),
+      runTo: vi.fn(async () => state),
+      verify: vi.fn(async () => state),
+      continueBestEffort: vi.fn(async () => state),
+      stop: vi.fn(),
+      getState: vi.fn(() => state),
+      subscribe: vi.fn((callback) => {
+        callback(state)
+        return () => undefined
+      }),
+    }
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([operationEvent()]),
+      replayController,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "回放下一步失败",
+      ),
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("surfaces import, export, and replay failures without unhandled rejections", async () => {
+    const importBundle = vi.fn<OperationLogControllerPort["importBundle"]>()
+    const exportSession = vi.fn<OperationLogControllerPort["exportSession"]>()
+    const startReplay = vi.fn<OperationLogControllerPort["startReplay"]>()
+    importBundle.mockRejectedValue(new Error("bundle invalid"))
+    exportSession.mockRejectedValue(new Error("export unavailable"))
+    startReplay.mockRejectedValue(new Error("replay unavailable"))
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      importBundle,
+      exportSession,
+      startReplay,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "导出日志失败",
+      ),
+    )
+
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [
+        {
+          text: vi.fn(async () => {
+            throw new Error("file unreadable")
+          }),
+        },
+      ],
+    })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "file unreadable",
+      ),
+    )
+
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "导入日志失败",
+      ),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "回放操作失败",
+      ),
+    )
 
     if (typeof dispose === "function") dispose()
   })

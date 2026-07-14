@@ -1,5 +1,15 @@
 import type { OperationCategory, OperationStatus } from "@composeui/operation-log"
-import { Filter, MoreHorizontal, Play, RotateCcw, Search, createElement } from "lucide"
+import {
+  Download,
+  FileInput,
+  Filter,
+  MoreHorizontal,
+  Play,
+  RotateCcw,
+  Search,
+  Trash2,
+  createElement,
+} from "lucide"
 
 export interface OutputToolbarModel {
   readonly levels: readonly OperationStatus[]
@@ -70,13 +80,22 @@ export function mountOutputToolbar(
   searchLabel.append(searchInput)
 
   const filter = actionButton("output-filter-trigger", "筛选", Filter, () => undefined)
+  filter.disabled = true
+  filter.setAttribute("aria-disabled", "true")
+  filter.title = "筛选功能将在下一步启用"
   const autoScroll = actionButton("output-auto-scroll", "自动滚动", RotateCcw, () => {
     actions.onAutoScrollChange(!model.autoScroll)
   })
   const more = actionButton("output-more-trigger", "更多操作", MoreHorizontal, () => undefined)
+  more.disabled = true
+  more.setAttribute("aria-disabled", "true")
+  more.title = "更多操作将在下一步启用"
+  const clear = actionButton("output-clear", "清空当前视图", Trash2, actions.onClearView)
+  const importLog = actionButton("output-import", "导入日志", FileInput, actions.onImport)
+  const exportLog = actionButton("output-export", "导出日志", Download, actions.onExport)
   const replayHost = document.createElement("span")
   replayHost.dataset.testid = "output-replay-host"
-  root.replaceChildren(searchLabel, filter, autoScroll, more, replayHost)
+  root.replaceChildren(searchLabel, filter, autoScroll, more, clear, importLog, exportLog, replayHost)
 
   const render = (): void => {
     searchInput.value = model.search
