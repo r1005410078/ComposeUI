@@ -32,6 +32,8 @@ const filterCategoryLabels: Record<OperationCategory, string> = {
   system: "系统",
 }
 
+let nextFilterPopoverId = 0
+
 export interface OutputToolbarModel {
   readonly levels: readonly OperationStatus[]
   readonly categories: readonly OperationCategory[]
@@ -101,6 +103,9 @@ export function mountOutputToolbar(
     autoScroll: true,
     canReplaySelection: false,
   }
+  let pendingFilterFocus:
+    | { readonly attribute: "filterLevel" | "filterCategory"; readonly value: string }
+    | undefined
   const searchLabel = document.createElement("label")
   searchLabel.className = "composeui-editor__output-search"
   searchLabel.append(createElement(Search))
@@ -113,6 +118,7 @@ export function mountOutputToolbar(
 
   const filterHost = document.createElement("span")
   filterHost.className = "composeui-editor__output-filter-host"
+  const filterPopoverId = `composeui-output-filter-popover-${++nextFilterPopoverId}`
   const filter = actionButton("output-filter-trigger", "筛选", Filter, () => {
     if (filterPopover.isConnected) closeFilter(false)
     else {
@@ -122,7 +128,7 @@ export function mountOutputToolbar(
   })
   filter.setAttribute("aria-haspopup", "dialog")
   filter.setAttribute("aria-expanded", "false")
-  filter.setAttribute("aria-controls", "output-filter-popover")
+  filter.setAttribute("aria-controls", filterPopoverId)
   filterHost.append(filter)
   const autoScroll = actionButton("output-auto-scroll", "自动滚动", RotateCcw, () => {
     actions.onAutoScrollChange(!model.autoScroll)
@@ -170,7 +176,7 @@ export function mountOutputToolbar(
   menu.append(importItem, exportItem, scrollItem, clearItem)
   const filterPopover = document.createElement("div")
   filterPopover.className = "composeui-editor__output-filter-popover"
-  filterPopover.id = "output-filter-popover"
+  filterPopover.id = filterPopoverId
   filterPopover.dataset.testid = "output-filter-popover"
   filterPopover.setAttribute("role", "dialog")
   filterPopover.setAttribute("aria-label", "筛选操作日志")
@@ -238,12 +244,16 @@ export function mountOutputToolbar(
       checkbox.checked = isSelected(selected, value)
       checkbox.dataset[attribute] = value
       checkbox.addEventListener("click", () => {
+        const focus =
+          document.activeElement === checkbox ? { attribute, value: String(value) } : undefined
+        pendingFilterFocus = focus
         const next = changeFilter(selected, all, value, checkbox.checked)
         if (attribute === "filterLevel") {
           actions.onFilterChange(next as OperationStatus[], model.categories)
         } else {
           actions.onFilterChange(model.levels, next as OperationCategory[])
         }
+        if (pendingFilterFocus === focus) pendingFilterFocus = undefined
       })
       option.append(checkbox, document.createTextNode(label))
       filterOptions.append(option)
@@ -259,6 +269,13 @@ export function mountOutputToolbar(
         filterCategories,
         "filterCategory",
       )
+    }
+    const focus = pendingFilterFocus
+    pendingFilterFocus = undefined
+    if (focus !== undefined) {
+      Array.from(filterOptions.querySelectorAll<HTMLInputElement>("input[type='checkbox']"))
+        .find((checkbox) => checkbox.dataset[focus.attribute] === focus.value)
+        ?.focus()
     }
   }
   const openFilter = (): void => {

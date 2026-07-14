@@ -98,6 +98,67 @@ describe("mountOutputToolbar", () => {
     expect(toolbarActions.onResetFilters).toHaveBeenCalledTimes(1)
   })
 
+  it("preserves toggle focus through a controlled filter update for Arrow navigation", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const toolbarActions = actions()
+    const mounted = mountOutputToolbar(root, toolbarActions)
+    toolbarActions.onFilterChange.mockImplementation((levels, categories) => {
+      mounted.update({
+        levels,
+        categories,
+        search: "",
+        autoScroll: true,
+        canReplaySelection: false,
+      })
+    })
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!.click()
+    const observed = root.querySelector<HTMLInputElement>("[data-filter-level='observed']")!
+    observed.focus()
+    observed.click()
+
+    expect(document.activeElement).toBe(
+      root.querySelector<HTMLInputElement>("[data-filter-level='observed']"),
+    )
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    )
+    expect(document.activeElement).toBe(
+      root.querySelector<HTMLInputElement>("[data-filter-level='started']"),
+    )
+
+    mounted.dispose()
+    root.remove()
+  })
+
+  it("assigns each mounted Filter popover a distinct trigger-controlled id", () => {
+    const firstRoot = document.createElement("div")
+    const secondRoot = document.createElement("div")
+    const first = mountOutputToolbar(firstRoot, actions())
+    const second = mountOutputToolbar(secondRoot, actions())
+    const firstTrigger = firstRoot.querySelector<HTMLButtonElement>(
+      "[data-testid='output-filter-trigger']",
+    )!
+    const secondTrigger = secondRoot.querySelector<HTMLButtonElement>(
+      "[data-testid='output-filter-trigger']",
+    )!
+
+    firstTrigger.click()
+    secondTrigger.click()
+    const firstId = firstTrigger.getAttribute("aria-controls")
+    const secondId = secondTrigger.getAttribute("aria-controls")
+
+    expect(firstId).not.toBeNull()
+    expect(secondId).not.toBeNull()
+    expect(firstId).not.toBe(secondId)
+    expect(firstRoot.querySelector("[data-testid='output-filter-popover']")?.id).toBe(firstId)
+    expect(secondRoot.querySelector("[data-testid='output-filter-popover']")?.id).toBe(secondId)
+
+    first.dispose()
+    second.dispose()
+  })
+
   it("closes Filter on Escape, restores focus, moves checkbox focus with arrows, and closes More", () => {
     const root = document.createElement("div")
     document.body.append(root)
