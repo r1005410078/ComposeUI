@@ -76,6 +76,7 @@ export async function createPlaygroundOperationRuntime(
     projectId: PLAYGROUND_PROJECT_ID,
     store,
     initialSequence: existingSession?.eventCount ?? 0,
+    redactor: <T>(value: T) => structuredClone(value),
   })
   const session = new EditorSession({ operationObserver: createSessionOperationObserver(recorder) })
   let coordinator: OperationLogCoordinator | undefined
@@ -83,6 +84,17 @@ export async function createPlaygroundOperationRuntime(
     operationObserver: createCoreOperationObserver(recorder, {
       onDocumentCommandSucceeded: () => coordinator?.documentEvent(),
     }),
+  })
+  const initialDocument = canonicalizeDocument(scenario.editor.getStore())
+  const initialSessionState = session.getState()
+  await store.putCheckpoint({
+    sessionId: recorder.sessionId,
+    sequence: 0,
+    createdAt: new Date().toISOString(),
+    document: initialDocument,
+    sessionState: initialSessionState,
+    documentHash: await hashCanonical(initialDocument),
+    sessionHash: await hashCanonical(initialSessionState),
   })
   const startedCoordinator = await OperationLogCoordinator.start({
     store,
@@ -116,6 +128,8 @@ export async function createPlaygroundOperationRuntime(
     const serialized = await exportLogBundle(store, {
       sessionId: recorder.sessionId,
       productVersion: "playground-replay",
+      redactor: <T>(value: T) => structuredClone(value),
+      redactionPolicy: "replay-v1",
     })
     return importLogBundle(serialized)
   }
@@ -142,6 +156,7 @@ export async function createPlaygroundOperationRuntime(
   const controller = new OperationLogController({
     store,
     sessionId: recorder.sessionId,
+    startReplay: (sequence) => replayController.start(sequence).then(() => undefined),
     exportSession: () =>
       exportLogBundle(store, {
         sessionId: recorder.sessionId,

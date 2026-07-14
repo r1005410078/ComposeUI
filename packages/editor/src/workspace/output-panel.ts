@@ -434,7 +434,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       clearError()
       void Promise.resolve()
         .then(() => controller.startReplay(sequence))
-        .then(() => replayController?.start(sequence))
+        .then(() => {
+          if (replayController === undefined || replayController.getState().active) return undefined
+          return replayController.start(sequence)
+        })
         .then(() => clearError())
         .catch((error) => showError("回放操作", error))
     }),

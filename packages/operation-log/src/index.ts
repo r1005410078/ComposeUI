@@ -69,6 +69,7 @@ export {
   handleDocumentCommand,
   handleHistoryOperation,
   handleSessionOperation,
+  handleSystemOperation,
 } from "./replay/builtin-handlers"
 export { ReplayEngine } from "./replay/engine"
 export type {

@@ -385,6 +385,20 @@ export async function handleSessionOperation(
   }
 }
 
+export async function handleSystemOperation(
+  event: OperationEvent,
+  context: ReplayHandlerContext,
+): Promise<ReplayDifference | undefined> {
+  if (context.sideEffects !== "disabled") {
+    return {
+      type: "environment-mismatch",
+      sequence: event.sequence,
+      requirement: "sideEffects=disabled",
+    }
+  }
+  return undefined
+}
+
 export const builtinReplayHandlers = {
   "document.command": handleDocumentCommand,
   "history.undo": handleHistoryOperation,
@@ -398,4 +412,7 @@ export const builtinReplayHandlers = {
   "session.tool": handleSessionOperation,
   "session.grid": handleSessionOperation,
   "session.treeDisclosure": handleSessionOperation,
+  "system.sessionStarted": handleSystemOperation,
+  "system.checkpoint": handleSystemOperation,
+  "system.sessionEnded": handleSystemOperation,
 } as const
