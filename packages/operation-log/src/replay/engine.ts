@@ -89,6 +89,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
+function isWorkspaceLayoutWrapper(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    Object.hasOwn(value, "version") &&
+    Object.hasOwn(value, "modeId") &&
+    Object.hasOwn(value, "layout")
+  )
+}
+
 function workspaceLayoutState(layout: unknown): Record<string, unknown> | undefined {
   if (!isRecord(layout)) return undefined
   return isRecord(layout.layout) ? layout.layout : layout
@@ -110,6 +119,25 @@ function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
   const panels = new Set(workspacePanelIds(layout))
   let activePanelId = workspaceActivePanelId(layout)
 
+  const synchronizePanelState = (): void => {
+    const layoutRecord = isRecord(layout) ? layout : {}
+    layout = layoutRecord
+    let state: Record<string, unknown>
+    if (isWorkspaceLayoutWrapper(layoutRecord)) {
+      const nestedLayout = layoutRecord.layout
+      if (isRecord(nestedLayout)) state = nestedLayout
+      else {
+        state = {}
+        layoutRecord.layout = state
+      }
+    } else {
+      state = layoutRecord
+    }
+    state.panels = [...panels]
+    if (activePanelId === undefined) delete state.activePanelId
+    else state.activePanelId = activePanelId
+  }
+
   const applyLayout = (nextLayout: unknown): void => {
     layout = clone(nextLayout)
     panels.clear()
@@ -119,23 +147,22 @@ function createInMemoryWorkspace(initialState: unknown): ReplayWorkspacePort {
 
   const snapshot = (): unknown => {
     if (layout === undefined && panels.size === 0 && activePanelId === undefined) return undefined
-    return {
-      layout: clone(layout),
-      panels: [...panels],
-      ...(activePanelId === undefined ? {} : { activePanelId }),
-    }
+    return clone(layout)
   }
   return {
     openPanel(panelId) {
       panels.add(panelId)
+      synchronizePanelState()
     },
     closePanel(panelId) {
       panels.delete(panelId)
       if (activePanelId === panelId) activePanelId = undefined
+      synchronizePanelState()
     },
     activatePanel(panelId) {
       panels.add(panelId)
       activePanelId = panelId
+      synchronizePanelState()
     },
     applyLayout(nextLayout) {
       applyLayout(nextLayout)
@@ -329,7 +356,12 @@ export class ReplayEngine {
         }
       } catch (error) {
         difference = {
-          type: event.category === "session" ? "session-error" : "handler-error",
+          type:
+            event.category === "session"
+              ? "session-error"
+              : event.category === "workspace"
+                ? "workspace-error"
+                : "handler-error",
           sequence: event.sequence,
           eventType: event.type,
           message: errorMessage(error),
@@ -396,13 +428,21 @@ export class ReplayEngine {
       sequence: this.#currentSequence,
       document: clone(snapshotDocument(this.#editor)),
       session: clone(this.#session.getState()),
-      workspace: clone(this.#workspace.getState()),
+      workspace: this.#workspaceState(),
     }
   }
 
   #nextEvent(targetSequence: number): OperationEvent | undefined {
     const event = this.#events[this.#eventIndex]
     return event !== undefined && event.sequence <= targetSequence ? event : undefined
+  }
+
+  #workspaceState(): unknown {
+    try {
+      return clone(this.#workspace!.getState())
+    } catch (error) {
+      throw new ReplayWorkspaceStateError(errorMessage(error))
+    }
   }
 
   #result(options: InternalResultOptions, targetSequence: number): ReplayResult {
@@ -412,9 +452,10 @@ export class ReplayEngine {
     } catch (error) {
       if (this.#firstDifference === undefined) {
         this.#recordDifference({
-          type: "session-error",
+          type: error instanceof ReplayWorkspaceStateError ? "workspace-error" : "session-error",
           sequence: this.#currentSequence,
-          eventType: "session.state",
+          eventType:
+            error instanceof ReplayWorkspaceStateError ? "workspace.state" : "session.state",
           message: errorMessage(error),
         })
       }
@@ -439,3 +480,5 @@ export class ReplayEngine {
     this.#nondeterministicFromSequence ??= difference.sequence
   }
 }
+
+class ReplayWorkspaceStateError extends Error {}

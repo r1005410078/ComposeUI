@@ -373,26 +373,31 @@ describe("ReplayEngine", () => {
         ...event(1, { panelId: "inspector" }),
         category: "workspace" as const,
         type: "workspace.panel.opened",
+        status: "observed" as const,
       },
       {
         ...event(2, { panelId: "inspector" }),
         category: "workspace" as const,
         type: "workspace.panel.activated",
+        status: "observed" as const,
       },
       {
         ...event(3, { panelId: "canvas" }),
         category: "workspace" as const,
         type: "workspace.panel.closed",
+        status: "observed" as const,
       },
       {
         ...event(4, { layout: nextLayout }),
         category: "workspace" as const,
         type: "workspace.layout.changed",
+        status: "observed" as const,
       },
       {
         ...event(5, { layout: initialWorkspace }),
         category: "workspace" as const,
         type: "workspace.layout.reset",
+        status: "observed" as const,
       },
     ]
     const engine = await ReplayEngine.create({
@@ -400,32 +405,68 @@ describe("ReplayEngine", () => {
       createSession: () => sessionPort(),
     })
 
+    expect(engine.getState().workspace).toEqual(initialWorkspace)
     expect((await engine.runTo(1)).state?.workspace).toEqual({
-      layout: initialWorkspace,
-      panels: ["canvas", "inspector"],
-      activePanelId: "canvas",
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["canvas", "inspector"], activePanelId: "canvas" },
     })
     expect((await engine.runTo(2)).state?.workspace).toEqual({
-      layout: initialWorkspace,
-      panels: ["canvas", "inspector"],
-      activePanelId: "inspector",
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["canvas", "inspector"], activePanelId: "inspector" },
     })
     expect((await engine.runTo(3)).state?.workspace).toEqual({
-      layout: initialWorkspace,
-      panels: ["inspector"],
-      activePanelId: "inspector",
+      version: 1,
+      modeId: "2d",
+      layout: { panels: ["inspector"], activePanelId: "inspector" },
     })
-    expect((await engine.runTo(4)).state?.workspace).toEqual({
-      layout: nextLayout,
-      panels: ["canvas", "inspector"],
-      activePanelId: "inspector",
-    })
+    expect((await engine.runTo(4)).state?.workspace).toEqual(nextLayout)
     const result = await engine.runTo(5)
     expect(result).toMatchObject({ status: "completed", deterministic: true })
-    expect(result.state?.workspace).toEqual({
-      layout: initialWorkspace,
-      panels: ["canvas"],
-      activePanelId: "canvas",
+    expect(result.state?.workspace).toEqual(initialWorkspace)
+  })
+
+  it("reports workspace port method and state failures as workspace differences", async () => {
+    const methodEngine = await ReplayEngine.create({
+      bundle: await importTestBundle(
+        bundleWithCheckpoints([
+          {
+            ...event(1, { panelId: "inspector" }),
+            category: "workspace",
+            type: "workspace.panel.opened",
+            status: "observed",
+          },
+        ]),
+      ),
+      createSession: () => sessionPort(),
+      createWorkspace: () => ({
+        ...workspacePort(undefined),
+        openPanel: () => {
+          throw new Error("open boom")
+        },
+      }),
+    })
+    expect((await methodEngine.verify()).difference).toMatchObject({
+      type: "workspace-error",
+      eventType: "workspace.panel.opened",
+      message: "open boom",
+    })
+
+    const stateEngine = await ReplayEngine.create({
+      bundle: await importTestBundle(bundleWithCheckpoints([])),
+      createSession: () => sessionPort(),
+      createWorkspace: () => ({
+        ...workspacePort(undefined),
+        getState: () => {
+          throw new Error("state boom")
+        },
+      }),
+    })
+    expect((await stateEngine.verify()).difference).toMatchObject({
+      type: "workspace-error",
+      eventType: "workspace.state",
+      message: "state boom",
     })
   })
 

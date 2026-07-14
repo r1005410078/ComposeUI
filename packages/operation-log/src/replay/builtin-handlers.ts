@@ -178,6 +178,9 @@ export async function handleWorkspaceOperation(
     }
   }
   if (event.type === "diagnostic.reported") return undefined
+  if (event.category !== "workspace" || event.status !== "observed") {
+    return schemaIncompatible(event)
+  }
   switch (event.type) {
     case "workspace.panel.opened": {
       const panelId = panelIdFrom(event)
