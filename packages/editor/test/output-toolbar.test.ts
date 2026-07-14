@@ -30,13 +30,50 @@ describe("mountOutputToolbar", () => {
     expect(root.querySelector("[data-testid='output-auto-scroll']")).not.toBeNull()
     const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")
     expect(more).not.toBeNull()
-    expect(more?.disabled).toBe(true)
-    expect(more?.getAttribute("aria-disabled")).toBe("true")
-    expect(more?.title).toBe("更多操作将在下一步启用")
+    expect(more?.disabled).toBe(false)
+    expect(root.querySelector("[data-testid='output-import']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-export']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-clear']")).toBeNull()
     expect(root.querySelector("[data-testid='output-replay']")).toBeNull()
 
     mounted.dispose()
     expect(() => mounted.dispose()).not.toThrow()
+  })
+
+  it("opens More actions and closes on Escape with trigger focus restored", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const toolbarActions = actions()
+    mountOutputToolbar(root, toolbarActions)
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+
+    more.click()
+    expect(root.querySelector("[role='menu']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='output-import']")?.textContent).toContain("导入日志")
+    expect(root.querySelector("[data-testid='output-export']")?.textContent).toContain("导出日志")
+    expect(root.querySelector("[data-testid='output-menu-scroll']")?.textContent).toContain(
+      "自动滚动：开",
+    )
+    expect(root.querySelector("[data-testid='output-clear']")?.textContent).toContain("清空当前视图")
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-menu-scroll']")!.click()
+    expect(toolbarActions.onAutoScrollChange).toHaveBeenCalledWith(false)
+    more.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    expect(toolbarActions.onClearView).toHaveBeenCalledTimes(1)
+
+    more.click()
+    const outside = document.createElement("div")
+    document.body.append(outside)
+    outside.dispatchEvent(new Event("pointerdown", { bubbles: true }))
+    expect(root.querySelector("[role='menu']")).toBeNull()
+
+    more.click()
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(root.querySelector("[role='menu']")).toBeNull()
+    expect(document.activeElement).toBe(more)
+    outside.remove()
+    root.remove()
   })
 
   it("shows selected replay and calls the action with its sequence", () => {

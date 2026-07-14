@@ -389,23 +389,14 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     void refresh()
   }
 
-  const fileInput = document.createElement("input")
-  fileInput.type = "file"
-  fileInput.accept = ".json,application/json"
-  fileInput.hidden = true
-  fileInput.dataset.testid = "output-import-input"
-  fileInput.addEventListener("change", () => {
-    const file = fileInput.files?.[0]
-    if (file === undefined) return
+  const handleImport = (file: File): void => {
     clearError()
     void Promise.resolve()
       .then(() => file.text())
       .then((serialized) => controller.importBundle(serialized))
       .then(() => clearError())
       .catch((error) => showError("导入日志", error))
-  })
-
-  const handleImport = (): void => fileInput.click()
+  }
   const handleExport = (): void => {
     clearError()
     void Promise.resolve()
@@ -459,7 +450,6 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     onReplaySelected: startSelectedReplay,
   })
   renderToolbar()
-  toolbar.append(fileInput)
 
   if (replayController !== undefined) {
     unsubscribeReplay = replayController.subscribe((state) => {

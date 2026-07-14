@@ -1,15 +1,5 @@
 import type { OperationCategory, OperationStatus } from "@composeui/operation-log"
-import {
-  Download,
-  FileInput,
-  Filter,
-  MoreHorizontal,
-  Play,
-  RotateCcw,
-  Search,
-  Trash2,
-  createElement,
-} from "lucide"
+import { Filter, MoreHorizontal, Play, RotateCcw, Search, createElement } from "lucide"
 
 export interface OutputToolbarModel {
   readonly levels: readonly OperationStatus[]
@@ -26,7 +16,7 @@ export interface OutputToolbarActions {
   onFilterChange(levels: readonly OperationStatus[], categories: readonly OperationCategory[]): void
   onResetFilters(): void
   onAutoScrollChange(autoScroll: boolean): void
-  onImport(): void
+  onImport(file: File): void
   onExport(): void
   onClearView(): void
   onReplaySelected(sequence: number): void
@@ -52,6 +42,17 @@ function actionButton(
   button.append(createElement(icon), document.createTextNode(label))
   button.addEventListener("click", onClick)
   return button
+}
+
+function menuItem(testid: string, label: string, onClick: () => void): HTMLButtonElement {
+  const item = document.createElement("button")
+  item.type = "button"
+  item.className = "composeui-editor__output-menu-item"
+  item.dataset.testid = testid
+  item.setAttribute("role", "menuitem")
+  item.textContent = label
+  item.addEventListener("click", onClick)
+  return item
 }
 
 export function mountOutputToolbar(
@@ -86,21 +87,77 @@ export function mountOutputToolbar(
   const autoScroll = actionButton("output-auto-scroll", "自动滚动", RotateCcw, () => {
     actions.onAutoScrollChange(!model.autoScroll)
   })
-  const more = actionButton("output-more-trigger", "更多操作", MoreHorizontal, () => undefined)
-  more.disabled = true
-  more.setAttribute("aria-disabled", "true")
-  more.title = "更多操作将在下一步启用"
-  const clear = actionButton("output-clear", "清空当前视图", Trash2, actions.onClearView)
-  const importLog = actionButton("output-import", "导入日志", FileInput, actions.onImport)
-  const exportLog = actionButton("output-export", "导出日志", Download, actions.onExport)
+  const more = actionButton("output-more-trigger", "更多操作", MoreHorizontal, () => {
+    if (menu.isConnected) closeMenu(false)
+    else openMenu()
+  })
+  more.setAttribute("aria-haspopup", "menu")
+  more.setAttribute("aria-expanded", "false")
+  const fileInput = document.createElement("input")
+  fileInput.type = "file"
+  fileInput.accept = ".json,application/json"
+  fileInput.hidden = true
+  fileInput.dataset.testid = "output-import-input"
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0]
+    if (file !== undefined) actions.onImport(file)
+    fileInput.value = ""
+  })
+  const menu = document.createElement("div")
+  menu.className = "composeui-editor__output-menu"
+  menu.dataset.testid = "output-more-menu"
+  menu.setAttribute("role", "menu")
+  menu.setAttribute("aria-label", "更多操作")
+  const importItem = menuItem("output-import", "导入日志", () => {
+    closeMenu(false)
+    fileInput.click()
+  })
+  const exportItem = menuItem("output-export", "导出日志", () => {
+    closeMenu(false)
+    actions.onExport()
+  })
+  const scrollItem = menuItem("output-menu-scroll", "", () => {
+    closeMenu(false)
+    actions.onAutoScrollChange(!model.autoScroll)
+  })
+  const clearItem = menuItem("output-clear", "清空当前视图", () => {
+    closeMenu(false)
+    actions.onClearView()
+  })
+  menu.append(importItem, exportItem, scrollItem, clearItem)
+  const openMenu = (): void => {
+    if (disposed || menu.isConnected) return
+    root.append(menu)
+    more.setAttribute("aria-expanded", "true")
+  }
+  const closeMenu = (restoreFocus: boolean): void => {
+    if (!menu.isConnected) return
+    menu.remove()
+    more.setAttribute("aria-expanded", "false")
+    if (restoreFocus) more.focus()
+  }
+  const onDocumentKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape" && menu.isConnected) {
+      event.preventDefault()
+      closeMenu(true)
+    }
+  }
+  const onDocumentPointerDown = (event: PointerEvent): void => {
+    if (menu.isConnected && event.target instanceof Node && !root.contains(event.target)) {
+      closeMenu(false)
+    }
+  }
+  document.addEventListener("keydown", onDocumentKeydown)
+  document.addEventListener("pointerdown", onDocumentPointerDown)
   const replayHost = document.createElement("span")
   replayHost.dataset.testid = "output-replay-host"
-  root.replaceChildren(searchLabel, filter, autoScroll, more, clear, importLog, exportLog, replayHost)
+  root.replaceChildren(searchLabel, filter, autoScroll, more, replayHost, fileInput)
 
   const render = (): void => {
     searchInput.value = model.search
     autoScroll.setAttribute("aria-pressed", String(model.autoScroll))
     autoScroll.disabled = model.busyAction === "auto-scroll"
+    scrollItem.textContent = model.autoScroll ? "自动滚动：开" : "自动滚动：关"
     replayHost.replaceChildren()
     if (!model.canReplaySelection || model.selectedSequence === undefined) return
     const sequence = model.selectedSequence
@@ -121,6 +178,8 @@ export function mountOutputToolbar(
     dispose() {
       if (disposed) return
       disposed = true
+      document.removeEventListener("keydown", onDocumentKeydown)
+      document.removeEventListener("pointerdown", onDocumentPointerDown)
       root.replaceChildren()
     },
   }

@@ -579,6 +579,7 @@ describe("workspace panel renderers", () => {
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
 
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     for (let index = 0; index < 8; index += 1) await Promise.resolve()
     expect(anchorClick).toHaveBeenCalled()
@@ -599,6 +600,7 @@ describe("workspace panel renderers", () => {
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
     const file = { text: vi.fn(async () => "bundle") }
     Object.defineProperty(input, "files", { configurable: true, value: [file] })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
@@ -738,6 +740,7 @@ describe("workspace panel renderers", () => {
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
 
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     await vi.waitFor(() =>
       expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
@@ -756,6 +759,7 @@ describe("workspace panel renderers", () => {
         },
       ],
     })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() =>
