@@ -219,7 +219,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       confirmClear,
       ...(busyAction === undefined ? {} : { busyAction }),
     })
-    replayBar?.update()
+    replayBar?.update({ busy: busyAction !== undefined })
   }
   const hasActiveRestriction = (): boolean =>
     levels.length > 0 || categories.length > 0 || search.trim().length > 0
@@ -379,6 +379,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       controller: replayController,
       getSelectedSequence: () => selected?.sequence,
       onError: showError,
+      model: { busy: busyAction !== undefined },
     })
   }
 

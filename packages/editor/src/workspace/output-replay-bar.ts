@@ -1,9 +1,13 @@
-import { BadgeCheck, FastForward, Square, StepBack, StepForward, createElement } from "lucide"
+import { BadgeCheck, FastForward, Play, Square, StepBack, StepForward, createElement } from "lucide"
 import type { ReplayControllerPort } from "./replay-controller"
 import { safeText } from "./output-value-format"
 
+export interface OutputReplayBarModel {
+  readonly busy: boolean
+}
+
 export interface OutputReplayBarMount {
-  update(): void
+  update(model: OutputReplayBarModel): void
   dispose(): void
 }
 
@@ -11,6 +15,7 @@ export interface OutputReplayBarOptions {
   readonly controller: ReplayControllerPort
   readonly getSelectedSequence: () => number | undefined
   readonly onError: (label: string, error: unknown) => void
+  readonly model: OutputReplayBarModel
 }
 
 function textElement(tag: keyof HTMLElementTagNameMap, className: string, value: string): HTMLElement {
@@ -27,6 +32,7 @@ export function mountOutputReplayBar(
   root.className = "composeui-editor__output-replay"
   root.dataset.testid = "replay-host"
   let state = options.controller.getState()
+  let model = options.model
   let disposed = false
   let reportedError: string | undefined
 
@@ -53,11 +59,12 @@ export function mountOutputReplayBar(
 
     const controls = document.createElement("div")
     controls.className = "composeui-editor__output-replay-controls"
-    const busy = state.status === "running"
+    const busy = state.status === "running" || model.busy
     const action = (
       testid: string,
       label: string,
       icon: Parameters<typeof createElement>[0],
+      iconName: string,
       handler: () => void | Promise<unknown>,
       disabled = busy,
     ): HTMLButtonElement => {
@@ -65,6 +72,7 @@ export function mountOutputReplayBar(
       button.type = "button"
       button.className = "composeui-editor__output-button"
       button.dataset.testid = testid
+      button.dataset.icon = iconName
       button.title = label
       button.setAttribute("aria-label", label)
       button.disabled = disabled
@@ -78,12 +86,17 @@ export function mountOutputReplayBar(
     }
 
     controls.append(
-      action("replay-step-backward", "上一步", StepBack, () => options.controller.stepBackward()),
-      action("replay-step-forward", "下一步", StepForward, () => options.controller.stepForward()),
+      action("replay-step-backward", "上一步", StepBack, "step-back", () =>
+        options.controller.stepBackward(),
+      ),
+      action("replay-step-forward", "下一步", StepForward, "step-forward", () =>
+        options.controller.stepForward(),
+      ),
       action(
         "replay-run-to",
         "运行到选中项",
         FastForward,
+        "fast-forward",
         () => {
           const sequence = options.getSelectedSequence()
           if (sequence === undefined) throw new Error("未选择操作")
@@ -91,16 +104,18 @@ export function mountOutputReplayBar(
         },
         busy || options.getSelectedSequence() === undefined,
       ),
-      action("replay-verify", "验证", BadgeCheck, () => options.controller.verify()),
+      action("replay-verify", "验证", BadgeCheck, "badge-check", () =>
+        options.controller.verify(),
+      ),
     )
     if (!state.deterministic) {
       controls.append(
-        action("replay-continue", "继续回放", FastForward, () =>
+        action("replay-continue", "继续回放", Play, "play", () =>
           options.controller.continueBestEffort(),
         ),
       )
     }
-    controls.append(action("replay-stop", "停止", Square, () => options.controller.stop(), false))
+    controls.append(action("replay-stop", "停止", Square, "square", () => options.controller.stop()))
 
     const children: Node[] = [summary, controls]
     if (state.difference !== undefined) {
@@ -135,7 +150,8 @@ export function mountOutputReplayBar(
   render()
 
   return {
-    update() {
+    update(nextModel) {
+      model = nextModel
       if (!disposed) render()
     },
     dispose() {

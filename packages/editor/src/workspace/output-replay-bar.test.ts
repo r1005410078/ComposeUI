@@ -37,6 +37,7 @@ describe("output replay bar", () => {
       controller,
       getSelectedSequence: () => undefined,
       onError: vi.fn(),
+      model: { busy: false },
     })
 
     expect(root).toHaveProperty("hidden", true)
@@ -58,6 +59,7 @@ describe("output replay bar", () => {
       controller,
       getSelectedSequence: () => 8,
       onError: vi.fn(),
+      model: { busy: false },
     })
 
     const summary = root.querySelector("[data-testid='replay-summary']")!
@@ -97,6 +99,7 @@ describe("output replay bar", () => {
       controller,
       getSelectedSequence: () => undefined,
       onError: vi.fn(),
+      model: { busy: false },
     })
 
     expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain("回放存在差异")
@@ -128,9 +131,66 @@ describe("output replay bar", () => {
       controller,
       getSelectedSequence: () => undefined,
       onError,
+      model: { busy: false },
     })
 
     expect(onError).toHaveBeenCalledWith("回放", expect.objectContaining({ message: "engine unavailable" }))
+    mount.dispose()
+  })
+
+  it("invokes each enabled control and disables every control while busy or running", async () => {
+    const root = document.createElement("div")
+    const controller = createController({
+      active: true,
+      status: "paused",
+      deterministic: false,
+      currentSequence: 3,
+      targetSequence: 8,
+    })
+    const mount = mountOutputReplayBar(root, {
+      controller,
+      getSelectedSequence: () => 8,
+      onError: vi.fn(),
+      model: { busy: false },
+    })
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-backward']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-run-to']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-verify']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-continue']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
+    await vi.waitFor(() => {
+      expect(controller.stepBackward).toHaveBeenCalledOnce()
+      expect(controller.stepForward).toHaveBeenCalledOnce()
+      expect(controller.runTo).toHaveBeenCalledWith(8)
+      expect(controller.verify).toHaveBeenCalledOnce()
+      expect(controller.continueBestEffort).toHaveBeenCalledOnce()
+      expect(controller.stop).toHaveBeenCalledOnce()
+    })
+    expect(root.querySelector("[data-testid='replay-run-to']")?.getAttribute("data-icon")).toBe(
+      "fast-forward",
+    )
+    expect(root.querySelector("[data-testid='replay-continue']")?.getAttribute("data-icon")).toBe(
+      "play",
+    )
+
+    mount.update({ busy: true })
+    expect(root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button")).toSatisfy(
+      (buttons) => [...buttons].every((button) => button.disabled),
+    )
+
+    controller.publish({
+      active: true,
+      status: "running",
+      deterministic: false,
+      currentSequence: 3,
+      targetSequence: 8,
+    })
+    mount.update({ busy: false })
+    expect(root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button")).toSatisfy(
+      (buttons) => [...buttons].every((button) => button.disabled),
+    )
     mount.dispose()
   })
 })
