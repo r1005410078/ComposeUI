@@ -622,8 +622,12 @@ describe("workspace panel renderers", () => {
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
-    await Promise.resolve()
-    expect(operationLog.startReplay).toHaveBeenCalledWith(1)
+    await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledWith(1))
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
+        false,
+      ),
+    )
 
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
     const file = { text: vi.fn(async () => "bundle") }
@@ -780,6 +784,11 @@ describe("workspace panel renderers", () => {
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
     const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
 
     more.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
@@ -787,6 +796,14 @@ describe("workspace panel renderers", () => {
     expect(root.querySelector<HTMLButtonElement>("[data-testid='output-export']")?.disabled).toBe(
       true,
     )
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-import']")?.disabled).toBe(
+      true,
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    expect(operationLog.startReplay).not.toHaveBeenCalled()
+    input.dispatchEvent(new Event("change"))
+    expect(operationLog.importBundle).not.toHaveBeenCalled()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     expect(operationLog.exportSession).toHaveBeenCalledOnce()
     resolveExport?.("bundle")
@@ -796,15 +813,10 @@ describe("workspace panel renderers", () => {
       ),
     )
 
-    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
-    Object.defineProperty(input, "files", {
-      configurable: true,
-      value: [{ text: vi.fn(async () => "bundle") }],
-    })
     root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledOnce())
-    expect(root.querySelector("[data-testid='output-import']")?.textContent).toContain("导入中")
+    expect(root.querySelector("[data-testid='output-import']")?.textContent).toContain("正在导入…")
     input.dispatchEvent(new Event("change"))
     expect(operationLog.importBundle).toHaveBeenCalledOnce()
     resolveImport?.()
@@ -820,7 +832,7 @@ describe("workspace panel renderers", () => {
     expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
       true,
     )
-    expect(root.querySelector("[data-testid='output-replay']")?.textContent).toContain("回放中")
+    expect(root.querySelector("[data-testid='output-replay']")?.textContent).toContain("正在回放…")
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
     expect(operationLog.startReplay).toHaveBeenCalledOnce()
     resolveReplay?.()
@@ -829,6 +841,68 @@ describe("workspace panel renderers", () => {
         false,
       ),
     )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("waits for a controller notification before showing successfully imported rows", async () => {
+    const first = operationEvent()
+    const second = operationEvent({ eventId: "event-2", sequence: 2 })
+    let rows = [first]
+    let notify: ((state: OperationLogControllerState) => void) | undefined
+    const operationLog: OperationLogControllerPort = {
+      query: vi.fn(async () => rows),
+      subscribe: vi.fn((listener) => {
+        notify = listener
+        return () => undefined
+      }),
+      exportSession: vi.fn(async () => "bundle"),
+      importBundle: vi.fn(async () => {
+        rows = [first, second]
+      }),
+      startReplay: vi.fn(),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "document"
+    search.dispatchEvent(new Event("input"))
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+    filter.click()
+    root.querySelector<HTMLInputElement>("[data-filter-category='system']")!.click()
+    await vi.waitFor(() => expect(filter.textContent).toContain("筛选 5"))
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-close']")!.click()
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
+
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
+    expect(search.value).toBe("document")
+    expect(filter.textContent).toContain("筛选 5")
+
+    notify?.({
+      rows,
+      query: {
+        levels: [],
+        categories: ["document", "history", "session", "workspace", "diagnostic"],
+        search: "document",
+      },
+      filter: {},
+      selection: first,
+      detail: first,
+    })
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
     if (typeof dispose === "function") dispose()
   })
 

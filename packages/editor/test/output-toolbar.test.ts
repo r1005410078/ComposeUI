@@ -284,7 +284,7 @@ describe("mountOutputToolbar", () => {
     root.remove()
   })
 
-  it("shows a progress label and blocks duplicate async menu actions", () => {
+  it("serializes toolbar async actions and shows their exact busy labels", () => {
     const root = document.createElement("div")
     const toolbarActions = actions()
     const mounted = mountOutputToolbar(root, toolbarActions)
@@ -293,18 +293,95 @@ describe("mountOutputToolbar", () => {
       categories: [],
       search: "",
       autoScroll: true,
-      canReplaySelection: false,
+      selectedSequence: 42,
+      canReplaySelection: true,
       busyAction: "export",
     })
 
     root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     const exportAction = root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!
     expect(exportAction.disabled).toBe(true)
-    expect(exportAction.textContent).toContain("导出中")
+    expect(exportAction.textContent).toContain("正在导出…")
     exportAction.click()
     expect(toolbarActions.onExport).not.toHaveBeenCalled()
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-import']")?.disabled).toBe(
+      true,
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    expect(toolbarActions.onReplaySelected).not.toHaveBeenCalled()
+
+    mounted.update({
+      levels: [],
+      categories: [],
+      search: "",
+      autoScroll: true,
+      canReplaySelection: false,
+      busyAction: "import",
+    })
+    expect(root.querySelector("[data-testid='output-import']")?.textContent).toContain("正在导入…")
+
+    mounted.update({
+      levels: [],
+      categories: [],
+      search: "",
+      autoScroll: true,
+      canReplaySelection: true,
+      selectedSequence: 42,
+      busyAction: "replay",
+    })
+    expect(root.querySelector("[data-testid='output-replay']")?.textContent).toContain("正在回放…")
+
+    mounted.update({
+      levels: [],
+      categories: [],
+      search: "",
+      autoScroll: true,
+      canReplaySelection: false,
+      confirmClear: true,
+      busyAction: "clear",
+    })
+    expect(root.querySelector("[data-testid='output-clear-confirm']")?.textContent).toContain(
+      "正在清空…",
+    )
 
     mounted.dispose()
+  })
+
+  it("roves More menuitems with arrows and activates the focused item", () => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const toolbarActions = actions()
+    const mounted = mountOutputToolbar(root, toolbarActions)
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+
+    more.click()
+    const menu = root.querySelector<HTMLElement>("[data-testid='output-more-menu']")!
+    const importAction = root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!
+    expect(document.activeElement).toBe(importAction)
+    importAction.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))
+    expect(document.activeElement).toBe(
+      root.querySelector<HTMLButtonElement>("[data-testid='output-export']"),
+    )
+    document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))
+    expect(toolbarActions.onExport).toHaveBeenCalledOnce()
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    )
+    expect(document.activeElement).toBe(importAction)
+    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
+    expect(document.activeElement).toBe(
+      root.querySelector<HTMLButtonElement>("[data-testid='output-clear']"),
+    )
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    )
+    expect(toolbarActions.onRequestClear).toHaveBeenCalledOnce()
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(root.querySelector("[data-testid='output-more-menu']")).toBeNull()
+    expect(document.activeElement).toBe(more)
+    mounted.dispose()
+    root.remove()
   })
 
   it("shows selected replay and calls the action with its sequence", () => {

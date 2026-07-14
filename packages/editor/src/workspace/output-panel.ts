@@ -194,7 +194,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let search = ""
   let autoScroll = true
   let confirmClear = false
-  const busyActions = new Set<string>()
+  let busyAction: "import" | "export" | "replay" | undefined
   let latestRows: readonly OperationEvent[] = []
   const replayController = controller.replayController
   let unsubscribeReplay: (() => void) | undefined
@@ -317,7 +317,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       ...(selected === undefined ? {} : { selectedSequence: selected.sequence }),
       canReplaySelection: selected !== undefined,
       confirmClear,
-      ...(busyActions.size === 0 ? {} : { busyAction: [...busyActions] }),
+      ...(busyAction === undefined ? {} : { busyAction }),
     })
   }
   const hasActiveRestriction = (): boolean =>
@@ -395,15 +395,15 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     label: string,
     task: () => Promise<void>,
   ): void => {
-    if (busyActions.has(action)) return
-    busyActions.add(action)
+    if (busyAction !== undefined) return
+    busyAction = action
     clearError()
     void Promise.resolve()
       .then(task)
       .then(clearError)
       .catch((error) => showError(label, error))
       .finally(() => {
-        busyActions.delete(action)
+        if (busyAction === action) busyAction = undefined
         renderToolbar()
       })
     renderToolbar()
