@@ -9,6 +9,8 @@ export interface OperationSnapshot {
   sessionState: unknown
   documentHash: string
   sessionHash: string
+  workspaceState?: unknown
+  workspaceHash?: string
 }
 
 export interface OperationCoordinatorClock {
@@ -156,6 +158,9 @@ export class OperationLogCoordinator {
 
   async #writeCheckpoint(createdAt: string): Promise<void> {
     const snapshot = await this.#snapshot()
+    const hasWorkspaceState = Object.hasOwn(snapshot, "workspaceState")
+    const hasWorkspaceHash = Object.hasOwn(snapshot, "workspaceHash")
+    if (hasWorkspaceState !== hasWorkspaceHash) throw new Error("INVALID_OPERATION_SNAPSHOT")
     const checkpointSequence = this.#recorder.sequence + 1
     const event = await this.#recorder.record({
       category: "system",
@@ -165,6 +170,7 @@ export class OperationLogCoordinator {
         sequence: checkpointSequence,
         documentHash: snapshot.documentHash,
         sessionHash: snapshot.sessionHash,
+        ...(hasWorkspaceHash ? { workspaceHash: snapshot.workspaceHash } : {}),
       },
     })
     if (event.sequence !== checkpointSequence) {

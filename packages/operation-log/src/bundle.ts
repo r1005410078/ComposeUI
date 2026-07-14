@@ -141,6 +141,9 @@ export async function exportLogBundle(
   for (const checkpoint of redactedCheckpoints) {
     checkpoint.documentHash = await hashCanonical(checkpoint.document)
     checkpoint.sessionHash = await hashCanonical(checkpoint.sessionState)
+    if (Object.hasOwn(checkpoint, "workspaceState")) {
+      checkpoint.workspaceHash = await hashCanonical(checkpoint.workspaceState)
+    }
   }
   validateBundleContents(structuredClone(redactedSession), redactedCheckpoints, redactedEvents, {
     sessionId: options.sessionId,
@@ -462,9 +465,14 @@ async function validateManifest(
 
 async function validateCheckpointHashes(checkpoints: OperationCheckpoint[]): Promise<void> {
   for (const checkpoint of checkpoints) {
+    const hasWorkspaceState = Object.hasOwn(checkpoint, "workspaceState")
+    const hasWorkspaceHash = Object.hasOwn(checkpoint, "workspaceHash")
     if (
       checkpoint.documentHash !== (await hashCanonical(checkpoint.document)) ||
-      checkpoint.sessionHash !== (await hashCanonical(checkpoint.sessionState))
+      checkpoint.sessionHash !== (await hashCanonical(checkpoint.sessionState)) ||
+      hasWorkspaceState !== hasWorkspaceHash ||
+      (hasWorkspaceState &&
+        checkpoint.workspaceHash !== (await hashCanonical(checkpoint.workspaceState)))
     ) {
       throw integrityError()
     }
@@ -592,6 +600,8 @@ function isCheckpoint(value: unknown, strictHashes = true): value is OperationCh
       "sessionState",
       "documentHash",
       "sessionHash",
+      "workspaceState",
+      "workspaceHash",
     ]) &&
     isId(value.sessionId) &&
     typeof value.sequence === "number" &&
@@ -602,7 +612,11 @@ function isCheckpoint(value: unknown, strictHashes = true): value is OperationCh
     Object.hasOwn(value, "sessionState") &&
     isSessionState(value.sessionState) &&
     (strictHashes ? isHash(value.documentHash) : isNonEmptyString(value.documentHash)) &&
-    (strictHashes ? isHash(value.sessionHash) : isNonEmptyString(value.sessionHash))
+    (strictHashes ? isHash(value.sessionHash) : isNonEmptyString(value.sessionHash)) &&
+    Object.hasOwn(value, "workspaceState") === Object.hasOwn(value, "workspaceHash") &&
+    (!Object.hasOwn(value, "workspaceState") ||
+      (isSessionState(value.workspaceState) &&
+        (strictHashes ? isHash(value.workspaceHash) : isNonEmptyString(value.workspaceHash))))
   )
 }
 

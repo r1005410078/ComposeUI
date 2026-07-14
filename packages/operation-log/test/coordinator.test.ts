@@ -88,6 +88,50 @@ describe("OperationLogCoordinator", () => {
     await coordinator.end()
   })
 
+  it("persists a workspace snapshot and reports its hash in the checkpoint event", async () => {
+    const { store, recorder } = create()
+    const workspaceState = { panels: { inspector: true } }
+    const coordinator = await OperationLogCoordinator.start({
+      store,
+      recorder,
+      snapshot: () => ({
+        ...snapshot(),
+        workspaceState,
+        workspaceHash: "workspace-hash",
+      }),
+      checkpointEveryEvents: 1,
+    })
+
+    await coordinator.documentEvent()
+
+    expect(await store.getNearestCheckpoint("s1", 2)).toMatchObject({
+      sequence: 2,
+      workspaceState,
+      workspaceHash: "workspace-hash",
+    })
+    expect(await store.query({ sessionId: "s1" })).toMatchObject([
+      { type: "system.sessionStarted" },
+      {
+        type: "system.checkpoint",
+        payload: { sequence: 2, workspaceHash: "workspace-hash" },
+      },
+    ])
+    await coordinator.end()
+  })
+
+  it("rejects a snapshot with only one workspace field", async () => {
+    const { store, recorder } = create()
+    const coordinator = await OperationLogCoordinator.start({
+      store,
+      recorder,
+      snapshot: () => ({ ...snapshot(), workspaceState: {} }),
+      checkpointEveryEvents: 1,
+    })
+
+    await expect(coordinator.documentEvent()).rejects.toThrow("INVALID_OPERATION_SNAPSHOT")
+    await coordinator.end()
+  })
+
   it("synchronizes session eventCount after flushing non-document events", async () => {
     const { store, recorder } = create()
     const coordinator = await OperationLogCoordinator.start({ store, recorder, snapshot })

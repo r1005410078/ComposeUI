@@ -50,6 +50,19 @@ async function seededStore(): Promise<MemoryOperationLogStore> {
   return store
 }
 
+async function seededStoreWithWorkspace(): Promise<MemoryOperationLogStore> {
+  const store = await seededStore()
+  const checkpoint = await store.getNearestCheckpoint("s1", 2)
+  if (checkpoint === undefined) throw new Error("checkpoint missing")
+  const workspaceState = { panels: { inspector: true } }
+  await store.putCheckpoint({
+    ...checkpoint,
+    workspaceState,
+    workspaceHash: await hashCanonical(workspaceState),
+  })
+  return store
+}
+
 async function rewriteBundle(
   encoded: string,
   mutate: (bundle: Record<string, any>) => void,
@@ -89,6 +102,44 @@ describe("log bundles", () => {
     expect(bundle.events).toHaveLength(2)
     expect(bundle.events[0]?.payload).toMatchObject({ token: "[REDACTED]" })
     expect(bundle.manifest.integrity.chainHash).not.toBe(bundle.manifest.sectionHashes.events)
+  })
+
+  it("round-trips a checkpoint workspace snapshot", async () => {
+    const encoded = await exportLogBundle(await seededStoreWithWorkspace(), {
+      sessionId: "s1",
+      productVersion: "0.0.0",
+      exportedAt: "2026-07-13T00:02:00.000Z",
+    })
+
+    const bundle = await importLogBundle(encoded)
+
+    expect(bundle.checkpoints[0]).toMatchObject({
+      workspaceState: { panels: { inspector: true } },
+      workspaceHash: await hashCanonical({ panels: { inspector: true } }),
+    })
+  })
+
+  it("recomputes a workspace hash after checkpoint redaction", async () => {
+    const redactedWorkspaceState = { panels: { inspector: "[REDACTED]" } }
+    const encoded = await exportLogBundle(await seededStoreWithWorkspace(), {
+      sessionId: "s1",
+      productVersion: "0.0.0",
+      redactor: <T>(value: T): T => {
+        if (!Array.isArray(value)) return structuredClone(value)
+        return value.map((item) =>
+          typeof item === "object" && item !== null && "workspaceState" in item
+            ? { ...item, workspaceState: redactedWorkspaceState }
+            : item,
+        ) as T
+      },
+    })
+
+    const bundle = await importLogBundle(encoded)
+
+    expect(bundle.checkpoints[0]).toMatchObject({
+      workspaceState: redactedWorkspaceState,
+      workspaceHash: await hashCanonical(redactedWorkspaceState),
+    })
   })
 
   it("imports the legacy V1 bundle emitted before the V2 manifest", async () => {
@@ -201,6 +252,34 @@ describe("log bundles", () => {
       bundle.events[0].payload.nodeId = "changed"
     })
     await expect(importLogBundle(invalidChain)).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
+  })
+
+  it("rejects incomplete, mismatched, and unknown checkpoint workspace fields", async () => {
+    const encoded = await exportLogBundle(await seededStoreWithWorkspace(), {
+      sessionId: "s1",
+      productVersion: "0.0.0",
+    })
+
+    const missingHash = await rewriteBundle(encoded, (bundle) => {
+      delete bundle.checkpoints[0].workspaceHash
+    })
+    await expect(importLogBundle(missingHash)).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
+
+    const missingState = await rewriteBundle(encoded, (bundle) => {
+      delete bundle.checkpoints[0].workspaceState
+    })
+    await expect(importLogBundle(missingState)).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
+
+    const mismatchedHash = await rewriteBundle(encoded, (bundle) => {
+      bundle.checkpoints[0].workspaceHash =
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    })
+    await expect(importLogBundle(mismatchedHash)).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
+
+    const unknownField = await rewriteBundle(encoded, (bundle) => {
+      bundle.checkpoints[0].unexpected = true
+    })
+    await expect(importLogBundle(unknownField)).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
   })
 
   it("rejects invalid event order, duplicate IDs, and checkpoint ranges", async () => {

@@ -8,4 +8,6 @@ export interface OperationCheckpoint {
   sessionState: unknown
   documentHash: string
   sessionHash: string
+  workspaceState?: unknown
+  workspaceHash?: string
 }
