@@ -7,6 +7,8 @@ import {
   createSessionOperationObserver,
   createLocalStorageLayoutStore,
   mountEditorWorkspace,
+  type MountEditorWorkspaceOptions,
+  type MountedEditorWorkspace,
   type StorageLike,
 } from "@composeui/editor"
 import { canonicalizeDocument } from "@composeui/core"
@@ -15,6 +17,7 @@ import {
   OperationLogCoordinator,
   OperationRecorder,
   createCoreOperationObserver,
+  createWorkspaceOperationObserver,
   exportLogBundle,
   hashCanonical,
   importLogBundle,
@@ -53,7 +56,14 @@ export interface PlaygroundOperationRuntime {
   readonly coordinator: OperationLogCoordinator
   readonly controller: OperationLogController
   readonly replayController: ReplayController
-  mount(root: HTMLElement): void
+  mount(
+    root: HTMLElement,
+    options: Omit<
+      MountEditorWorkspaceOptions,
+      "pageId" | "projectTitle" | "session" | "operationLog" | "onEvent"
+    >,
+  ): MountedEditorWorkspace
+  flush(): Promise<void>
   dispose(): Promise<void>
 }
 
@@ -84,6 +94,8 @@ export async function createPlaygroundOperationRuntime(
     redactor: <T>(value: T) => structuredClone(value),
   })
   const session = new EditorSession({ operationObserver: createSessionOperationObserver(recorder) })
+  const workspaceObserver = createWorkspaceOperationObserver(recorder)
+  let mounted: MountedEditorWorkspace | undefined
   let coordinator: OperationLogCoordinator | undefined
   const scenario = createM1Scenario({
     operationObserver: createCoreOperationObserver(recorder, {
@@ -107,11 +119,18 @@ export async function createPlaygroundOperationRuntime(
     snapshot: async () => {
       const document = canonicalizeDocument(scenario.editor.getStore())
       const sessionState = session.getState()
+      const workspaceState = mounted?.api.getLayoutSnapshot()
       return {
         document,
         sessionState,
         documentHash: await hashCanonical(document),
         sessionHash: await hashCanonical(sessionState),
+        ...(workspaceState === undefined
+          ? {}
+          : {
+              workspaceState,
+              workspaceHash: await hashCanonical(workspaceState),
+            }),
       }
     },
     checkpointEveryEvents: options.checkpointEveryEvents ?? 100,
@@ -169,7 +188,6 @@ export async function createPlaygroundOperationRuntime(
       }),
     replayController,
   })
-  let mounted: ReturnType<typeof mountEditorWorkspace> | undefined
   let disposed = false
   return {
     indexedDB: factory,
@@ -180,25 +198,42 @@ export async function createPlaygroundOperationRuntime(
     coordinator: startedCoordinator,
     controller,
     replayController,
-    mount(root) {
+    mount(root, options) {
       mounted = mountEditorWorkspace(root, scenario.editor, {
+        ...options,
         pageId: scenario.pageId,
         projectTitle: "BMS",
         session,
         operationLog: controller,
+        onEvent: (event) => workspaceObserver.observe(event),
       })
+      return mounted
+    },
+    async flush() {
+      await mounted?.api.flushLayout()
+      await recorder.flush()
+      await startedCoordinator.flush()
     },
     async dispose() {
       if (disposed) return
       disposed = true
+      try {
+        await mounted?.api.flushLayout()
+      } catch {
+        // Continue finalization after a failed workspace persistence operation.
+      }
+      try {
+        await startedCoordinator.flush()
+      } catch {
+        // Continue finalization after a failed operation-log flush.
+      }
       mounted?.dispose()
       mounted = undefined
       controller.dispose()
       try {
         await startedCoordinator.end()
-        await startedCoordinator.flush()
       } catch {
-        // Closing the store is still required after a failed final flush.
+        // Closing the store is still required after a failed finalization.
       } finally {
         await store.close().catch(() => undefined)
       }
@@ -240,11 +275,7 @@ async function mountPlayground(app: HTMLElement): Promise<void> {
   app.replaceChildren(editorHost)
 
   const layoutStore = createPlaygroundLayoutStore(window.localStorage)
-  const workspace = mountEditorWorkspace(editorHost, scenario.editor, {
-    pageId: scenario.pageId,
-    session: runtime.session,
-    operationLog: runtime.controller,
-    projectTitle: "BMS",
+  const workspace = runtime.mount(editorHost, {
     layoutStore,
     mountSceneExtras(sceneRoot) {
       const treePanel = sceneRoot.querySelector<HTMLElement>(".composeui-editor__component-tree")
