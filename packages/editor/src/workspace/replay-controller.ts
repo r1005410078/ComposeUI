@@ -140,7 +140,7 @@ export class ReplayController implements ReplayControllerPort {
       if (generation !== this.#generation) return this.getState()
       return this.#applyResult(result, "paused")
     } catch (error) {
-      return this.#recoverFromError(generation, error)
+      return this.#recoverStartError(generation, error)
     }
   }
 
@@ -222,6 +222,17 @@ export class ReplayController implements ReplayControllerPort {
       ...this.#state,
       active: true,
       status: "paused",
+      deterministic: false,
+      error: errorMessage(error),
+    })
+  }
+
+  #recoverStartError(generation: number, error: unknown): ReplayControllerState {
+    if (generation !== this.#generation) return this.getState()
+    this.#engine = undefined
+    return this.#publish({
+      active: false,
+      status: "idle",
       deterministic: false,
       error: errorMessage(error),
     })

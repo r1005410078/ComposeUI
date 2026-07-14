@@ -140,6 +140,23 @@ describe("ReplayController", () => {
     expect(controller.getState()).toMatchObject({ active: false, status: "idle" })
   })
 
+  it("keeps replay inactive when the engine cannot be created", async () => {
+    const controller = new ReplayController({
+      createEngine: vi.fn(async () => {
+        throw new Error("bundle integrity failed")
+      }),
+    })
+
+    const state = await controller.start(2)
+
+    expect(state).toMatchObject({
+      active: false,
+      status: "idle",
+      error: "bundle integrity failed",
+    })
+    expect(state).not.toHaveProperty("currentSequence")
+  })
+
   it("recovers to paused state with an error when an engine command throws", async () => {
     const engine = {
       runTo: vi

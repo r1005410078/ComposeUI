@@ -956,6 +956,37 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("shows the original replay startup failure and keeps replay controls hidden", async () => {
+    const replayController = new ReplayController({
+      createEngine: vi.fn(async () => {
+        throw new Error("LOG_BUNDLE_INTEGRITY_VIOLATION")
+      }),
+    })
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      startReplay: (sequence) => replayController.start(sequence).then(() => undefined),
+      replayController,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "LOG_BUNDLE_INTEGRITY_VIOLATION",
+      ),
+    )
+    expect(root.querySelector("[data-testid='replay-host']")).toHaveProperty("hidden", true)
+    expect(root.querySelector("[data-testid='replay-step-forward']")).toBeNull()
+    if (typeof dispose === "function") dispose()
+  })
+
   it("renders a selected replay action outside the details column", async () => {
     const startReplay = vi.fn(async () => undefined)
     const operationLog: OperationLogControllerPort = {

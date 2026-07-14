@@ -148,6 +148,33 @@ describe("output replay bar", () => {
     mount.dispose()
   })
 
+  it("stops replay synchronously so a stale next action cannot run after it", () => {
+    const root = document.createElement("div")
+    const controller = createController({
+      active: true,
+      status: "paused",
+      deterministic: true,
+      currentSequence: 3,
+      targetSequence: 8,
+    })
+    controller.stop.mockImplementation(() => {
+      controller.publish({ active: false, status: "idle", deterministic: true })
+    })
+    const mount = mountOutputReplayBar(root, {
+      controller,
+      getSelectedSequence: () => 8,
+      onError: vi.fn(),
+      model: { busy: false },
+    })
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
+
+    expect(controller.stop).toHaveBeenCalledOnce()
+    expect(root.hidden).toBe(true)
+    expect(root.querySelector("[data-testid='replay-step-forward']")).toBeNull()
+    mount.dispose()
+  })
+
   it("invokes each enabled control and disables every control while busy or running", async () => {
     const root = document.createElement("div")
     const controller = createController({

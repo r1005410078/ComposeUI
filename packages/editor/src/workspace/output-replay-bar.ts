@@ -82,9 +82,11 @@ export function mountOutputReplayBar(
       button.disabled = disabled
       button.append(createElement(icon), document.createTextNode(label))
       button.addEventListener("click", () => {
-        void Promise.resolve()
-          .then(handler)
-          .catch((error) => options.onError(label, error))
+        try {
+          void Promise.resolve(handler()).catch((error) => options.onError(label, error))
+        } catch (error) {
+          options.onError(label, error)
+        }
       })
       return button
     }

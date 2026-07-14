@@ -339,8 +339,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   const startSelectedReplay = (sequence: number): void => {
     runAsyncAction("replay", "回放操作", async () => {
       await controller.startReplay(sequence)
-      if (replayController !== undefined && !replayController.getState().active) {
-        const state = await replayController.start(sequence)
+      if (replayController !== undefined) {
+        let state = replayController.getState()
+        if (!state.active && state.error === undefined)
+          state = await replayController.start(sequence)
         if (state.error !== undefined) throw new Error(state.error)
       }
     })
