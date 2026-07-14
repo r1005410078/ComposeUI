@@ -1,9 +1,9 @@
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
-import { Check, Play, RotateCcw, Trash2, createElement } from "lucide"
 import { formatOperation } from "./operation-formatters"
 import type { OperationLogControllerState } from "../operation-log-controller-port"
-import type { ReplayControllerState } from "./replay-controller"
+import { mountOutputReplayBar, type OutputReplayBarMount } from "./output-replay-bar"
 import { mountOutputToolbar, type OutputToolbarMount } from "./output-toolbar"
+import { safeText } from "./output-value-format"
 import type { WorkspaceContext, WorkspacePanelMount } from "./types"
 
 const levelLabels: Record<OperationStatus, string> = {
@@ -69,23 +69,6 @@ function downloadExport(serialized: string): void {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function safeText(value: unknown): string {
-  const seen = new WeakSet<object>()
-  try {
-    const serialized = JSON.stringify(value, (_key, item: unknown) => {
-      if (typeof item === "bigint") return `${item.toString()}n`
-      if (typeof item === "object" && item !== null) {
-        if (seen.has(item)) return "[循环引用]"
-        seen.add(item)
-      }
-      return item
-    })
-    return serialized ?? String(value)
-  } catch {
-    return "[无法显示]"
-  }
 }
 
 function eventDetails(event: OperationEvent): HTMLElement {
@@ -197,69 +180,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let busyAction: "import" | "export" | "replay" | undefined
   let latestRows: readonly OperationEvent[] = []
   const replayController = controller.replayController
-  let unsubscribeReplay: (() => void) | undefined
-
-  const renderReplay = (state: ReplayControllerState): void => {
-    if (replayController === undefined) return
-    replayHost.hidden = !state.active
-    if (!state.active) return
-    replayHost.replaceChildren()
-    const sequence = textElement(
-      "span",
-      "composeui-editor__output-replay-sequence",
-      `当前序号：${state.currentSequence === undefined ? "-" : state.currentSequence}`,
-    )
-    sequence.dataset.testid = "replay-sequence"
-    const deterministic = textElement(
-      "span",
-      "composeui-editor__output-replay-deterministic",
-      state.deterministic ? "回放一致" : "回放存在差异",
-    )
-    deterministic.dataset.testid = "replay-deterministic"
-    deterministic.dataset.deterministic = String(state.deterministic)
-    const status = textElement("span", "composeui-editor__output-replay-status", state.status)
-    status.dataset.testid = "replay-status"
-    const difference = state.difference
-    const replayError = state.error
-    const error =
-      replayError === undefined
-        ? undefined
-        : textElement("p", "composeui-editor__output-replay-error", replayError)
-    if (error !== undefined) error.dataset.testid = "replay-error"
-    if (difference !== undefined) {
-      const detail = textElement("pre", "composeui-editor__output-replay-difference", "")
-      detail.dataset.testid = "replay-difference"
-      detail.textContent = [
-        `type: ${difference.type}`,
-        `sequence: ${difference.sequence}`,
-        ...("path" in difference ? [`path: ${difference.path}`] : []),
-        ...("expected" in difference ? [`expected: ${safeText(difference.expected)}`] : []),
-        ...("actual" in difference ? [`actual: ${safeText(difference.actual)}`] : []),
-      ].join("\n")
-      replayHost.append(sequence, deterministic, status, detail)
-    } else {
-      replayHost.append(sequence, deterministic, status)
-    }
-    if (error !== undefined) replayHost.append(error)
-    const controls = document.createElement("div")
-    controls.className = "composeui-editor__output-replay-controls"
-    controls.append(
-      replayAction("replay-step-backward", "回放上一步", RotateCcw, () =>
-        replayController.stepBackward(),
-      ),
-      replayAction("replay-step-forward", "回放下一步", Play, () => replayController.stepForward()),
-      replayAction("replay-run-to", "回放到选中操作", Play, () => {
-        if (selected === undefined) throw new Error("未选择操作")
-        return replayController.runTo(selected.sequence)
-      }),
-      replayAction("replay-verify", "验证回放", Check, () => replayController.verify()),
-      replayAction("replay-continue", "继续非确定性回放", Play, () =>
-        replayController.continueBestEffort(),
-      ),
-      replayAction("replay-stop", "停止回放", Trash2, () => replayController.stop()),
-    )
-    replayHost.append(controls)
-  }
+  let replayBar: OutputReplayBarMount | undefined
 
   const clearError = (): void => {
     errorState.hidden = true
@@ -269,27 +190,6 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     if (disposed) return
     errorState.hidden = false
     errorState.textContent = `${action}失败：${errorText(error)}`
-  }
-
-  const replayAction = (
-    testid: string,
-    label: string,
-    icon: Parameters<typeof createElement>[0],
-    action: () => void | Promise<unknown>,
-  ): HTMLButtonElement => {
-    const button = document.createElement("button")
-    button.type = "button"
-    button.className = "composeui-editor__output-button"
-    button.dataset.testid = testid
-    button.title = label
-    button.setAttribute("aria-label", label)
-    button.append(createElement(icon), document.createTextNode(label))
-    button.addEventListener("click", () => {
-      void Promise.resolve()
-        .then(action)
-        .catch((error) => showError(label, error))
-    })
-    return button
   }
 
   const showQueryError = (error: unknown): void => {
@@ -319,6 +219,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
       confirmClear,
       ...(busyAction === undefined ? {} : { busyAction }),
     })
+    replayBar?.update()
   }
   const hasActiveRestriction = (): boolean =>
     levels.length > 0 || categories.length > 0 || search.trim().length > 0
@@ -434,7 +335,8 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     runAsyncAction("replay", "回放操作", async () => {
       await controller.startReplay(sequence)
       if (replayController !== undefined && !replayController.getState().active) {
-        await replayController.start(sequence)
+        const state = await replayController.start(sequence)
+        if (state.error !== undefined) throw new Error(state.error)
       }
     })
   }
@@ -473,8 +375,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   renderToolbar()
 
   if (replayController !== undefined) {
-    unsubscribeReplay = replayController.subscribe((state) => {
-      if (!disposed) renderReplay(state)
+    replayBar = mountOutputReplayBar(replayHost, {
+      controller: replayController,
+      getSelectedSequence: () => selected?.sequence,
+      onError: showError,
     })
   }
 
@@ -501,7 +405,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     disposed = true
     queryGeneration += 1
     unsubscribe()
-    unsubscribeReplay?.()
+    replayBar?.dispose()
     toolbarMount?.dispose()
     root.replaceChildren()
   }

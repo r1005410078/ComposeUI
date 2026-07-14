@@ -286,21 +286,16 @@
   padding: var(--composeui-space-1) var(--composeui-space-2);
 }
 
-.composeui-editor__output-replay-sequence,
-.composeui-editor__output-replay-status,
-.composeui-editor__output-replay-deterministic {
+.composeui-editor__output-replay-summary {
   color: var(--composeui-text-secondary);
   font-size: var(--composeui-font-size-compact);
-}
-
-.composeui-editor__output-replay-deterministic[data-deterministic="false"] {
-  color: var(--composeui-accent-danger);
-}
-
-.composeui-editor__output-replay-error {
-  color: var(--composeui-accent-danger);
-  flex: 1 1 100%;
   margin: 0;
+}
+
+.composeui-editor__output-replay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--composeui-gap-compact);
 }
 
 .composeui-editor__output-replay-difference {

@@ -947,9 +947,9 @@ describe("workspace panel renderers", () => {
         "patch-mismatch",
       ),
     )
-    expect(root.querySelector("[data-testid='replay-sequence']")?.textContent).toContain("1")
-    expect(root.querySelector("[data-testid='replay-deterministic']")?.textContent).toContain(
-      "存在差异",
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain("当前 #1")
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain(
+      "回放存在差异",
     )
     expect(context.editor.getStore().all()).toEqual(originalStore)
     expect(root.querySelector("[data-testid='replay-step-backward']")).not.toBeNull()
@@ -994,9 +994,84 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
     await vi.waitFor(() =>
       expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "回放下一步失败",
+        "下一步失败",
       ),
     )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("keeps replay controls contextual and drives start, step, difference, and stop", async () => {
+    let state: ReplayControllerState = { active: false, status: "idle", deterministic: true }
+    const listeners = new Set<(next: ReplayControllerState) => void>()
+    const publish = (next: ReplayControllerState): void => {
+      state = next
+      for (const listener of listeners) listener(next)
+    }
+    const replayController: ReplayControllerPort = {
+      start: vi.fn(async (sequence: number) => {
+        const next = {
+          active: true,
+          status: "paused" as const,
+          deterministic: true,
+          currentSequence: sequence,
+          targetSequence: sequence,
+        }
+        publish(next)
+        return next
+      }),
+      stepBackward: vi.fn(async () => state),
+      stepForward: vi.fn(async () => state),
+      runTo: vi.fn(async () => state),
+      verify: vi.fn(async () => state),
+      continueBestEffort: vi.fn(async () => state),
+      stop: vi.fn(() => publish({ active: false, status: "idle", deterministic: true })),
+      getState: vi.fn(() => state),
+      subscribe: vi.fn((listener) => {
+        listeners.add(listener)
+        listener(state)
+        return () => listeners.delete(listener)
+      }),
+    }
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      replayController,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    expect(root.querySelector("[data-testid='replay-host']")).toHaveProperty("hidden", true)
+    expect(root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-step-forward']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-verify']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-stop']")).toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() => expect(replayController.start).toHaveBeenCalledWith(1))
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain("回放至 #1")
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
+    await vi.waitFor(() => expect(replayController.stepForward).toHaveBeenCalledOnce())
+
+    publish({
+      active: true,
+      status: "paused",
+      deterministic: false,
+      currentSequence: 1,
+      targetSequence: 1,
+      difference: { type: "patch-mismatch", sequence: 1, path: "forward.updated[0]" },
+    })
+    expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
+      "patch-mismatch",
+    )
+    expect(root.querySelector("[aria-label='继续回放']")).not.toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
+    await vi.waitFor(() => expect(replayController.stop).toHaveBeenCalledOnce())
+    expect(root.querySelector("[data-testid='replay-host']")).toHaveProperty("hidden", true)
     if (typeof dispose === "function") dispose()
   })
 
