@@ -8,7 +8,9 @@ import {
   ReplayController,
   type DockviewFactory,
   type EditorWorkspaceDockview,
+  type SerializedWorkspaceEvent,
   type WorkspaceEvent,
+  type WorkspaceError,
 } from "../src/index"
 import type {
   StoredWorkspaceLayout,
@@ -251,6 +253,17 @@ describe("editor workspace", () => {
     }
 
     expect(event.error).toBeInstanceOf(Error)
+  })
+
+  it("exports serialized workspace event types for onEvent adapters", () => {
+    const error: WorkspaceError = { name: "Error", message: "serialized" }
+    const event: SerializedWorkspaceEvent = {
+      type: "layout-failure",
+      operation: "save",
+      error,
+    }
+
+    expect(event.error).toEqual(error)
   })
 
   it("serializes errors without retaining unsafe values", () => {
@@ -931,6 +944,39 @@ describe("editor workspace", () => {
 
     fake.dockview.removePanel(fake.panels.get("resources")!)
     expect(events).toContainEqual({ type: "panel-closed", panelId: "resources" })
+    mounted.dispose()
+  })
+
+  it("keeps layout changes suppressed until the final overlapping reset completes", async () => {
+    const removeResolvers: Array<() => void> = []
+    const remove = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          removeResolvers.push(resolve)
+        }),
+    )
+    const save = vi.fn().mockResolvedValue(undefined)
+    const fake = createDockviewFake()
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      layoutStore: { load: vi.fn().mockResolvedValue(undefined), save, remove },
+      createDockview: fake.factory,
+    })
+
+    const firstReset = mounted.api.resetLayout()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+    const secondReset = mounted.api.resetLayout()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(2))
+    removeResolvers[0]!()
+    await firstReset
+
+    fake.setLayoutSnapshot({ revision: "between-resets" })
+    fake.triggerLayoutChange()
+    await mounted.api.flushLayout()
+    expect(save).not.toHaveBeenCalled()
+
+    removeResolvers[1]!()
+    await secondReset
     mounted.dispose()
   })
 })

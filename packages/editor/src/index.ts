@@ -81,6 +81,8 @@ export type {
   WorkspacePanelMount,
   WorkspacePanelPosition,
   WorkspaceResourceService,
+  WorkspaceError,
+  SerializedWorkspaceEvent,
   WorkspaceToolbar,
   WorkspaceToolbarItem,
 } from "./workspace/types"

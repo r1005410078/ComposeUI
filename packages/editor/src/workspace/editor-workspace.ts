@@ -247,6 +247,7 @@ export function mountEditorWorkspace(
   let layoutPersistence: Promise<void> = Promise.resolve()
   let layoutEpoch = 0
   let resettingLayout = false
+  let resetGeneration = 0
   let suppressPanelTransitions = false
   const observedPanelIds = new Set<string>()
   const layoutChangeDelayMs = options.layoutChangeDelayMs ?? 150
@@ -623,6 +624,7 @@ export function mountEditorWorkspace(
       dockview.getPanel(panelId(id, pageId))?.focus?.()
     },
     resetLayout: async () => {
+      const generation = ++resetGeneration
       resettingLayout = true
       layoutEpoch += 1
       if (layoutTimer !== undefined) clearTimeout(layoutTimer)
@@ -641,12 +643,12 @@ export function mountEditorWorkspace(
             })
           }
         }
-        if (disposed) return
+        if (disposed || generation !== resetGeneration) return
         layoutDirty = true
         applyDefaultLayout()
         events({ type: "layout-reset", layout: getLayoutSnapshot() })
       } finally {
-        resettingLayout = false
+        if (generation === resetGeneration) resettingLayout = false
       }
     },
     flushLayout,
