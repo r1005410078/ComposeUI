@@ -24,13 +24,15 @@ test("replays the final operation after reload without mutating the source sessi
   await expect(page.getByTestId("replay-host")).not.toHaveAttribute("hidden")
   await page.getByTestId("replay-verify").click()
 
-  await expect(page.getByTestId("replay-deterministic")).toHaveText("回放一致")
-  await expect(page.getByTestId("replay-status")).toHaveText("completed")
+  await expect(page.getByTestId("replay-summary")).toContainText("状态：completed")
+  await expect(page.getByTestId("replay-summary")).toContainText("一致")
   await expect(page.getByTestId("replay-difference")).toHaveCount(0)
   await expect(page.getByTestId("output-entry")).toHaveCount(eventCount)
 })
 
-test("persists workspace panel activity across reload without mutating the canvas", async ({ page }) => {
+test("persists workspace panel activity across reload without mutating the canvas", async ({
+  page,
+}) => {
   await page.goto("/")
   await expect(page.getByTestId("tree-node-red")).toBeVisible()
   const canvasNodes = page.locator("[data-node-id]")
@@ -43,7 +45,10 @@ test("persists workspace panel activity across reload without mutating the canva
   await expect(sceneTab).toHaveCount(0)
 
   await page.getByRole("tab", { name: "输出" }).click()
-  await page.getByTestId("output-category-workspace").click()
+  await page.getByTestId("output-filter-trigger").click()
+  for (const category of ["document", "history", "session", "diagnostic", "system"])
+    await page.locator(`[data-filter-category='${category}']`).click()
+  await page.getByTestId("output-filter-close").click()
   const closedPanelEntry = page
     .locator("[data-testid='output-entry'][data-category='workspace']")
     .filter({ hasText: "关闭面板：scene" })
@@ -52,7 +57,10 @@ test("persists workspace panel activity across reload without mutating the canva
   await page.reload()
   await expect(page.getByRole("tab", { name: "场景" })).toHaveCount(0)
   await page.getByRole("tab", { name: "输出" }).click()
-  await page.getByTestId("output-category-workspace").click()
+  await page.getByTestId("output-filter-trigger").click()
+  for (const category of ["document", "history", "session", "diagnostic", "system"])
+    await page.locator(`[data-filter-category='${category}']`).click()
+  await page.getByTestId("output-filter-close").click()
   await expect(closedPanelEntry).toBeVisible()
   await expect(canvasNodes).toHaveCount(canvasNodeCount)
 })

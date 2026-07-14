@@ -311,7 +311,7 @@ describe("workspace panel renderers", () => {
     expect(outputRoot.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
   })
 
-  it("renders filtered operation rows and structured details", async () => {
+  it("renders operation rows and structured details", async () => {
     const events = [
       operationEvent(),
       operationEvent({
@@ -340,37 +340,19 @@ describe("workspace panel renderers", () => {
       "document",
     )
 
-    root.querySelector<HTMLButtonElement>("[data-testid='output-level-error']")!.click()
-    await vi.waitFor(() => {
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
-    })
-    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelectorAll<HTMLElement>("[data-testid='output-entry']")[1]!.click()
     expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
       "NODE_LOCKED",
     )
-    expect(root.querySelector("[data-testid='output-entry']")?.getAttribute("aria-selected")).toBe(
-      "true",
-    )
+    expect(
+      root.querySelectorAll("[data-testid='output-entry']")[1]?.getAttribute("aria-selected"),
+    ).toBe("true")
 
-    root.querySelector<HTMLButtonElement>("[data-testid='output-level-succeeded']")!.click()
-    await vi.waitFor(() => {
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
-    })
-    expect(operationLog.query).toHaveBeenLastCalledWith({
-      levels: ["failed", "succeeded"],
-      categories: [],
-      search: "",
-    })
-    root.querySelector<HTMLButtonElement>("[data-testid='output-category-document']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-testid='output-category-diagnostic']")!.click()
-    await vi.waitFor(() => {
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
-    })
-    expect(operationLog.query).toHaveBeenLastCalledWith({
-      levels: ["failed", "succeeded"],
-      categories: ["document", "diagnostic"],
-      search: "",
-    })
+    expect(root.querySelector("[data-testid='output-filter-trigger']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='output-more-trigger']")).not.toBeNull()
+    root.querySelector<HTMLElement>("[data-testid='output-list']")!.click()
+    expect(root.querySelector("[data-testid='output-details']")).toBeNull()
+    expect(root.querySelector("[data-testid='output-replay']")).toBeNull()
 
     if (typeof dispose === "function") dispose()
   })
@@ -419,6 +401,51 @@ describe("workspace panel renderers", () => {
     if (typeof dispose === "function") dispose()
   })
 
+  it("keeps notified rows and detail when an earlier query resolves later", async () => {
+    let notify: ((state: OperationLogControllerState) => void) | undefined
+    let resolveQuery: ((rows: readonly OperationEvent[]) => void) | undefined
+    const stale = operationEvent()
+    const notified = operationEvent({
+      eventId: "event-2",
+      sequence: 2,
+      category: "diagnostic",
+      type: "diagnostic.reported",
+      status: "failed",
+    })
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([]),
+      query: vi.fn(
+        () =>
+          new Promise<readonly OperationEvent[]>((resolve) => {
+            resolveQuery = resolve
+          }),
+      ),
+      subscribe: vi.fn((listener) => {
+        notify = listener
+        return () => undefined
+      }),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    notify?.({
+      rows: [notified],
+      query: { levels: [], categories: [], search: "" },
+      filter: {},
+      detail: notified,
+      selection: notified,
+    })
+    resolveQuery?.([stale])
+    await Promise.resolve()
+
+    expect(operationLog.query).toHaveBeenCalledTimes(1)
+    expect(root.querySelector("[data-testid='output-entry']")?.textContent).toContain("2")
+    expect(root.querySelector("[data-testid='output-details']")?.textContent).toContain(
+      "diagnostic.reported",
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
   it("ignores stale queries and async work after dispose", async () => {
     const pending: Array<{ resolve: (events: readonly OperationEvent[]) => void }> = []
     const eventOne = operationEvent()
@@ -451,6 +478,111 @@ describe("workspace panel renderers", () => {
     expect(root.childElementCount).toBe(0)
   })
 
+  it("shows a query retry action after a rejected query", async () => {
+    const event = operationEvent()
+    const query = vi
+      .fn<OperationLogControllerPort["query"]>()
+      .mockRejectedValueOnce(new Error("service unavailable"))
+      .mockResolvedValueOnce([event])
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([]),
+      query,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
+        "查询操作日志失败",
+      ),
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-query-retry']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    expect(query).toHaveBeenCalledTimes(2)
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("resets an active search from the filtered empty state", async () => {
+    const event = operationEvent()
+    const query = vi.fn(async ({ search }: { search: string }) =>
+      search === "missing" ? [] : [event],
+    )
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([]),
+      query,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "missing"
+    search.dispatchEvent(new Event("input", { bubbles: true }))
+    await vi.waitFor(() =>
+      expect(root.querySelector("[data-testid='output-empty-filtered']")?.textContent).toContain(
+        "没有符合条件的日志",
+      ),
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-reset-empty-filter']")!.click()
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    expect(search.value).toBe("")
+    expect(query).toHaveBeenLastCalledWith({ levels: [], categories: [], search: "" })
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("queries with exact filter selections from the output popover", async () => {
+    const event = operationEvent({ status: "failed", category: "diagnostic" })
+    const operationLog = fakeOperationLogController([event])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!.click()
+    root.querySelector<HTMLInputElement>("[data-filter-level='observed']")!.click()
+    await vi.waitFor(() =>
+      expect(operationLog.query).toHaveBeenLastCalledWith({
+        levels: ["started", "succeeded", "failed"],
+        categories: [],
+        search: "",
+      }),
+    )
+    root.querySelector<HTMLInputElement>("[data-filter-category='document']")!.click()
+    await vi.waitFor(() =>
+      expect(operationLog.query).toHaveBeenLastCalledWith({
+        levels: ["started", "succeeded", "failed"],
+        categories: ["history", "session", "workspace", "diagnostic", "system"],
+        search: "",
+      }),
+    )
+
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("starts replay from the selected operation", async () => {
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledWith(1))
+
+    if (typeof dispose === "function") dispose()
+  })
+
   it("handles import, export, and replay actions", async () => {
     const operationLog = fakeOperationLogController([operationEvent()])
     const originalCreateObjectURL = URL.createObjectURL
@@ -475,6 +607,7 @@ describe("workspace panel renderers", () => {
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
 
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     for (let index = 0; index < 8; index += 1) await Promise.resolve()
     expect(anchorClick).toHaveBeenCalled()
@@ -489,8 +622,12 @@ describe("workspace panel renderers", () => {
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
-    await Promise.resolve()
-    expect(operationLog.startReplay).toHaveBeenCalledWith(1)
+    await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledWith(1))
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
+        false,
+      ),
+    )
 
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
     const file = { text: vi.fn(async () => "bundle") }
@@ -517,6 +654,255 @@ describe("workspace panel renderers", () => {
         value: originalRevokeObjectURL,
       })
     }
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("uses a data URL fallback for More export without ObjectURL APIs", async () => {
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: undefined })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: undefined })
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined)
+    const operationLog = fakeOperationLogController([operationEvent()])
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() => expect(anchorClick).toHaveBeenCalled())
+
+    anchorClick.mockRestore()
+    if (originalCreateObjectURL === undefined) {
+      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
+    } else {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectURL,
+      })
+    }
+    if (originalRevokeObjectURL === undefined) {
+      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
+    } else {
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      })
+    }
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("confirms clearing only the current view and preserves source events", async () => {
+    const events = [operationEvent()]
+    const operationLog = fakeOperationLogController(events)
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    expect(root.querySelector("[data-testid='output-clear-confirmation']")?.textContent).toContain(
+      "仅清空当前视图，持久化日志仍会保留。",
+    )
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear-confirm']")!.click()
+
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
+    expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
+    await expect(operationLog.query({ levels: [], categories: [], search: "" })).resolves.toEqual(
+      events,
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("cancels clear confirmation when canceled or More closes", async () => {
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(
+      root,
+      createContext(undefined, fakeOperationLogController([operationEvent()])),
+    )
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+
+    more.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear-cancel']")!.click()
+    expect(
+      root.querySelector<HTMLElement>("[data-testid='output-clear-confirmation']")?.hidden,
+    ).toBe(true)
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
+    more.click()
+    expect(root.querySelector("[data-testid='output-more-menu']")).toBeNull()
+    more.click()
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")?.hidden).toBe(
+      false,
+    )
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("blocks duplicate export, import, and replay while each action is busy", async () => {
+    let resolveExport: ((value: string) => void) | undefined
+    let resolveImport: (() => void) | undefined
+    let resolveReplay: (() => void) | undefined
+    const base = fakeOperationLogController([operationEvent()])
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      exportSession: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveExport = resolve
+          }),
+      ),
+      importBundle: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveImport = resolve
+          }),
+      ),
+      startReplay: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveReplay = resolve
+          }),
+      ),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    const more = root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
+
+    more.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() => expect(operationLog.exportSession).toHaveBeenCalledOnce())
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-export']")?.disabled).toBe(
+      true,
+    )
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-import']")?.disabled).toBe(
+      true,
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    expect(operationLog.startReplay).not.toHaveBeenCalled()
+    input.dispatchEvent(new Event("change"))
+    expect(operationLog.importBundle).not.toHaveBeenCalled()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    expect(operationLog.exportSession).toHaveBeenCalledOnce()
+    resolveExport?.("bundle")
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-export']")?.disabled).toBe(
+        false,
+      ),
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledOnce())
+    expect(root.querySelector("[data-testid='output-import']")?.textContent).toContain("正在导入…")
+    input.dispatchEvent(new Event("change"))
+    expect(operationLog.importBundle).toHaveBeenCalledOnce()
+    resolveImport?.()
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-import']")?.disabled).toBe(
+        false,
+      ),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() => expect(operationLog.startReplay).toHaveBeenCalledOnce())
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
+      true,
+    )
+    expect(root.querySelector("[data-testid='output-replay']")?.textContent).toContain("正在回放…")
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    expect(operationLog.startReplay).toHaveBeenCalledOnce()
+    resolveReplay?.()
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.disabled).toBe(
+        false,
+      ),
+    )
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("waits for a controller notification before showing successfully imported rows", async () => {
+    const first = operationEvent()
+    const second = operationEvent({ eventId: "event-2", sequence: 2 })
+    let rows = [first]
+    let notify: ((state: OperationLogControllerState) => void) | undefined
+    const operationLog: OperationLogControllerPort = {
+      query: vi.fn(async () => rows),
+      subscribe: vi.fn((listener) => {
+        notify = listener
+        return () => undefined
+      }),
+      exportSession: vi.fn(async () => "bundle"),
+      importBundle: vi.fn(async () => {
+        rows = [first, second]
+      }),
+      startReplay: vi.fn(),
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "document"
+    search.dispatchEvent(new Event("input"))
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+    filter.click()
+    root.querySelector<HTMLInputElement>("[data-filter-category='system']")!.click()
+    await vi.waitFor(() => expect(filter.textContent).toContain("筛选 5"))
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-close']")!.click()
+    const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ text: vi.fn(async () => "bundle") }],
+    })
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-import']")!.click()
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(operationLog.importBundle).toHaveBeenCalledWith("bundle"))
+
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1)
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
+    expect(search.value).toBe("document")
+    expect(filter.textContent).toContain("筛选 5")
+
+    notify?.({
+      rows,
+      query: {
+        levels: [],
+        categories: ["document", "history", "session", "workspace", "diagnostic"],
+        search: "document",
+      },
+      filter: {},
+      selection: first,
+      detail: first,
+    })
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(2)
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
     if (typeof dispose === "function") dispose()
   })
 
@@ -561,12 +947,48 @@ describe("workspace panel renderers", () => {
         "patch-mismatch",
       ),
     )
-    expect(root.querySelector("[data-testid='replay-sequence']")?.textContent).toContain("1")
-    expect(root.querySelector("[data-testid='replay-deterministic']")?.textContent).toContain(
-      "存在差异",
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain("当前 #1")
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain(
+      "回放存在差异",
     )
     expect(context.editor.getStore().all()).toEqual(originalStore)
     expect(root.querySelector("[data-testid='replay-step-backward']")).not.toBeNull()
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("renders a selected replay action outside the details column", async () => {
+    const startReplay = vi.fn(async () => undefined)
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController([operationEvent()]),
+      startReplay,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+    expect(root.querySelector("[data-testid='output-selection-action']")).toBeNull()
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    expect(
+      root
+        .querySelector("[data-testid='output-auto-scroll']")
+        ?.classList.contains("composeui-editor__output-auto-scroll-primary"),
+    ).toBe(true)
+    expect(
+      root
+        .querySelector("[data-testid='output-replay']")
+        ?.classList.contains("composeui-editor__output-replay-primary"),
+    ).toBe(true)
+    const selectionAction = root.querySelector<HTMLElement>(
+      "[data-testid='output-selection-action']",
+    )
+    expect(selectionAction?.textContent).toContain("回放到此处")
+    expect(selectionAction?.parentElement?.getAttribute("data-testid")).toBe("output-body")
+    selectionAction?.querySelector<HTMLButtonElement>("button")!.click()
+
+    await vi.waitFor(() => expect(startReplay).toHaveBeenCalledWith(1))
     if (typeof dispose === "function") dispose()
   })
 
@@ -608,13 +1030,115 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
     await vi.waitFor(() =>
       expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
-        "回放下一步失败",
+        "下一步失败",
       ),
     )
     if (typeof dispose === "function") dispose()
   })
 
-  it("surfaces import, export, and replay failures without unhandled rejections", async () => {
+  it("keeps replay controls contextual and drives start, step, difference, and stop", async () => {
+    let state: ReplayControllerState = { active: false, status: "idle", deterministic: true }
+    let resolveExport: ((serialized: string) => void) | undefined
+    const listeners = new Set<(next: ReplayControllerState) => void>()
+    const publish = (next: ReplayControllerState): void => {
+      state = next
+      for (const listener of listeners) listener(next)
+    }
+    const replayController: ReplayControllerPort = {
+      start: vi.fn(async (sequence: number) => {
+        const next = {
+          active: true,
+          status: "paused" as const,
+          deterministic: true,
+          currentSequence: sequence,
+          targetSequence: sequence,
+        }
+        publish(next)
+        return next
+      }),
+      stepBackward: vi.fn(async () => state),
+      stepForward: vi.fn(async () => state),
+      runTo: vi.fn(async () => state),
+      verify: vi.fn(async () => state),
+      continueBestEffort: vi.fn(async () => state),
+      stop: vi.fn(() => publish({ active: false, status: "idle", deterministic: true })),
+      getState: vi.fn(() => state),
+      subscribe: vi.fn((listener) => {
+        listeners.add(listener)
+        listener(state)
+        return () => listeners.delete(listener)
+      }),
+    }
+    const base = fakeOperationLogController([operationEvent()])
+    const exportSession = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveExport = resolve
+        }),
+    )
+    const operationLog: OperationLogControllerPort = {
+      ...base,
+      exportSession,
+      replayController,
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
+    )
+
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    expect(root.querySelector("[data-testid='replay-host']")).toHaveProperty("hidden", true)
+    expect(
+      root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-step-forward']"),
+    ).toBeNull()
+    expect(
+      root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-verify']"),
+    ).toBeNull()
+    expect(
+      root.querySelector("[data-testid='output-toolbar'] [data-testid='replay-stop']"),
+    ).toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
+    await vi.waitFor(() => expect(replayController.start).toHaveBeenCalledWith(1))
+    expect(root.querySelector("[data-testid='replay-summary']")?.textContent).toContain("回放至 #1")
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
+    await vi.waitFor(() => expect(replayController.stepForward).toHaveBeenCalledOnce())
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
+    await vi.waitFor(() => expect(exportSession).toHaveBeenCalledOnce())
+    expect(
+      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
+    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
+    resolveExport?.("bundle")
+    await vi.waitFor(() =>
+      expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(
+        false,
+      ),
+    )
+
+    publish({
+      active: true,
+      status: "paused",
+      deterministic: false,
+      currentSequence: 1,
+      targetSequence: 1,
+      difference: { type: "patch-mismatch", sequence: 1, path: "forward.updated[0]" },
+    })
+    expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
+      "patch-mismatch",
+    )
+    expect(root.querySelector("[aria-label='继续回放']")).not.toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
+    await vi.waitFor(() => expect(replayController.stop).toHaveBeenCalledOnce())
+    expect(root.querySelector("[data-testid='replay-host']")).toHaveProperty("hidden", true)
+    if (typeof dispose === "function") dispose()
+  })
+
+  it("retains output context and surfaces import, export, and replay failures", async () => {
     const importBundle = vi.fn<OperationLogControllerPort["importBundle"]>()
     const exportSession = vi.fn<OperationLogControllerPort["exportSession"]>()
     const startReplay = vi.fn<OperationLogControllerPort["startReplay"]>()
@@ -633,13 +1157,27 @@ describe("workspace panel renderers", () => {
     await vi.waitFor(() =>
       expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
     )
+    root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
+    const search = root.querySelector<HTMLInputElement>("input[aria-label='搜索操作日志']")!
+    search.value = "document"
+    search.dispatchEvent(new Event("input"))
+    const filter = root.querySelector<HTMLButtonElement>("[data-testid='output-filter-trigger']")!
+    filter.click()
+    root.querySelector<HTMLInputElement>("[data-filter-category='system']")!.click()
+    await vi.waitFor(() => expect(filter.textContent).toContain("筛选 5"))
+    root.querySelector<HTMLButtonElement>("[data-testid='output-filter-close']")!.click()
 
+    root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     await vi.waitFor(() =>
       expect(root.querySelector("[data-testid='output-error']")?.textContent).toContain(
         "导出日志失败",
       ),
     )
+    expect(root.querySelector("[data-testid='output-more-menu']")).not.toBeNull()
+    expect(search.value).toBe("document")
+    expect(filter.textContent).toContain("筛选 5")
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
 
     const input = root.querySelector<HTMLInputElement>("[data-testid='output-import-input']")!
     Object.defineProperty(input, "files", {
@@ -670,6 +1208,10 @@ describe("workspace panel renderers", () => {
         "导入日志失败",
       ),
     )
+    expect(root.querySelector("[data-testid='output-more-menu']")).not.toBeNull()
+    expect(search.value).toBe("document")
+    expect(filter.textContent).toContain("筛选 5")
+    expect(root.querySelector("[data-testid='output-details']")).not.toBeNull()
 
     root.querySelector<HTMLElement>("[data-testid='output-entry']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-replay']")!.click()
@@ -678,61 +1220,6 @@ describe("workspace panel renderers", () => {
         "回放操作失败",
       ),
     )
-
-    if (typeof dispose === "function") dispose()
-  })
-
-  it("uses a safe data URL fallback without ObjectURL APIs", async () => {
-    const originalCreateObjectURL = URL.createObjectURL
-    const originalRevokeObjectURL = URL.revokeObjectURL
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: undefined })
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: undefined })
-    const anchorClick = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => undefined)
-    const operationLog = fakeOperationLogController([operationEvent()])
-    const root = document.createElement("div")
-    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
-    await vi.waitFor(() =>
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
-    )
-
-    root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
-    for (let index = 0; index < 8; index += 1) await Promise.resolve()
-    expect(anchorClick).toHaveBeenCalled()
-
-    anchorClick.mockRestore()
-    if (originalCreateObjectURL === undefined) {
-      delete (URL as URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
-    } else {
-      Object.defineProperty(URL, "createObjectURL", {
-        configurable: true,
-        value: originalCreateObjectURL,
-      })
-    }
-    if (originalRevokeObjectURL === undefined) {
-      delete (URL as URL & { revokeObjectURL?: typeof URL.revokeObjectURL }).revokeObjectURL
-    } else {
-      Object.defineProperty(URL, "revokeObjectURL", {
-        configurable: true,
-        value: originalRevokeObjectURL,
-      })
-    }
-    if (typeof dispose === "function") dispose()
-  })
-
-  it("keeps clear local and does not delete persisted events", async () => {
-    const operationLog = fakeOperationLogController([operationEvent()])
-    const root = document.createElement("div")
-    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
-    await vi.waitFor(() =>
-      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(1),
-    )
-
-    root.querySelector<HTMLButtonElement>("[data-testid='output-clear']")!.click()
-    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(0)
-    expect(operationLog.query).toHaveBeenCalledTimes(1)
-    expect(root.querySelector("[data-testid='empty-output']")?.textContent).toBe("暂无输出。")
 
     if (typeof dispose === "function") dispose()
   })

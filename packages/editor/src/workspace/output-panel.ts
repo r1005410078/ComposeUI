@@ -1,30 +1,10 @@
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
-import {
-  Check,
-  CircleAlert,
-  Download,
-  FileInput,
-  Filter,
-  Play,
-  RotateCcw,
-  Search,
-  Trash2,
-  createElement,
-} from "lucide"
 import { formatOperation } from "./operation-formatters"
 import type { OperationLogControllerState } from "../operation-log-controller-port"
-import type { ReplayControllerState } from "./replay-controller"
+import { mountOutputReplayBar, type OutputReplayBarMount } from "./output-replay-bar"
+import { mountOutputToolbar, type OutputToolbarMount } from "./output-toolbar"
+import { safeText } from "./output-value-format"
 import type { WorkspaceContext, WorkspacePanelMount } from "./types"
-
-const LEVELS: readonly OperationStatus[] = ["observed", "started", "succeeded", "failed"]
-const CATEGORIES: readonly OperationCategory[] = [
-  "document",
-  "history",
-  "session",
-  "workspace",
-  "diagnostic",
-  "system",
-]
 
 const levelLabels: Record<OperationStatus, string> = {
   observed: "记录",
@@ -42,27 +22,6 @@ const categoryLabels: Record<OperationCategory, string> = {
   system: "系统",
 }
 
-function icon(node: Parameters<typeof createElement>[0]): SVGElement {
-  return createElement(node)
-}
-
-function button(
-  testid: string,
-  label: string,
-  iconNode: Parameters<typeof import("lucide").createElement>[0],
-  onClick: () => void,
-): HTMLButtonElement {
-  const element = document.createElement("button")
-  element.type = "button"
-  element.dataset.testid = testid
-  element.className = "composeui-editor__output-button"
-  element.setAttribute("aria-label", label)
-  element.title = label
-  element.append(icon(iconNode))
-  element.addEventListener("click", onClick)
-  return element
-}
-
 function textElement(
   tag: keyof HTMLElementTagNameMap,
   className: string,
@@ -77,6 +36,18 @@ function textElement(
 function emptyState(): HTMLElement {
   const empty = textElement("p", "composeui-editor__output-empty", "暂无输出。")
   empty.dataset.testid = "empty-output"
+  return empty
+}
+
+function filteredEmptyState(onReset: () => void): HTMLElement {
+  const empty = textElement("div", "composeui-editor__output-empty", "没有符合条件的日志")
+  empty.dataset.testid = "output-empty-filtered"
+  const reset = document.createElement("button")
+  reset.type = "button"
+  reset.dataset.testid = "output-reset-empty-filter"
+  reset.textContent = "重置筛选"
+  reset.addEventListener("click", onReset)
+  empty.append(reset)
   return empty
 }
 
@@ -98,23 +69,6 @@ function downloadExport(serialized: string): void {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function safeText(value: unknown): string {
-  const seen = new WeakSet<object>()
-  try {
-    const serialized = JSON.stringify(value, (_key, item: unknown) => {
-      if (typeof item === "bigint") return `${item.toString()}n`
-      if (typeof item === "object" && item !== null) {
-        if (seen.has(item)) return "[循环引用]"
-        seen.add(item)
-      }
-      return item
-    })
-    return serialized ?? String(value)
-  } catch {
-    return "[无法显示]"
-  }
 }
 
 function eventDetails(event: OperationEvent): HTMLElement {
@@ -188,6 +142,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   errorState.hidden = true
   const body = document.createElement("div")
   body.className = "composeui-editor__output-body"
+  body.dataset.testid = "output-body"
+  const selectionAction = document.createElement("div")
+  selectionAction.className = "composeui-editor__output-selection-action"
+  selectionAction.dataset.testid = "output-selection-action"
   const list = document.createElement("div")
   list.className = "composeui-editor__output-list"
   list.dataset.testid = "output-list"
@@ -222,68 +180,11 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let categories: OperationCategory[] = []
   let search = ""
   let autoScroll = true
+  let confirmClear = false
+  let busyAction: "import" | "export" | "replay" | undefined
   let latestRows: readonly OperationEvent[] = []
   const replayController = controller.replayController
-  let unsubscribeReplay: (() => void) | undefined
-
-  const renderReplay = (state: ReplayControllerState): void => {
-    if (replayController === undefined) return
-    replayHost.hidden = !state.active
-    if (!state.active) return
-    replayHost.replaceChildren()
-    const sequence = textElement(
-      "span",
-      "composeui-editor__output-replay-sequence",
-      `当前序号：${state.currentSequence === undefined ? "-" : state.currentSequence}`,
-    )
-    sequence.dataset.testid = "replay-sequence"
-    const deterministic = textElement(
-      "span",
-      "composeui-editor__output-replay-deterministic",
-      state.deterministic ? "回放一致" : "回放存在差异",
-    )
-    deterministic.dataset.testid = "replay-deterministic"
-    deterministic.dataset.deterministic = String(state.deterministic)
-    const status = textElement("span", "composeui-editor__output-replay-status", state.status)
-    status.dataset.testid = "replay-status"
-    const difference = state.difference
-    const replayError = state.error
-    const error =
-      replayError === undefined
-        ? undefined
-        : textElement("p", "composeui-editor__output-replay-error", replayError)
-    if (error !== undefined) error.dataset.testid = "replay-error"
-    if (difference !== undefined) {
-      const detail = textElement("pre", "composeui-editor__output-replay-difference", "")
-      detail.dataset.testid = "replay-difference"
-      detail.textContent = [
-        `type: ${difference.type}`,
-        `sequence: ${difference.sequence}`,
-        ...("path" in difference ? [`path: ${difference.path}`] : []),
-        ...("expected" in difference ? [`expected: ${safeText(difference.expected)}`] : []),
-        ...("actual" in difference ? [`actual: ${safeText(difference.actual)}`] : []),
-      ].join("\n")
-      replayHost.append(sequence, deterministic, status, detail)
-    } else {
-      replayHost.append(sequence, deterministic, status)
-    }
-    if (error !== undefined) replayHost.append(error)
-  }
-
-  const replayButton = (
-    testid: string,
-    label: string,
-    iconNode: Parameters<typeof import("lucide").createElement>[0],
-    action: () => void | Promise<unknown>,
-  ): HTMLButtonElement => {
-    const replayAction = button(testid, label, iconNode, () => {
-      void Promise.resolve()
-        .then(action)
-        .catch((error) => showError(label, error))
-    })
-    replayAction.disabled = !replayController?.getState().active
-    return replayAction
-  }
+  let replayBar: OutputReplayBarMount | undefined
 
   const clearError = (): void => {
     errorState.hidden = true
@@ -295,12 +196,45 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     errorState.textContent = `${action}失败：${errorText(error)}`
   }
 
+  const showQueryError = (error: unknown): void => {
+    if (disposed) return
+    const retry = document.createElement("button")
+    retry.type = "button"
+    retry.dataset.testid = "output-query-retry"
+    retry.textContent = "重试查询"
+    retry.setAttribute("aria-label", "重试查询操作日志")
+    retry.addEventListener("click", () => void refresh())
+    errorState.hidden = false
+    errorState.replaceChildren(
+      document.createTextNode("查询操作日志失败：" + errorText(error)),
+      retry,
+    )
+  }
+
+  let toolbarMount: OutputToolbarMount | undefined
+  const renderToolbar = (): void => {
+    toolbarMount?.update({
+      levels,
+      categories,
+      search,
+      autoScroll,
+      ...(selected === undefined ? {} : { selectedSequence: selected.sequence }),
+      canReplaySelection: selected !== undefined,
+      confirmClear,
+      ...(busyAction === undefined ? {} : { busyAction }),
+    })
+    renderSelectionAction()
+    replayBar?.update({ busy: busyAction !== undefined })
+  }
+  const hasActiveRestriction = (): boolean =>
+    levels.length > 0 || categories.length > 0 || search.trim().length > 0
+
   const renderRows = (rows: readonly OperationEvent[]): void => {
     if (disposed) return
     latestRows = rows.filter((event) => event.sequence > clearedThroughSequence)
     list.replaceChildren()
     if (latestRows.length === 0) {
-      list.append(emptyState())
+      list.append(hasActiveRestriction() ? filteredEmptyState(resetFilters) : emptyState())
     } else {
       for (const event of latestRows) {
         const row = document.createElement("button")
@@ -310,10 +244,12 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
         row.dataset.level = event.status
         row.dataset.category = event.category
         row.setAttribute("aria-selected", String(selected?.eventId === event.eventId))
-        row.addEventListener("click", () => {
+        row.addEventListener("click", (clickEvent) => {
+          clickEvent.stopPropagation()
           selected = event
           renderRows(latestRows)
           detailsHost.replaceChildren(eventDetails(event))
+          renderToolbar()
         })
         row.append(
           textElement("span", "composeui-editor__output-entry-sequence", String(event.sequence)),
@@ -331,164 +267,147 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     }
   }
 
+  list.addEventListener("click", () => {
+    selected = undefined
+    detailsHost.replaceChildren()
+    renderRows(latestRows)
+    renderToolbar()
+  })
+
   const refresh = async (): Promise<void> => {
     const generation = ++queryGeneration
     try {
       const rows = await controller.query({ levels, categories, search })
       if (disposed || generation !== queryGeneration) return
       renderRows(rows)
-    } catch {
+      clearError()
+    } catch (error) {
       if (disposed || generation !== queryGeneration) return
       renderRows([])
+      showQueryError(error)
     }
   }
 
-  const toggleLevel = (level: OperationStatus): void => {
-    levels = levels.includes(level) ? levels.filter((item) => item !== level) : [...levels, level]
-    void refresh()
-  }
-  const toggleCategory = (category: OperationCategory): void => {
-    categories = categories.includes(category)
-      ? categories.filter((item) => item !== category)
-      : [...categories, category]
+  const resetFilters = (): void => {
+    levels = []
+    categories = []
+    search = ""
+    renderToolbar()
     void refresh()
   }
 
-  toolbar.append(
-    button("output-clear", "清空当前视图", Trash2, () => {
-      clearedThroughSequence = Math.max(
-        clearedThroughSequence,
-        ...latestRows.map((event) => event.sequence),
-        0,
-      )
-      selected = undefined
-      detailsHost.replaceChildren()
-      renderRows(latestRows)
-    }),
-  )
-  const levelGroup = document.createElement("div")
-  levelGroup.className = "composeui-editor__output-filter-group"
-  levelGroup.append(textElement("span", "composeui-editor__output-filter-label", "级别"))
-  for (const level of LEVELS) {
-    const filterButton = button(
-      `output-level-${level === "failed" ? "error" : level}`,
-      levelLabels[level],
-      level === "failed" ? CircleAlert : Check,
-      () => toggleLevel(level),
-    )
-    filterButton.dataset.level = level
-    levelGroup.append(filterButton)
+  const runAsyncAction = (
+    action: "import" | "export" | "replay",
+    label: string,
+    task: () => Promise<void>,
+  ): void => {
+    if (busyAction !== undefined) return
+    busyAction = action
+    clearError()
+    void Promise.resolve()
+      .then(task)
+      .then(clearError)
+      .catch((error) => showError(label, error))
+      .finally(() => {
+        if (busyAction === action) busyAction = undefined
+        renderToolbar()
+      })
+    renderToolbar()
   }
-  toolbar.append(levelGroup)
-
-  const categoryGroup = document.createElement("div")
-  categoryGroup.className = "composeui-editor__output-filter-group"
-  categoryGroup.append(textElement("span", "composeui-editor__output-filter-label", "分类"))
-  for (const category of CATEGORIES) {
-    const filterButton = button(
-      `output-category-${category}`,
-      categoryLabels[category],
-      Filter,
-      () => toggleCategory(category),
-    )
-    filterButton.dataset.category = category
-    categoryGroup.append(filterButton)
+  const handleImport = (file: File): void => {
+    runAsyncAction("import", "导入日志", async () => {
+      const serialized = await file.text()
+      await controller.importBundle(serialized)
+    })
   }
-  toolbar.append(categoryGroup)
-
-  const searchLabel = document.createElement("label")
-  searchLabel.className = "composeui-editor__output-search"
-  searchLabel.append(icon(Search))
-  const searchInput = document.createElement("input")
-  searchInput.type = "search"
-  searchInput.placeholder = "搜索操作日志"
-  searchInput.setAttribute("aria-label", "搜索操作日志")
-  searchInput.addEventListener("input", () => {
-    search = searchInput.value
-    void refresh()
-  })
-  searchLabel.append(searchInput)
-  toolbar.append(searchLabel)
-
-  toolbar.append(
-    button("output-auto-scroll", "自动滚动", RotateCcw, () => {
-      autoScroll = !autoScroll
-      toolbar
-        .querySelector<HTMLButtonElement>("[data-testid='output-auto-scroll']")
-        ?.toggleAttribute("aria-pressed", autoScroll)
-    }),
-    button("output-import", "导入日志", FileInput, () => fileInput.click()),
-    button("output-export", "导出日志", Download, () => {
-      clearError()
-      void Promise.resolve()
-        .then(() => controller.exportSession())
-        .then((serialized) => {
-          downloadExport(serialized)
-          clearError()
-        })
-        .catch((error) => showError("导出日志", error))
-    }),
-    button("output-replay", "回放选中操作", Play, () => {
-      if (selected === undefined) return
-      const sequence = selected.sequence
-      clearError()
-      void Promise.resolve()
-        .then(() => controller.startReplay(sequence))
-        .then(() => {
-          if (replayController === undefined || replayController.getState().active) return undefined
-          return replayController.start(sequence)
-        })
-        .then(() => clearError())
-        .catch((error) => showError("回放操作", error))
-    }),
-  )
-
-  if (replayController !== undefined) {
-    toolbar.append(
-      replayButton("replay-step-backward", "回放上一步", RotateCcw, () =>
-        replayController.stepBackward(),
-      ),
-      replayButton("replay-step-forward", "回放下一步", Play, () => replayController.stepForward()),
-      replayButton("replay-run-to", "回放到选中操作", Play, () => {
-        if (selected === undefined) throw new Error("未选择操作")
-        return replayController.runTo(selected.sequence)
-      }),
-      replayButton("replay-verify", "验证回放", Check, () => replayController.verify()),
-      replayButton("replay-continue", "继续非确定性回放", Play, () =>
-        replayController.continueBestEffort(),
-      ),
-      button("replay-stop", "停止回放", Trash2, () => replayController.stop()),
+  const handleExport = (): void => {
+    runAsyncAction("export", "导出日志", async () => {
+      downloadExport(await controller.exportSession())
+    })
+  }
+  const clearView = (): void => {
+    clearedThroughSequence = Math.max(
+      clearedThroughSequence,
+      ...latestRows.map((event) => event.sequence),
+      0,
     )
-    unsubscribeReplay = replayController.subscribe((state) => {
-      if (disposed) return
-      renderReplay(state)
-      for (const element of toolbar.querySelectorAll<HTMLButtonElement>(
-        "[data-testid^='replay-']",
-      )) {
-        element.disabled = !state.active
+    selected = undefined
+    detailsHost.replaceChildren()
+    renderRows(latestRows)
+    renderToolbar()
+  }
+  const startSelectedReplay = (sequence: number): void => {
+    runAsyncAction("replay", "回放操作", async () => {
+      await controller.startReplay(sequence)
+      if (replayController !== undefined && !replayController.getState().active) {
+        const state = await replayController.start(sequence)
+        if (state.error !== undefined) throw new Error(state.error)
       }
     })
   }
-
-  const fileInput = document.createElement("input")
-  fileInput.type = "file"
-  fileInput.accept = ".json,application/json"
-  fileInput.hidden = true
-  fileInput.dataset.testid = "output-import-input"
-  fileInput.addEventListener("change", () => {
-    const file = fileInput.files?.[0]
-    if (file === undefined) return
-    clearError()
-    void Promise.resolve()
-      .then(() => file.text())
-      .then((serialized) => controller.importBundle(serialized))
-      .then(() => clearError())
-      .catch((error) => showError("导入日志", error))
+  const renderSelectionAction = (): void => {
+    selectionAction.replaceChildren()
+    if (selected === undefined) {
+      selectionAction.remove()
+      return
+    }
+    const replay = document.createElement("button")
+    replay.type = "button"
+    replay.className = "composeui-editor__output-button"
+    replay.dataset.testid = "output-selection-replay"
+    replay.textContent = busyAction === "replay" ? "正在回放…" : "回放到此处"
+    replay.setAttribute("aria-label", replay.textContent)
+    replay.disabled = busyAction !== undefined
+    replay.addEventListener("click", () => startSelectedReplay(selected!.sequence))
+    selectionAction.append(replay)
+    body.insertBefore(selectionAction, list)
+  }
+  toolbarMount = mountOutputToolbar(toolbar, {
+    onSearch(nextSearch) {
+      search = nextSearch
+      void refresh()
+    },
+    onFilterChange(nextLevels, nextCategories) {
+      levels = [...nextLevels]
+      categories = [...nextCategories]
+      renderToolbar()
+      void refresh()
+    },
+    onResetFilters: resetFilters,
+    onAutoScrollChange(nextAutoScroll) {
+      autoScroll = nextAutoScroll
+      renderToolbar()
+    },
+    onImport: handleImport,
+    onExport: handleExport,
+    onRequestClear() {
+      confirmClear = true
+      renderToolbar()
+    },
+    onCancelClear() {
+      confirmClear = false
+      renderToolbar()
+    },
+    onConfirmClear() {
+      confirmClear = false
+      clearView()
+    },
+    onReplaySelected: startSelectedReplay,
   })
-  toolbar.append(fileInput)
+  renderToolbar()
+
+  if (replayController !== undefined) {
+    replayBar = mountOutputReplayBar(replayHost, {
+      controller: replayController,
+      getSelectedSequence: () => selected?.sequence,
+      onError: showError,
+      model: { busy: busyAction !== undefined },
+    })
+  }
 
   const unsubscribe = controller.subscribe((state: OperationLogControllerState) => {
     if (disposed) return
+    queryGeneration += 1
     selected = state.detail ?? state.selection
     renderRows(
       selected !== undefined && !state.rows.some((event) => event.eventId === selected?.eventId)
@@ -500,7 +419,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     } else {
       detailsHost.replaceChildren(eventDetails(selected))
     }
-    void refresh()
+    renderToolbar()
   })
   void refresh()
 
@@ -509,7 +428,8 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     disposed = true
     queryGeneration += 1
     unsubscribe()
-    unsubscribeReplay?.()
+    replayBar?.dispose()
+    toolbarMount?.dispose()
     root.replaceChildren()
   }
 }

@@ -59,4 +59,41 @@ describe("operation output workspace styles", () => {
     expect(workspaceCss).toContain("--composeui-scrollbar-thumb")
     expect(workspaceCss).toContain("::-webkit-scrollbar-thumb")
   })
+
+  it("anchors More outside the toolbar flow without horizontal scrolling", () => {
+    const toolbarRule = workspaceCss.match(
+      /\.composeui-editor__output-toolbar\s*\{([\s\S]*?)\n\}/,
+    )?.[1]
+    expect(toolbarRule).toContain("overflow: visible")
+    expect(toolbarRule).not.toContain("overflow-x: auto")
+    const menuRule = workspaceCss.match(/\.composeui-editor__output-menu\s*\{([\s\S]*?)\n\}/)?.[1]
+    expect(menuRule).toContain("position: absolute")
+    expect(menuRule).toContain("z-index:")
+    expect(workspaceCss).toContain(".composeui-editor__output-menu-host")
+    expect(workspaceCss).toContain("position: relative")
+  })
+
+  it("adapts output controls through the existing output container", () => {
+    expect(workspaceCss).toContain("@container (max-width: 760px)")
+    expect(workspaceCss).toContain(".composeui-editor__output-auto-scroll-primary")
+    expect(workspaceCss).toContain("@container (max-width: 520px)")
+    expect(workspaceCss).toContain(".composeui-editor__output-replay-primary")
+    expect(workspaceCss).toContain(".composeui-editor__output-selection-action")
+
+    const compactRules = workspaceCss.match(/@container \(max-width: 520px\) \{([\s\S]*?)\n\}/)?.[1]
+    expect(compactRules).toContain(".composeui-editor__output-replay-primary")
+    expect(compactRules).toContain("display: none")
+    expect(compactRules).toContain(".composeui-editor__output-selection-action")
+    expect(compactRules).toContain("display: flex")
+  })
+
+  it("scopes the More menu auto-scroll action to the compact toolbar", () => {
+    const menuAutoScrollRule = workspaceCss.match(
+      /\.composeui-editor__output-menu-auto-scroll\s*\{([\s\S]*?)\n\}/,
+    )?.[1]
+    expect(menuAutoScrollRule).toContain("display: none")
+    expect(workspaceCss).toMatch(
+      /@container \(max-width: 760px\) \{[\s\S]*?\.composeui-editor__output-menu-auto-scroll\s*\{[\s\S]*?display: block/,
+    )
+  })
 })
