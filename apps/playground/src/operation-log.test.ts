@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest"
 import { IDBFactory, indexedDB } from "fake-indexeddb"
 import { IndexedDbOperationLogStore } from "@composeui/operation-log"
 import type { DockviewFactory, EditorWorkspaceDockview } from "@composeui/editor"
-import { createPlaygroundOperationRuntime } from "./main"
+import {
+  createPlaygroundOperationRuntime,
+  type PlaygroundOperationRuntime,
+} from "./main"
 
 function createDockviewFake(): DockviewFactory {
   return (_root, _options) => {
@@ -50,6 +53,12 @@ function createDockviewFake(): DockviewFactory {
 describe("playground operation log runtime", () => {
   beforeEach(() => {
     indexedDB.deleteDatabase("composeui-playground-operation-log-test")
+  })
+
+  it("accepts a workspace mount without options", () => {
+    expectTypeOf<PlaygroundOperationRuntime["mount"]>().toBeCallableWith(
+      document.createElement("div"),
+    )
   })
 
   it("creates one recorder/coordinator and persists editor operations", async () => {

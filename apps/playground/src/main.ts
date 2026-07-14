@@ -58,7 +58,7 @@ export interface PlaygroundOperationRuntime {
   readonly replayController: ReplayController
   mount(
     root: HTMLElement,
-    options: Omit<
+    options?: Omit<
       MountEditorWorkspaceOptions,
       "pageId" | "projectTitle" | "session" | "operationLog" | "onEvent"
     >,
@@ -198,7 +198,7 @@ export async function createPlaygroundOperationRuntime(
     coordinator: startedCoordinator,
     controller,
     replayController,
-    mount(root, options) {
+    mount(root, options = {}) {
       mounted = mountEditorWorkspace(root, scenario.editor, {
         ...options,
         pageId: scenario.pageId,
