@@ -106,6 +106,38 @@ describe("operation formatters", () => {
     ).toContain("重命名")
   })
 
+  it("formats workspace operations in Chinese without serializing the layout", () => {
+    expect(
+      formatOperation(
+        event("workspace.panel.opened", { panelId: "inspector" }, { category: "workspace" }),
+      ),
+    ).toContain("打开面板：inspector")
+    expect(
+      formatOperation(
+        event("workspace.panel.closed", { panelId: "signals" }, { category: "workspace" }),
+      ),
+    ).toContain("关闭面板：signals")
+    expect(
+      formatOperation(
+        event("workspace.panel.activated", { panelId: "canvas:page-1" }, { category: "workspace" }),
+      ),
+    ).toContain("激活面板：canvas:page-1")
+
+    const layout = { version: 1, modeId: "2d", layout: { dockview: { panels: ["secret"] } } }
+    expect(
+      formatOperation(event("workspace.layout.changed", { layout }, { category: "workspace" })),
+    ).toContain("更新工作区布局")
+    expect(
+      formatOperation(event("workspace.layout.loaded", { layout }, { category: "workspace" })),
+    ).toContain("加载工作区布局")
+    expect(
+      formatOperation(event("workspace.layout.reset", { layout }, { category: "workspace" })),
+    ).toContain("重置工作区布局")
+    expect(
+      formatOperation(event("workspace.layout.changed", { layout }, { category: "workspace" })),
+    ).not.toContain("secret")
+  })
+
   it("supports custom registration and conditional unregister", () => {
     const unregister = registerOperationFormatter("custom.event", () => "自定义操作")
     expect(formatOperation(event("custom.event", {}))).toBe("自定义操作")
