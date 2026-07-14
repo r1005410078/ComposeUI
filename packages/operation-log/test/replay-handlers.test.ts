@@ -120,6 +120,93 @@ describe("built-in replay handlers", () => {
     ).toBeUndefined()
   })
 
+  it("matches history transactions by direction and pre-operation index", async () => {
+    const replay = context()
+    const first = createCommand("first")
+    const second = createCommand("second")
+    expect(replay.editor.dispatch(first).ok).toBe(true)
+    expect(replay.editor.dispatch(second).ok).toBe(true)
+    const entries = replay.editor.getHistory().entries
+
+    expect(
+      await handleHistoryOperation(
+        {
+          ...event("history.undo", "succeeded", { currentIndex: 1 }),
+          transactionId: entries[1]!.transactionId,
+        },
+        replay,
+      ),
+    ).toBeUndefined()
+    expect(
+      await handleHistoryOperation(
+        {
+          ...event("history.undo", "succeeded", { currentIndex: 0 }),
+          transactionId: entries[0]!.transactionId,
+        },
+        replay,
+      ),
+    ).toBeUndefined()
+    expect(
+      await handleHistoryOperation(
+        {
+          ...event("history.redo", "succeeded", { currentIndex: 1 }),
+          transactionId: entries[0]!.transactionId,
+        },
+        replay,
+      ),
+    ).toBeUndefined()
+    expect(
+      await handleHistoryOperation(
+        {
+          ...event("history.redo", "succeeded", { currentIndex: 2 }),
+          transactionId: entries[1]!.transactionId,
+        },
+        replay,
+      ),
+    ).toBeUndefined()
+    expect(
+      await handleHistoryOperation(
+        {
+          ...event("history.jump", "succeeded", { currentIndex: 0 }),
+          transactionId: entries[0]!.transactionId,
+        },
+        replay,
+      ),
+    ).toBeUndefined()
+  })
+
+  it("rejects missing or invalid jump indexes before changing history", async () => {
+    const replay = context()
+    expect(replay.editor.dispatch(createCommand()).ok).toBe(true)
+    const before = replay.editor.getHistory()
+    await expect(
+      handleHistoryOperation(event("history.jump", "succeeded", {}), replay),
+    ).resolves.toMatchObject({ type: "schema-incompatible" })
+    await expect(
+      handleHistoryOperation(event("history.jump", "succeeded", { currentIndex: 99 }), replay),
+    ).resolves.toMatchObject({ type: "schema-incompatible" })
+    expect(replay.editor.getHistory()).toEqual(before)
+  })
+
+  it("accepts a successful empty patch without requiring a history entry", async () => {
+    const replay = context()
+    expect(replay.editor.dispatch(createCommand()).ok).toBe(true)
+    const command = { id: "node.rename" as const, payload: { id: "node-1", name: "node-1" } }
+    const emptyPatch = { created: [], updated: [], removed: [] }
+    const transaction = {
+      transactionId: "transaction-empty",
+      label: command.id,
+      forward: emptyPatch,
+      inverse: emptyPatch,
+    }
+    expect(
+      await handleDocumentCommand(
+        event("document.command", "succeeded", { command, transaction, patch: emptyPatch }),
+        replay,
+      ),
+    ).toBeUndefined()
+  })
+
   it("routes session operations through the session port", async () => {
     const session = context().session
     const replay = context(session)

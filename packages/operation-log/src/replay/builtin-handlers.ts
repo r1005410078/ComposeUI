@@ -107,6 +107,18 @@ function stateSnapshot(context: ReplayHandlerContext): unknown {
   return { records: context.editor.getStore().all(), history: context.editor.getHistory() }
 }
 
+function isEmptyPatch(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.created) &&
+    Array.isArray(value.updated) &&
+    Array.isArray(value.removed) &&
+    value.created.length === 0 &&
+    value.updated.length === 0 &&
+    value.removed.length === 0
+  )
+}
+
 function commandMismatch(
   event: OperationEvent,
   expected: unknown,
@@ -200,7 +212,11 @@ export async function handleDocumentCommand(
       }
     }
   } else if (isRecord(payload?.transaction) && actualTransaction === undefined) {
-    return commandMismatch(event, "transaction", undefined)
+    const expectedForward = payload.transaction.forward
+    const expectedInverse = payload.transaction.inverse
+    if (!isEmptyPatch(expectedForward) || !isEmptyPatch(expectedInverse)) {
+      return commandMismatch(event, "transaction", undefined)
+    }
   }
   return undefined
 }
@@ -218,6 +234,17 @@ export async function handleHistoryOperation(
   }
   const payload = payloadRecord(event)
   const expectedIndex = typeof payload?.currentIndex === "number" ? payload.currentIndex : undefined
+  const historyBefore = context.editor.getHistory()
+  if (event.type === "history.jump") {
+    if (
+      expectedIndex === undefined ||
+      !Number.isInteger(expectedIndex) ||
+      expectedIndex < 0 ||
+      expectedIndex > historyBefore.entries.length
+    ) {
+      return { type: "schema-incompatible", sequence: event.sequence, version: event.schemaVersion }
+    }
+  }
   const before = stateSnapshot(context)
   let result: Result<void>
   try {
@@ -253,7 +280,19 @@ export async function handleHistoryOperation(
   if (expectedIndex !== undefined && context.editor.getHistory().currentIndex !== expectedIndex) {
     return commandMismatch(event, expectedIndex, context.editor.getHistory().currentIndex)
   }
-  const actualTransaction = context.editor.getHistory().entries.at(-1)
+  const actualHistory = context.editor.getHistory()
+  const transactionIndex =
+    event.type === "history.undo"
+      ? historyBefore.currentIndex - 1
+      : event.type === "history.redo"
+        ? historyBefore.currentIndex
+        : expectedIndex === undefined || expectedIndex === historyBefore.currentIndex
+          ? undefined
+          : expectedIndex < historyBefore.currentIndex
+            ? expectedIndex
+            : expectedIndex - 1
+  const actualTransaction =
+    transactionIndex === undefined ? undefined : actualHistory.entries[transactionIndex]
   if (
     event.transactionId !== undefined &&
     actualTransaction?.transactionId !== event.transactionId
