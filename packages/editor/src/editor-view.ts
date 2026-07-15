@@ -1,4 +1,5 @@
-import type { Editor, NodeRecord, PageRecord, RecordStore } from "@composeui/core"
+import { createEditor } from "@composeui/core"
+import type { Editor, NodeRecord, PageDocument, PageRecord, RecordStore } from "@composeui/core"
 import type { EditorChangeEvent, TransactionPatch } from "@composeui/core"
 import { safeColor } from "./colors"
 import { screenToWorld, worldToScreen, zoomAt } from "./coordinates"
@@ -30,6 +31,20 @@ export interface MountEditorOptions {
   pageId: string
   session?: EditorSession
   view?: "combined" | "canvas"
+  preview?: EditorPreviewSource
+}
+
+export interface EditorPreviewFrame {
+  readonly active: boolean
+  readonly document?: PageDocument
+  readonly session?: EditorSessionState
+  readonly currentSequence?: number
+  readonly targetSequence?: number
+}
+
+export interface EditorPreviewSource {
+  getState(): EditorPreviewFrame
+  subscribe(listener: (frame: EditorPreviewFrame) => void): () => void
 }
 
 export interface MountedEditor {
@@ -434,7 +449,9 @@ export function mountEditor(
   if (!session.getState().expanded.includes(options.pageId)) {
     session.toggleExpanded(options.pageId)
   }
-  let sessionState = session.getState()
+  let sourceSessionState = session.getState()
+  let previewFrame = options.preview?.getState() ?? { active: false }
+  let sessionState = previewFrame.active ? (previewFrame.session ?? sourceSessionState) : sourceSessionState
 
   const shell = document.createElement("section")
   shell.className = "composeui-editor"
@@ -464,6 +481,9 @@ export function mountEditor(
   grid.className = "composeui-editor__workspace-grid"
   grid.dataset.testid = "workspace-grid"
   grid.setAttribute("aria-hidden", "true")
+  const replayBanner = document.createElement("div")
+  replayBanner.dataset.testid = "replay-canvas-banner"
+  replayBanner.setAttribute("role", "status")
 
   world.append(board)
   workspace.append(grid, world, overlay)
@@ -484,8 +504,18 @@ export function mountEditor(
           false,
         )
 
-  let currentStore = coreEditor.getStore()
-  const canvas = createCanvasView(currentStore, initialPage, world, board, overlay)
+  let sourceStore = coreEditor.getStore()
+  const previewStore = (frame: EditorPreviewFrame): RecordStore | undefined =>
+    frame.document === undefined ? undefined : createEditor(frame.document).getStore()
+  let currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
+  const currentPage = currentStore.get(options.pageId)
+  const canvas = createCanvasView(
+    currentStore,
+    currentPage?.typeName === "page" ? currentPage : initialPage,
+    world,
+    board,
+    overlay,
+  )
   const updateViewport = (): void => {
     world.style.transform = `translate(${sessionState.viewport.x}px, ${sessionState.viewport.y}px) scale(${sessionState.viewport.zoom})`
     const gridSize = 16 * sessionState.viewport.zoom
@@ -495,6 +525,23 @@ export function mountEditor(
   }
   updateViewport()
   renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
+
+  const isPreviewActive = (): boolean => previewFrame.active
+  const updateReplayBanner = (): void => {
+    if (!previewFrame.active) {
+      delete shell.dataset.replay
+      replayBanner.remove()
+      return
+    }
+    shell.dataset.replay = "true"
+    const sequences = [
+      previewFrame.currentSequence === undefined ? undefined : `当前 #${previewFrame.currentSequence}`,
+      previewFrame.targetSequence === undefined ? undefined : `目标 #${previewFrame.targetSequence}`,
+    ].filter((sequence): sequence is string => sequence !== undefined)
+    replayBanner.textContent = ["回放预览", ...sequences].join(" ")
+    workspace.append(replayBanner)
+  }
+  updateReplayBanner()
 
   let destroyed = false
   let spacePressed = false
@@ -509,6 +556,7 @@ export function mountEditor(
     kind: "move" | "resize",
   ): void => {
     if (
+      isPreviewActive() ||
       event.button !== 0 ||
       shell.dataset.mode !== "stage-edit" ||
       isTransformLocked(currentStore, node)
@@ -675,7 +723,7 @@ export function mountEditor(
   }
 
   const startGroupResizeInteraction = (event: PointerEvent, handle: GroupResizeHandle): void => {
-    if (event.button !== 0 || shell.dataset.mode !== "stage-edit") return
+    if (isPreviewActive() || event.button !== 0 || shell.dataset.mode !== "stage-edit") return
     const group = getGroupSelection(currentStore, canvas.visibleNodes, sessionState)
     if (group === undefined) return
 
@@ -820,6 +868,7 @@ export function mountEditor(
   }
 
   const onOverlayPointerDown = (event: PointerEvent): void => {
+    if (isPreviewActive()) return
     const target = event.target
     if (!(target instanceof Element)) return
     const handle = target.closest<SVGElement>("[data-group-resize-handle]")?.dataset
@@ -830,6 +879,7 @@ export function mountEditor(
   }
 
   const onBoardPointerDown = (event: PointerEvent): void => {
+    if (isPreviewActive()) return
     if (sessionState.interactionMode === "pan") {
       startWorkspacePan(event)
       return
@@ -849,6 +899,7 @@ export function mountEditor(
     startPointerInteraction(event, record, nodeElement, target, "move")
   }
   const startWorkspacePan = (event: PointerEvent): void => {
+    if (isPreviewActive()) return
     activeInteraction?.cancel()
     event.preventDefault()
     event.stopPropagation()
@@ -884,6 +935,7 @@ export function mountEditor(
     window.addEventListener("pointercancel", onPointerUp)
   }
   const startMarqueeSelection = (event: PointerEvent): void => {
+    if (isPreviewActive()) return
     activeInteraction?.cancel()
     event.preventDefault()
     shell.focus()
@@ -951,7 +1003,7 @@ export function mountEditor(
     window.addEventListener("pointercancel", onPointerCancel)
   }
   const onWorkspacePointerDown = (event: PointerEvent): void => {
-    if (event.defaultPrevented || shell.dataset.mode !== "stage-edit") return
+    if (isPreviewActive() || event.defaultPrevented || shell.dataset.mode !== "stage-edit") return
     if (sessionState.interactionMode === "pan") {
       startWorkspacePan(event)
       return
@@ -966,7 +1018,7 @@ export function mountEditor(
     startMarqueeSelection(event)
   }
   const onWorkspaceWheel = (event: WheelEvent): void => {
-    if (shell.dataset.mode !== "stage-edit") return
+    if (isPreviewActive() || shell.dataset.mode !== "stage-edit") return
     event.preventDefault()
     const point = workspacePoint(event, workspace)
     const factor = Math.exp(-event.deltaY * 0.001)
@@ -974,6 +1026,7 @@ export function mountEditor(
     session.setViewport(zoomAt(sessionState.viewport, point, nextZoom))
   }
   const onWindowKeyDown = (event: KeyboardEvent): void => {
+    if (isPreviewActive()) return
     if (event.key !== " " && event.code !== "Space") return
     const target = event.target
     if (
@@ -988,6 +1041,7 @@ export function mountEditor(
     shell.dataset.panning = "true"
   }
   const onShellKeyDown = (event: KeyboardEvent): void => {
+    if (isPreviewActive()) return
     const target = event.target
     if (event.key === "Delete" && target instanceof Element) {
       const treeControl = target.closest<HTMLElement>("[data-tree-control='select']")
@@ -1033,8 +1087,10 @@ export function mountEditor(
 
   const onCoreChange = (event: EditorChangeEvent): void => {
     if (destroyed) return
+    sourceStore = event.store
+    if (isPreviewActive()) return
     activeInteraction?.cancel()
-    currentStore = event.store
+    currentStore = sourceStore
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return
     canvas.update(currentStore, page, canvasNeedsRebuild(event.transaction.forward))
@@ -1045,6 +1101,8 @@ export function mountEditor(
   }
   const onSessionChange = (nextState: EditorSessionState): void => {
     if (destroyed) return
+    sourceSessionState = nextState
+    if (isPreviewActive()) return
     const selectionChanged = !sameArray(sessionState.selection, nextState.selection)
     const viewportChanged =
       sessionState.viewport.x !== nextState.viewport.x ||
@@ -1066,6 +1124,19 @@ export function mountEditor(
 
   const unsubscribeCore = coreEditor.subscribe(onCoreChange)
   const unsubscribeSession = session.subscribe(onSessionChange)
+  const unsubscribePreview = options.preview?.subscribe((nextFrame) => {
+    if (destroyed) return
+    activeInteraction?.cancel()
+    previewFrame = nextFrame
+    sessionState = previewFrame.active ? (previewFrame.session ?? sourceSessionState) : sourceSessionState
+    currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
+    const page = currentStore.get(options.pageId)
+    if (page?.typeName !== "page") return
+    canvas.update(currentStore, page, true)
+    updateViewport()
+    renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
+    updateReplayBanner()
+  })
 
   return {
     session,
@@ -1084,6 +1155,7 @@ export function mountEditor(
       treeMounted?.destroy()
       unsubscribeCore()
       unsubscribeSession()
+      unsubscribePreview?.()
       shell.remove()
     },
   }
