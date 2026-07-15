@@ -46,6 +46,8 @@ export interface MountComponentTreeOptions {
   pageId: string
   session?: EditorSession
   readOnly?: () => boolean
+  state?: EditorSessionState
+  store?: RecordStore
 }
 
 export interface MountedComponentTree {
@@ -518,12 +520,13 @@ export function mountComponentTreeView(
   if (page?.typeName !== "page") throw new Error("PAGE_NOT_FOUND")
 
   const session = options.session ?? new EditorSession()
-  if (!session.getState().expanded.includes(options.pageId)) {
+  if (options.state === undefined && !session.getState().expanded.includes(options.pageId)) {
     session.toggleExpanded(options.pageId)
   }
-  let state = session.getState()
+  let state = options.state ?? session.getState()
   const isReadOnly = options.readOnly ?? (() => false)
-  const tree = createComponentTree(editor.getStore(), options.pageId, state, session, editor, isReadOnly)
+  const initialStore = options.store ?? editor.getStore()
+  const tree = createComponentTree(initialStore, options.pageId, state, session, editor, isReadOnly)
   const preventReadOnlyInteraction = (event: Event): void => {
     if (!isReadOnly()) return
     event.preventDefault()
@@ -533,7 +536,7 @@ export function mountComponentTreeView(
     tree.element.addEventListener(eventName, preventReadOnlyInteraction, true)
   }
   root.replaceChildren(tree.element)
-  let store = editor.getStore()
+  let store = initialStore
   let destroyed = false
 
   const onCoreChange = (event: EditorChangeEvent): void => {

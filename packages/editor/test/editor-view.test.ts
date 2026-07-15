@@ -134,6 +134,29 @@ function createPreviewSource(initialFrame: EditorPreviewFrame): {
 }
 
 describe("mountEditor", () => {
+  it("does not expand the source session when mounting an active replay preview", () => {
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1" })
+    const session = new EditorSession()
+    const preview = createPreviewSource({ active: true })
+    const previewRoot = document.createElement("div")
+
+    const previewMounted = mountEditor(previewRoot, editor, {
+      pageId: "page-1",
+      session,
+      preview: preview.source,
+    })
+
+    expect(session.getState().expanded).toEqual([])
+    expect(previewRoot.querySelector("[data-testid='tree-node-1']")).not.toBeNull()
+    previewMounted.destroy()
+
+    const sourceRoot = document.createElement("div")
+    const sourceMounted = mountEditor(sourceRoot, editor, { pageId: "page-1", session })
+    expect(session.getState().expanded).toEqual(["page-1"])
+    sourceMounted.destroy()
+  })
+
   it("renders replay preview frames read-only and restores the source editor when inactive", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

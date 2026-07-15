@@ -445,14 +445,18 @@ export function mountEditor(
   const initialPage = coreEditor.getRecord(options.pageId)
   if (initialPage?.typeName !== "page") throw new Error("PAGE_NOT_FOUND")
 
+  let previewFrame = options.preview?.getState() ?? { active: false }
   const session = options.session ?? new EditorSession()
-  if (!session.getState().expanded.includes(options.pageId)) {
+  if (!previewFrame.active && !session.getState().expanded.includes(options.pageId)) {
     session.toggleExpanded(options.pageId)
   }
   let sourceSessionState = session.getState()
-  let previewFrame = options.preview?.getState() ?? { active: false }
   let sessionState = previewFrame.active ? (previewFrame.session ?? sourceSessionState) : sourceSessionState
   const isPreviewActive = (): boolean => previewFrame.active
+  const treeSessionState = (state: EditorSessionState): EditorSessionState =>
+    state.expanded.includes(options.pageId)
+      ? state
+      : { ...state, expanded: [...state.expanded, options.pageId] }
 
   const shell = document.createElement("section")
   shell.className = "composeui-editor"
@@ -492,6 +496,11 @@ export function mountEditor(
   shell.append(workspace)
   root.replaceChildren(shell)
 
+  let sourceStore = coreEditor.getStore()
+  const previewStore = (frame: EditorPreviewFrame): RecordStore | undefined =>
+    frame.document === undefined ? undefined : createEditor(frame.document).getStore()
+  let currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
+
   const treeMounted: MountedComponentTree | undefined =
     options.view === "canvas"
       ? undefined
@@ -502,14 +511,13 @@ export function mountEditor(
             pageId: options.pageId,
             session,
             readOnly: isPreviewActive,
+            ...(previewFrame.active
+              ? { state: treeSessionState(sessionState), store: currentStore }
+              : {}),
           },
           false,
         )
 
-  let sourceStore = coreEditor.getStore()
-  const previewStore = (frame: EditorPreviewFrame): RecordStore | undefined =>
-    frame.document === undefined ? undefined : createEditor(frame.document).getStore()
-  let currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
   const currentPage = currentStore.get(options.pageId)
   const canvas = createCanvasView(
     currentStore,
@@ -1134,6 +1142,12 @@ export function mountEditor(
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return
     canvas.update(currentStore, page, true)
+    treeMounted?.update(
+      currentStore,
+      options.pageId,
+      treeSessionState(sessionState),
+      true,
+    )
     updateViewport()
     renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
     updateReplayBanner()
