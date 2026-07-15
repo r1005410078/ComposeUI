@@ -25,6 +25,7 @@ export {
   type ReplayControllerListener,
   type ReplayControllerPort,
   type ReplayControllerState,
+  type ReplayControllerOptions,
   type ReplayEngineFactory,
   type ReplayEngineLike,
 } from "./workspace/replay-controller"
