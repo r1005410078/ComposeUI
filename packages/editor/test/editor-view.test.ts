@@ -165,6 +165,10 @@ describe("mountEditor", () => {
       "当前 #7",
     )
 
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-visibility-node-1']")?.click()
+    expect(editor.getRecord("node-1")).toMatchObject({ visible: true })
+    expect(mounted.session.getState().selection).toEqual([])
+
     node.dispatchEvent(pointerEvent("pointerdown", 145, 165))
     window.dispatchEvent(pointerEvent("pointermove", 245, 265))
     window.dispatchEvent(pointerEvent("pointerup", 245, 265))
@@ -175,6 +179,9 @@ describe("mountEditor", () => {
     expect(root.querySelector<HTMLElement>("[data-node-id='node-1']")?.style.top).toBe("30px")
     expect(shell.dataset.replay).toBeUndefined()
     expect(root.querySelector("[data-testid='replay-canvas-banner']")).toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-node-1']")?.click()
+    expect(mounted.session.getState().selection).toEqual(["node-1"])
 
     mounted.destroy()
     expect(preview.unsubscribeCount()).toBe(1)

@@ -45,6 +45,7 @@ export interface ComponentTreeView {
 export interface MountComponentTreeOptions {
   pageId: string
   session?: EditorSession
+  readOnly?: () => boolean
 }
 
 export interface MountedComponentTree {
@@ -255,7 +256,13 @@ function canDragTreeItem(store: RecordStore, item: TreeItem): boolean {
   return item.typeName === "node" && lockedTreeRecord(store, item.id) === undefined
 }
 
-function beginRename(editor: Editor, item: TreeItem, selectButton: HTMLButtonElement): void {
+function beginRename(
+  editor: Editor,
+  item: TreeItem,
+  selectButton: HTMLButtonElement,
+  isReadOnly: () => boolean,
+): void {
+  if (isReadOnly()) return
   const input = document.createElement("input")
   input.className = "composeui-editor__tree-rename"
   input.dataset.testid = `tree-rename-${item.id}`
@@ -270,7 +277,7 @@ function beginRename(editor: Editor, item: TreeItem, selectButton: HTMLButtonEle
     if (finished) return
     finished = true
     const name = input.value.trim()
-    if (commit && name.length > 0 && name !== item.name) {
+    if (commit && !isReadOnly() && name.length > 0 && name !== item.name) {
       editor.dispatch({ id: "node.rename", payload: { id: item.id, name } })
       return
     }
@@ -291,6 +298,7 @@ function buildTree(
   state: EditorSessionState,
   session: EditorSession,
   editor: Editor,
+  isReadOnly: () => boolean,
 ): void {
   const expanded = new Set(state.expanded)
   const selected = new Set(state.selection)
@@ -393,7 +401,9 @@ function buildTree(
       if (item.hasChildren) session.toggleExpanded(item.id)
     })
     if (item.typeName === "node") {
-      selectButton.addEventListener("dblclick", () => beginRename(editor, item, selectButton))
+      selectButton.addEventListener("dblclick", () =>
+        beginRename(editor, item, selectButton, isReadOnly),
+      )
     }
     selectButton.addEventListener("keydown", (event) =>
       handleTreeKeyDown(event, selectButton, session, (id) => {
@@ -467,11 +477,12 @@ export function createComponentTree(
   state: EditorSessionState,
   session: EditorSession,
   editor: Editor,
+  isReadOnly: () => boolean = () => false,
 ): ComponentTreeView {
   const tree = document.createElement("ul")
   tree.className = "composeui-editor__tree"
   tree.setAttribute("role", "tree")
-  buildTree(tree, store, pageId, state, session, editor)
+  buildTree(tree, store, pageId, state, session, editor, isReadOnly)
 
   return {
     element: tree,
@@ -480,7 +491,7 @@ export function createComponentTree(
         const focusTarget = captureFocus(tree)
         const scrollTop = tree.scrollTop
         const scrollLeft = tree.scrollLeft
-        buildTree(tree, nextStore, nextPageId, nextState, session, editor)
+        buildTree(tree, nextStore, nextPageId, nextState, session, editor, isReadOnly)
         tree.scrollTop = scrollTop
         tree.scrollLeft = scrollLeft
         restoreFocus(tree, focusTarget)
@@ -511,7 +522,16 @@ export function mountComponentTreeView(
     session.toggleExpanded(options.pageId)
   }
   let state = session.getState()
-  const tree = createComponentTree(editor.getStore(), options.pageId, state, session, editor)
+  const isReadOnly = options.readOnly ?? (() => false)
+  const tree = createComponentTree(editor.getStore(), options.pageId, state, session, editor, isReadOnly)
+  const preventReadOnlyInteraction = (event: Event): void => {
+    if (!isReadOnly()) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+  for (const eventName of ["click", "dblclick", "keydown", "dragstart", "dragover", "drop"]) {
+    tree.element.addEventListener(eventName, preventReadOnlyInteraction, true)
+  }
   root.replaceChildren(tree.element)
   let store = editor.getStore()
   let destroyed = false

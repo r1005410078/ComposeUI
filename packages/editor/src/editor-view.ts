@@ -452,6 +452,7 @@ export function mountEditor(
   let sourceSessionState = session.getState()
   let previewFrame = options.preview?.getState() ?? { active: false }
   let sessionState = previewFrame.active ? (previewFrame.session ?? sourceSessionState) : sourceSessionState
+  const isPreviewActive = (): boolean => previewFrame.active
 
   const shell = document.createElement("section")
   shell.className = "composeui-editor"
@@ -500,6 +501,7 @@ export function mountEditor(
           {
             pageId: options.pageId,
             session,
+            readOnly: isPreviewActive,
           },
           false,
         )
@@ -526,7 +528,6 @@ export function mountEditor(
   updateViewport()
   renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
 
-  const isPreviewActive = (): boolean => previewFrame.active
   const updateReplayBanner = (): void => {
     if (!previewFrame.active) {
       delete shell.dataset.replay
