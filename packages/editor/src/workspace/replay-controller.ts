@@ -77,7 +77,7 @@ export type ReplayControllerListener = (state: ReplayControllerState) => void
 export interface ReplayControllerPort {
   readonly replayController?: ReplayController
   start(sequence: number): Promise<ReplayControllerState>
-  pause(): void
+  pause(): ReplayControllerState
   resume(): Promise<ReplayControllerState>
   stepBackward(): Promise<ReplayControllerState>
   stepForward(): Promise<ReplayControllerState>
