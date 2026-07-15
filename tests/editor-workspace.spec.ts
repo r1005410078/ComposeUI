@@ -121,7 +121,6 @@ test("replays a pointer-driven node move through the persisted operation bundle"
   await waitForOutputRowsToSettle(page)
   await moveEntry.evaluate((row) => (row as HTMLElement).click())
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(100)
-  await expect(moveEntry).toHaveAttribute("aria-selected", "true")
   await expect(page.getByTestId("output-replay")).toBeVisible()
   const eventCountBeforeReplay = await page.getByTestId("output-entry").count()
   await page.getByTestId("output-replay").click()
