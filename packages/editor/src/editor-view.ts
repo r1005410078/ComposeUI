@@ -437,6 +437,10 @@ function sameArray(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
+function previewStore(frame: EditorPreviewFrame): RecordStore | undefined {
+  return frame.document === undefined ? undefined : createEditor(frame.document).getStore()
+}
+
 export function mountEditor(
   root: HTMLElement,
   coreEditor: Editor,
@@ -451,7 +455,9 @@ export function mountEditor(
     session.toggleExpanded(options.pageId)
   }
   let sourceSessionState = session.getState()
-  let sessionState = previewFrame.active ? (previewFrame.session ?? sourceSessionState) : sourceSessionState
+  let sessionState = previewFrame.active
+    ? (previewFrame.session ?? sourceSessionState)
+    : sourceSessionState
   const isPreviewActive = (): boolean => previewFrame.active
   const treeSessionState = (state: EditorSessionState): EditorSessionState =>
     state.expanded.includes(options.pageId)
@@ -497,8 +503,6 @@ export function mountEditor(
   root.replaceChildren(shell)
 
   let sourceStore = coreEditor.getStore()
-  const previewStore = (frame: EditorPreviewFrame): RecordStore | undefined =>
-    frame.document === undefined ? undefined : createEditor(frame.document).getStore()
   let currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
 
   const treeMounted: MountedComponentTree | undefined =
@@ -544,8 +548,12 @@ export function mountEditor(
     }
     shell.dataset.replay = "true"
     const sequences = [
-      previewFrame.currentSequence === undefined ? undefined : `当前 #${previewFrame.currentSequence}`,
-      previewFrame.targetSequence === undefined ? undefined : `目标 #${previewFrame.targetSequence}`,
+      previewFrame.currentSequence === undefined
+        ? undefined
+        : `当前 #${previewFrame.currentSequence}`,
+      previewFrame.targetSequence === undefined
+        ? undefined
+        : `目标 #${previewFrame.targetSequence}`,
     ].filter((sequence): sequence is string => sequence !== undefined)
     replayBanner.textContent = ["回放预览", ...sequences].join(" ")
     workspace.append(replayBanner)
@@ -1137,7 +1145,9 @@ export function mountEditor(
     if (destroyed) return
     activeInteraction?.cancel()
     previewFrame = nextFrame
-    sessionState = previewFrame.active ? (previewFrame.session ?? sourceSessionState) : sourceSessionState
+    sessionState = previewFrame.active
+      ? (previewFrame.session ?? sourceSessionState)
+      : sourceSessionState
     currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
     const page = currentStore.get(options.pageId)
     if (page?.typeName !== "page") return

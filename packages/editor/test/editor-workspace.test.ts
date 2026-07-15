@@ -809,7 +809,9 @@ describe("editor workspace", () => {
       onEvent: (event) => events.push(event),
     })
 
-    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "layout-loaded" })))
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(expect.objectContaining({ type: "layout-loaded" })),
+    )
     await mounted.api.resetLayout()
     fake.triggerLayoutChange()
     await vi.waitFor(() =>
@@ -859,7 +861,10 @@ describe("editor workspace", () => {
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2))
     resolveSecondSave()
     await Promise.all([firstFlush, secondFlush])
-    expect(save.mock.calls.map(([layout]) => layout.layout)).toEqual([{ revision: 1 }, { revision: 2 }])
+    expect(save.mock.calls.map(([layout]) => layout.layout)).toEqual([
+      { revision: 1 },
+      { revision: 2 },
+    ])
     mounted.dispose()
   })
 
@@ -925,7 +930,11 @@ describe("editor workspace", () => {
     fake.triggerLayoutChange()
     mounted.dispose()
     const completion = mounted.api.flushLayout()
-    await vi.waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ layout: { revision: "dispose" } })))
+    await vi.waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({ layout: { revision: "dispose" } }),
+      ),
+    )
     rejectSave(new Error("late failure"))
     await completion
     expect(events).not.toContainEqual(
@@ -957,11 +966,10 @@ describe("editor workspace", () => {
     const secondRemove = new Promise<void>((resolve) => {
       resolveSecondRemove = resolve
     })
-    const remove = vi.fn(
-      () =>
-        (remove.mock.calls.length === 1 ? firstRemove : secondRemove).then(() => {
-          storedLayout = undefined
-        }),
+    const remove = vi.fn(() =>
+      (remove.mock.calls.length === 1 ? firstRemove : secondRemove).then(() => {
+        storedLayout = undefined
+      }),
     )
     const save = vi.fn(async (layout: StoredWorkspaceLayout) => {
       storedLayout = layout

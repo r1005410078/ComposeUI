@@ -1240,9 +1240,17 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     await vi.waitFor(() => expect(exportSession).toHaveBeenCalledOnce())
-    expect(
-      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
-    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
+    const replayControls = [
+      ...root.querySelectorAll<HTMLButtonElement>(
+        ".composeui-editor__output-replay-controls button",
+      ),
+    ]
+    expect(replayControls.filter((button) => button.dataset.testid !== "replay-stop")).toSatisfy(
+      (buttons) => buttons.every((button) => button.disabled),
+    )
+    expect(replayControls.find((button) => button.dataset.testid === "replay-stop")?.disabled).toBe(
+      false,
+    )
     resolveExport?.("bundle")
     await vi.waitFor(() =>
       expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(
@@ -1261,7 +1269,7 @@ describe("workspace panel renderers", () => {
     expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
       "patch-mismatch",
     )
-    expect(root.querySelector("[aria-label='继续回放']")).not.toBeNull()
+    expect(root.querySelector("[aria-label='忽略差异并继续']")).not.toBeNull()
 
     root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
     await vi.waitFor(() => expect(replayController.stop).toHaveBeenCalledOnce())

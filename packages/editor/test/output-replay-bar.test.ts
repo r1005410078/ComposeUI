@@ -236,8 +236,12 @@ describe("output replay bar", () => {
     )
 
     mount.update({ busy: true })
-    expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-resume']")?.disabled).toBe(true)
-    expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(false)
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-resume']")?.disabled).toBe(
+      true,
+    )
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(
+      false,
+    )
     mount.dispose()
   })
 })

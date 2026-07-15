@@ -180,9 +180,8 @@ export class ReplayEngine {
     }
     const targetSequence = options.targetSequence ?? Number.MAX_SAFE_INTEGER
     const checkpoints = options.bundle.checkpoints.filter(
-      checkpoint =>
-        checkpoint.sequence < targetSequence ||
-        (targetSequence === 0 && checkpoint.sequence === 0),
+      (checkpoint) =>
+        checkpoint.sequence < targetSequence || (targetSequence === 0 && checkpoint.sequence === 0),
     )
     const sortedCheckpoints = sortBySequence(checkpoints)
     const checkpoint = sortedCheckpoints.at(-1) ?? options.bundle.checkpoints[0]

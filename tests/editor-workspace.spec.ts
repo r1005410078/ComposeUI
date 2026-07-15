@@ -59,6 +59,7 @@ test("replays the final operation after reload without mutating the source sessi
   await page.getByRole("tab", { name: "输出" }).click()
   const documentEntries = page.locator("[data-testid='output-entry'][data-category='document']")
   await expect(documentEntries.last()).toBeVisible()
+  await waitForOutputRowsToSettle(page)
   const eventCount = await page.getByTestId("output-entry").count()
   await page.evaluate(() => {
     const rows = document.querySelectorAll<HTMLElement>(
@@ -113,9 +114,9 @@ test("replays a pointer-driven node move through the persisted operation bundle"
   await expect(moveEntry).toBeVisible()
   const list = page.getByTestId("output-list")
 
-  await list.evaluate((list) => {
-    list.style.maxHeight = "64px"
-    list.scrollTop = 100
+  await list.evaluate((outputList) => {
+    outputList.style.maxHeight = "64px"
+    outputList.scrollTop = 100
   })
   await moveEntry.evaluate((row) => (row as HTMLElement).click())
   await waitForOutputRowsToSettle(page)

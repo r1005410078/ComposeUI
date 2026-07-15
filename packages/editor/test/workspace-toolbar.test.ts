@@ -122,9 +122,9 @@ describe("workspace toolbar", () => {
 
     frame = { active: false }
     for (const listener of listeners) listener(frame)
-    expect(root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")?.disabled).toBe(
-      false,
-    )
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")?.disabled,
+    ).toBe(false)
     root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!.click()
     expect(context.session.getState().interactionMode).toBe("pan")
     dispose()

@@ -37,11 +37,15 @@ export interface EditorWorkspaceDockview {
     | { subscribe(listener: () => void): { dispose(): void } }
   readonly onDidActivePanelChange?:
     | ((
-        listener: (panel: { id: string } | { panel: { id: string } | undefined } | undefined) => void,
+        listener: (
+          panel: { id: string } | { panel: { id: string } | undefined } | undefined,
+        ) => void,
       ) => { dispose(): void })
     | {
         subscribe(
-          listener: (panel: { id: string } | { panel: { id: string } | undefined } | undefined) => void,
+          listener: (
+            panel: { id: string } | { panel: { id: string } | undefined } | undefined,
+          ) => void,
         ): { dispose(): void }
       }
   addPanel(options: AddPanelOptions): { id: string; focus?(): void }
@@ -550,7 +554,11 @@ export function mountEditorWorkspace(
         await options.layoutStore?.save(layout)
       } catch (error) {
         if (!disposed) {
-          events({ type: "layout-failure", operation: "save", error: serializeWorkspaceError(error) })
+          events({
+            type: "layout-failure",
+            operation: "save",
+            error: serializeWorkspaceError(error),
+          })
         }
       }
     })
@@ -718,7 +726,11 @@ export function mountEditorWorkspace(
             events({ type: "layout-loaded", layout: getLayoutSnapshot() })
           }
         } catch (error) {
-          events({ type: "layout-failure", operation: "load", error: serializeWorkspaceError(error) })
+          events({
+            type: "layout-failure",
+            operation: "load",
+            error: serializeWorkspaceError(error),
+          })
           applyDefaultLayout()
         } finally {
           applyingLayout = wasApplyingLayout
@@ -726,7 +738,11 @@ export function mountEditorWorkspace(
       },
       (error) => {
         if (!disposed) {
-          events({ type: "layout-failure", operation: "load", error: serializeWorkspaceError(error) })
+          events({
+            type: "layout-failure",
+            operation: "load",
+            error: serializeWorkspaceError(error),
+          })
         }
       },
     )
