@@ -95,6 +95,7 @@ function stateFromResult(
   result: ReplayResult,
   active: boolean,
   status: ReplayControllerState["status"],
+  previousFrame?: ReplayState,
 ): ReplayControllerState {
   return {
     active,
@@ -103,7 +104,11 @@ function stateFromResult(
     targetSequence: result.targetSequence,
     startedAtSequence: result.startedAtSequence,
     deterministic: result.deterministic,
-    ...(result.state === undefined ? {} : { frame: structuredClone(result.state) }),
+    ...(result.state === undefined
+      ? previousFrame === undefined
+        ? {}
+        : { frame: structuredClone(previousFrame) }
+      : { frame: structuredClone(result.state) }),
     ...(result.difference === undefined ? {} : { difference: structuredClone(result.difference) }),
     ...(result.nondeterministicFromSequence === undefined
       ? {}
@@ -153,14 +158,14 @@ export class ReplayController implements ReplayControllerPort {
       const checkpoint = engine.getState()
       const state = this.#publish({
         active: true,
-        status: checkpoint.sequence === sequence ? "completed" : "running",
+        status: checkpoint.sequence >= sequence ? "completed" : "running",
         currentSequence: checkpoint.sequence,
         targetSequence: sequence,
         startedAtSequence: checkpoint.sequence,
         deterministic: true,
         frame: structuredClone(checkpoint),
       })
-      if (checkpoint.sequence !== sequence) {
+      if (checkpoint.sequence < sequence) {
         void this.#playTo(generation, engine, sequence).catch((error) => {
           this.#recoverFromError(generation, error)
         })
@@ -253,11 +258,11 @@ export class ReplayController implements ReplayControllerPort {
         this.#applyResult(result, "paused")
         return
       }
-      if (result.currentSequence >= targetSequence) {
+      if (result.status === "completed" || result.currentSequence >= targetSequence) {
         this.#applyResult(result, "completed")
         return
       }
-      this.#publish(stateFromResult(result, true, "running"))
+      this.#publish(stateFromResult(result, true, "running", this.#state.frame))
     }
   }
 
@@ -293,7 +298,7 @@ export class ReplayController implements ReplayControllerPort {
     completedStatus: "paused" | "completed",
   ): ReplayControllerState {
     const status = result.status === "completed" ? completedStatus : "paused"
-    return this.#publish(stateFromResult(result, true, status))
+    return this.#publish(stateFromResult(result, true, status, this.#state.frame))
   }
 
   #publish(next: ReplayControllerState): ReplayControllerState {

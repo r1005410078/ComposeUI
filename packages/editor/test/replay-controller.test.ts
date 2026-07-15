@@ -123,6 +123,89 @@ describe("ReplayController", () => {
     expect(engine.step).toHaveBeenCalledTimes(1)
   })
 
+  it("completes auto-playback when the engine has no event at the target", async () => {
+    const waits: Array<() => void> = []
+    const engine = {
+      step: vi.fn(async () =>
+        replayResult({
+          currentSequence: 1,
+          targetSequence: 2,
+          state: replayState(1),
+        }),
+      ),
+      runTo: vi.fn(),
+      verify: vi.fn(),
+      continueBestEffort: vi.fn(),
+      getState: vi.fn(() => replayState(0)),
+    }
+    const controller = new ReplayController({
+      createEngine: vi.fn(async () => engine),
+      wait: () =>
+        new Promise<void>((resolve) => {
+          waits.push(resolve)
+        }),
+    })
+
+    await controller.start(2)
+    waits.shift()?.()
+    await vi.waitFor(() => expect(controller.getState().status).toBe("completed"))
+    expect(engine.step).toHaveBeenCalledTimes(1)
+  })
+
+  it("preserves its confirmed frame when a difference result has no snapshot", async () => {
+    const engine = {
+      step: vi.fn(async () =>
+        replayResult({
+          status: "paused",
+          deterministic: false,
+          currentSequence: 1,
+          targetSequence: 1,
+          difference: {
+            type: "patch-mismatch" as const,
+            sequence: 1,
+            path: "forward.created[0].layout.width",
+            expected: 120,
+            actual: 999,
+          },
+          state: undefined,
+        }),
+      ),
+      runTo: vi.fn(),
+      verify: vi.fn(),
+      continueBestEffort: vi.fn(),
+      getState: vi.fn(() => replayState(0)),
+    }
+    const controller = new ReplayController({
+      createEngine: vi.fn(async () => engine),
+      wait: async () => {},
+    })
+
+    await controller.start(1)
+    await vi.waitFor(() => expect(controller.getState().status).toBe("paused"))
+    expect(controller.getState()).toMatchObject({
+      frame: { sequence: 0 },
+      difference: { sequence: 1 },
+    })
+  })
+
+  it("completes without a timer when its checkpoint is beyond the target", async () => {
+    const wait = vi.fn(async () => {})
+    const engine = {
+      step: vi.fn(),
+      runTo: vi.fn(),
+      verify: vi.fn(),
+      continueBestEffort: vi.fn(),
+      getState: vi.fn(() => replayState(2)),
+    }
+    const controller = new ReplayController({ createEngine: vi.fn(async () => engine), wait })
+
+    const state = await controller.start(1)
+
+    expect(state).toMatchObject({ status: "completed", frame: { sequence: 2 } })
+    expect(wait).not.toHaveBeenCalled()
+    expect(engine.step).not.toHaveBeenCalled()
+  })
+
   it("controls an isolated engine and publishes typed replay state", async () => {
     const listeners = new Set<(state: unknown) => void>()
     const engine = {
