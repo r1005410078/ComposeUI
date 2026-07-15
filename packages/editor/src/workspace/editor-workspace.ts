@@ -11,6 +11,7 @@ import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
 import { createWorkspacePanels } from "./panels"
+import { createReplayPreviewSource } from "./replay-preview-source"
 import { mountWorkspaceToolbar } from "./toolbar"
 import { serializeWorkspaceError } from "./types"
 import type {
@@ -273,14 +274,15 @@ export function mountEditorWorkspace(
   save.addEventListener("click", () => options.onSave?.())
   actions.append(run, save)
   const replayController = options.operationLog?.replayController
-  const updateReplayActions = (): void => {
-    const active = replayController?.getState().active ?? false
+  const replayPreview =
+    replayController === undefined ? undefined : createReplayPreviewSource(replayController)
+  const updateReplayActions = (active: boolean): void => {
     run.disabled = active
     save.disabled = active
     root.classList.toggle("composeui-editor__workspace-replay-active", active)
   }
-  updateReplayActions()
-  const unsubscribeReplay = replayController?.subscribe(updateReplayActions)
+  updateReplayActions(replayPreview?.getState().active ?? false)
+  const unsubscribeReplay = replayPreview?.subscribe((frame) => updateReplayActions(frame.active))
   const dockviewHost = document.createElement("div")
   dockviewHost.className = "composeui-editor__dockview-host"
   header.append(title, modeSlot, actions)
@@ -353,6 +355,9 @@ export function mountEditorWorkspace(
               emit: emitContextEvent,
               ...(options.resources === undefined ? {} : { resources: options.resources }),
               ...(options.operationLog === undefined ? {} : { operationLog: options.operationLog }),
+              ...(descriptor.id !== CANVAS || replayPreview === undefined
+                ? {}
+                : { preview: replayPreview }),
             }
             try {
               if (descriptor.id === CANVAS) {
@@ -737,6 +742,7 @@ export function mountEditorWorkspace(
       unsubscribeReplay?.()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()
+      replayPreview?.dispose()
       dockview.dispose()
       root.replaceChildren()
     },

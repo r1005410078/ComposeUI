@@ -1,4 +1,5 @@
 import type { Editor } from "@composeui/core"
+import type { EditorPreviewSource } from "../editor-view"
 import type { EditorSession } from "../session"
 import type { OperationLogControllerPort } from "../operation-log-controller-port"
 
@@ -9,6 +10,7 @@ export interface WorkspaceContext {
   api: WorkspaceCommandApi
   resources?: WorkspaceResourceService
   operationLog?: OperationLogControllerPort
+  preview?: EditorPreviewSource
   emit: (event: WorkspaceEvent) => void
 }
 
