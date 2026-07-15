@@ -151,6 +151,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   list.dataset.testid = "output-list"
   list.setAttribute("role", "log")
   list.setAttribute("aria-label", "操作日志")
+  const newEntries = document.createElement("button")
+  newEntries.type = "button"
+  newEntries.className = "composeui-editor__output-new-entries"
+  newEntries.dataset.testid = "output-new-entries"
   const detailsHost = document.createElement("div")
   detailsHost.className = "composeui-editor__output-details-host"
   body.append(list, detailsHost)
@@ -180,6 +184,9 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
   let categories: OperationCategory[] = []
   let search = ""
   let autoScroll = true
+  let unseenCount = 0
+  let lastRenderedMaximumSequence = 0
+  let replayCurrentSequence: number | undefined
   let confirmClear = false
   let busyAction: "import" | "export" | "replay" | undefined
   let latestRows: readonly OperationEvent[] = []
@@ -226,12 +233,40 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     renderSelectionAction()
     replayBar?.update({ busy: busyAction !== undefined })
   }
+  const renderNewEntries = (): void => {
+    if (unseenCount === 0) {
+      newEntries.remove()
+      return
+    }
+    newEntries.textContent = `新增 ${unseenCount} 条 · 回到底部`
+    if (newEntries.parentElement === null) body.append(newEntries)
+  }
+  const enterHistoryReading = (): void => {
+    autoScroll = false
+  }
+  const scrollToLatest = (): void => {
+    autoScroll = true
+    unseenCount = 0
+    list.scrollTop = list.scrollHeight
+    renderToolbar()
+    renderNewEntries()
+  }
+  newEntries.addEventListener("click", scrollToLatest)
   const hasActiveRestriction = (): boolean =>
     levels.length > 0 || categories.length > 0 || search.trim().length > 0
 
   const renderRows = (rows: readonly OperationEvent[]): void => {
     if (disposed) return
+    const previousScrollTop = list.scrollTop
     latestRows = rows.filter((event) => event.sequence > clearedThroughSequence)
+    const nextMaximumSequence = Math.max(0, ...latestRows.map((event) => event.sequence))
+    if (!autoScroll && nextMaximumSequence > lastRenderedMaximumSequence) {
+      unseenCount += latestRows.filter(
+        (event) =>
+          event.sequence > lastRenderedMaximumSequence && event.sequence <= nextMaximumSequence,
+      ).length
+    }
+    lastRenderedMaximumSequence = Math.max(lastRenderedMaximumSequence, nextMaximumSequence)
     list.replaceChildren()
     if (latestRows.length === 0) {
       list.append(hasActiveRestriction() ? filteredEmptyState(resetFilters) : emptyState())
@@ -243,9 +278,11 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
         row.dataset.testid = "output-entry"
         row.dataset.level = event.status
         row.dataset.category = event.category
+        if (event.sequence === replayCurrentSequence) row.dataset.replayCurrent = "true"
         row.setAttribute("aria-selected", String(selected?.eventId === event.eventId))
         row.addEventListener("click", (clickEvent) => {
           clickEvent.stopPropagation()
+          enterHistoryReading()
           selected = event
           renderRows(latestRows)
           detailsHost.replaceChildren(eventDetails(event))
@@ -263,8 +300,10 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
         )
         list.append(row)
       }
-      if (autoScroll) list.scrollTop = list.scrollHeight
     }
+    if (autoScroll) list.scrollTop = list.scrollHeight
+    else list.scrollTop = previousScrollTop
+    renderNewEntries()
   }
 
   list.addEventListener("click", () => {
@@ -377,8 +416,11 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     },
     onResetFilters: resetFilters,
     onAutoScrollChange(nextAutoScroll) {
-      autoScroll = nextAutoScroll
-      renderToolbar()
+      if (nextAutoScroll) scrollToLatest()
+      else {
+        autoScroll = false
+        renderToolbar()
+      }
     },
     onImport: handleImport,
     onExport: handleExport,
@@ -407,6 +449,12 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     })
   }
 
+  const unsubscribeReplayRows = replayController?.subscribe((state) => {
+    if (disposed) return
+    replayCurrentSequence = state.currentSequence
+    renderRows(latestRows)
+  })
+
   const unsubscribe = controller.subscribe((state: OperationLogControllerState) => {
     if (disposed) return
     queryGeneration += 1
@@ -430,6 +478,7 @@ function mountOutputPanel(root: HTMLElement, context: WorkspaceContext): () => v
     disposed = true
     queryGeneration += 1
     unsubscribe()
+    unsubscribeReplayRows?.()
     replayBar?.dispose()
     toolbarMount?.dispose()
     root.replaceChildren()

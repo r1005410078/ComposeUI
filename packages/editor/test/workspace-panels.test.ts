@@ -71,6 +71,12 @@ function operationEvent(overrides: Partial<OperationEvent> = {}): OperationEvent
   }
 }
 
+function operationEvents(count: number): OperationEvent[] {
+  return Array.from({ length: count }, (_, index) =>
+    operationEvent({ eventId: `event-${index + 1}`, sequence: index + 1 }),
+  )
+}
+
 function fakeOperationLogController(events: readonly OperationEvent[]): OperationLogControllerPort {
   const listeners = new Set<() => void>()
   const controller: OperationLogControllerPort = {
@@ -355,6 +361,95 @@ describe("workspace panel renderers", () => {
     expect(root.querySelector("[data-testid='output-replay']")).toBeNull()
 
     if (typeof dispose === "function") dispose()
+  })
+
+  it("keeps a selected operation reading position while logs and replay state update", async () => {
+    let rows = operationEvents(30)
+    const logListeners = new Set<(state: OperationLogControllerState) => void>()
+    const replayListeners = new Set<(state: ReplayControllerState) => void>()
+    let replayState: ReplayControllerState = { active: false, status: "idle", deterministic: true }
+    const publishReplay = (next: ReplayControllerState): void => {
+      replayState = next
+      for (const listener of replayListeners) listener(next)
+    }
+    const replayController: ReplayControllerPort = {
+      start: vi.fn(async () => replayState),
+      pause: vi.fn(() => replayState),
+      resume: vi.fn(async () => replayState),
+      stepBackward: vi.fn(async () => replayState),
+      stepForward: vi.fn(async () => replayState),
+      runTo: vi.fn(async () => replayState),
+      verify: vi.fn(async () => replayState),
+      continueBestEffort: vi.fn(async () => replayState),
+      stop: vi.fn(),
+      getState: vi.fn(() => replayState),
+      subscribe: vi.fn((listener) => {
+        replayListeners.add(listener)
+        listener(replayState)
+        return () => replayListeners.delete(listener)
+      }),
+    }
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController(rows),
+      query: vi.fn(async () => rows),
+      subscribe: vi.fn((listener) => {
+        logListeners.add(listener)
+        return () => logListeners.delete(listener)
+      }),
+      replayController,
+    }
+    const publishRows = (next: OperationEvent[]): void => {
+      rows = next
+      const state: OperationLogControllerState = {
+        rows,
+        query: { levels: [], categories: [], search: "" },
+        filter: {},
+      }
+      for (const listener of logListeners) listener(state)
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(30),
+    )
+
+    const list = root.querySelector<HTMLElement>("[data-testid='output-list']")!
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 200 },
+    })
+    list.scrollTop = 320
+    root.querySelectorAll<HTMLElement>("[data-testid='output-entry']")[5]!.click()
+
+    publishRows(operationEvents(31))
+    publishRows(operationEvents(32))
+
+    expect(list.scrollTop).toBe(320)
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(32)
+    expect(root.querySelector("[data-testid='output-new-entries']")?.textContent).toBe(
+      "新增 2 条 · 回到底部",
+    )
+
+    publishReplay({
+      active: true,
+      status: "paused",
+      deterministic: true,
+      currentSequence: 2,
+    })
+    expect(list.scrollTop).toBe(320)
+    expect(
+      root
+        .querySelectorAll<HTMLElement>("[data-testid='output-entry']")[1]
+        ?.getAttribute("data-replay-current"),
+    ).toBe("true")
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-new-entries']")!.click()
+    expect(list.scrollTop).toBe(900)
+    expect(root.querySelector("[data-testid='output-new-entries']")).toBeNull()
+
+    dispose?.()
+    expect(logListeners).toHaveLength(0)
+    expect(replayListeners).toHaveLength(0)
   })
 
   it("updates details immediately from controller notifications", async () => {
