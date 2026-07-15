@@ -202,7 +202,11 @@ describe("mountEditor", () => {
     expect(root.querySelector<HTMLElement>("[data-node-id='node-1']")?.style.top).toBe("30px")
     expect(shell.dataset.replay).toBeUndefined()
     expect(root.querySelector("[data-testid='replay-canvas-banner']")).toBeNull()
+    expect(mounted.session.getState().expanded).toEqual([])
+    expect(root.querySelector("[data-testid='tree-node-1']")).toBeNull()
 
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-toggle-page-1']")?.click()
+    expect(mounted.session.getState().expanded).toEqual(["page-1"])
     root.querySelector<HTMLButtonElement>("[data-testid='tree-node-1']")?.click()
     expect(mounted.session.getState().selection).toEqual(["node-1"])
 

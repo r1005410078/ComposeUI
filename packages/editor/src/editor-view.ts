@@ -1145,7 +1145,7 @@ export function mountEditor(
     treeMounted?.update(
       currentStore,
       options.pageId,
-      treeSessionState(sessionState),
+      previewFrame.active ? treeSessionState(sessionState) : sourceSessionState,
       true,
     )
     updateViewport()
