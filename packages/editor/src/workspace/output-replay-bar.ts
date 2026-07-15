@@ -101,7 +101,9 @@ export function mountOutputReplayBar(
 
     if (state.status === "running") {
       controls.append(
-        action("replay-pause", "暂停", Pause, "pause", () => options.controller.pause()),
+        action("replay-pause", "暂停", Pause, "pause", () => {
+          void options.controller.pause()
+        }),
         action("replay-stop", "停止", Square, "square", () => options.controller.stop(), false),
       )
     } else {
