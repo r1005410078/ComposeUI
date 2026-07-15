@@ -13,6 +13,7 @@ import {
   createElement,
 } from "lucide"
 import type { Editor } from "@composeui/core"
+import type { EditorPreviewSource } from "../editor-view"
 import type { EditorSession } from "../session"
 import type { EditorWorkspaceApi } from "./editor-workspace"
 import type { WorkspacePanelDescriptor } from "./types"
@@ -22,6 +23,7 @@ export interface WorkspaceToolbarOptions {
   session: EditorSession
   api: Pick<EditorWorkspaceApi, "undo" | "redo" | "openPanel">
   panels: readonly WorkspacePanelDescriptor[]
+  preview?: EditorPreviewSource
 }
 
 type ToolId = "select" | "pan"
@@ -91,32 +93,50 @@ export function mountWorkspaceToolbar(
     toolbarGroup(undo, redo),
   )
 
+  let readOnly = options.preview?.getState().active ?? false
+
   const render = (): void => {
     const state = options.session.getState()
     setPressed(select, state.interactionMode === "select")
     setPressed(pan, state.interactionMode === "pan")
     setPressed(grid, state.gridVisible)
-    undo.disabled = !options.editor.canUndo()
-    redo.disabled = !options.editor.canRedo()
+    select.disabled = readOnly
+    pan.disabled = readOnly
+    grid.disabled = readOnly
+    undo.disabled = readOnly || !options.editor.canUndo()
+    redo.disabled = readOnly || !options.editor.canRedo()
   }
   const chooseTool = (tool: ToolId): void => {
+    if (readOnly) return
     options.session.setInteractionMode(tool)
   }
   select.addEventListener("click", () => chooseTool("select"))
   pan.addEventListener("click", () => chooseTool("pan"))
   grid.addEventListener("click", () => {
+    if (readOnly) return
     options.session.setGridVisible(!options.session.getState().gridVisible)
   })
-  undo.addEventListener("click", () => options.api.undo())
-  redo.addEventListener("click", () => options.api.redo())
+  undo.addEventListener("click", () => {
+    if (readOnly) return
+    options.api.undo()
+  })
+  redo.addEventListener("click", () => {
+    if (readOnly) return
+    options.api.redo()
+  })
 
   const unsubscribeSession = options.session.subscribe(render)
   const unsubscribeEditor = options.editor.subscribe(render)
+  const unsubscribePreview = options.preview?.subscribe((frame) => {
+    readOnly = frame.active
+    render()
+  })
   render()
 
   return () => {
     unsubscribeSession()
     unsubscribeEditor()
+    unsubscribePreview?.()
     root.replaceChildren()
   }
 }

@@ -52,7 +52,7 @@ describe("output replay bar", () => {
     mount.dispose()
   })
 
-  it("renders the contextual summary and labelled controls while active", () => {
+  it("renders the contextual summary and paused controls while active", () => {
     const root = document.createElement("div")
     const controller = createController({
       active: true,
@@ -78,10 +78,10 @@ describe("output replay bar", () => {
     expect(summary.textContent).toContain("一致")
     expect(root.querySelector("[aria-label='上一步']")).not.toBeNull()
     expect(root.querySelector("[aria-label='下一步']")).not.toBeNull()
-    expect(root.querySelector("[aria-label='运行到选中项']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='replay-resume']")).not.toBeNull()
     expect(root.querySelector("[aria-label='验证']")).not.toBeNull()
     expect(root.querySelector("[aria-label='停止']")).not.toBeNull()
-    expect(root.querySelector("[aria-label='继续回放']")).toBeNull()
+    expect(root.querySelector("[data-testid='replay-run-to']")).toBeNull()
     mount.dispose()
   })
 
@@ -118,10 +118,8 @@ describe("output replay bar", () => {
     expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
       "patch-mismatch",
     )
-    expect(root.querySelector("[aria-label='继续回放']")).not.toBeNull()
-    expect(root.querySelector<HTMLButtonElement>("[aria-label='运行到选中项']")?.disabled).toBe(
-      true,
-    )
+    expect(root.querySelector("[aria-label='忽略差异并继续']")).not.toBeNull()
+    expect(root.querySelector("[data-testid='replay-resume']")).toBeNull()
     mount.dispose()
   })
 
@@ -177,7 +175,33 @@ describe("output replay bar", () => {
     mount.dispose()
   })
 
-  it("invokes each enabled control and disables every control while busy or running", async () => {
+  it("shows pause while playing and resume while paused", () => {
+    const root = document.createElement("div")
+    const controller = createController({ active: true, status: "running", deterministic: true })
+    const mount = mountOutputReplayBar(root, {
+      controller,
+      getSelectedSequence: () => 8,
+      onError: vi.fn(),
+      model: { busy: false },
+    })
+
+    const pause = root.querySelector<HTMLButtonElement>("[data-testid='replay-pause']")!
+    expect(pause.title).toBe("暂停")
+    expect(pause.getAttribute("data-icon")).toBe("pause")
+    expect(root.querySelector("[data-testid='replay-step-forward']")).toBeNull()
+    pause.click()
+    expect(controller.pause).toHaveBeenCalledOnce()
+
+    controller.publish({ active: true, status: "paused", deterministic: true })
+    const resume = root.querySelector<HTMLButtonElement>("[data-testid='replay-resume']")!
+    expect(resume.title).toBe("继续自动播放")
+    expect(resume.getAttribute("data-icon")).toBe("play")
+    resume.click()
+    expect(controller.resume).toHaveBeenCalledOnce()
+    mount.dispose()
+  })
+
+  it("invokes each enabled paused control and keeps stop available while busy", async () => {
     const root = document.createElement("div")
     const controller = createController({
       active: true,
@@ -195,41 +219,25 @@ describe("output replay bar", () => {
 
     root.querySelector<HTMLButtonElement>("[data-testid='replay-step-backward']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='replay-step-forward']")!.click()
-    root.querySelector<HTMLButtonElement>("[data-testid='replay-run-to']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='replay-resume']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='replay-verify']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='replay-continue']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
     await vi.waitFor(() => {
       expect(controller.stepBackward).toHaveBeenCalledOnce()
       expect(controller.stepForward).toHaveBeenCalledOnce()
-      expect(controller.runTo).toHaveBeenCalledWith(8)
+      expect(controller.resume).toHaveBeenCalledOnce()
       expect(controller.verify).toHaveBeenCalledOnce()
       expect(controller.continueBestEffort).toHaveBeenCalledOnce()
       expect(controller.stop).toHaveBeenCalledOnce()
     })
-    expect(root.querySelector("[data-testid='replay-run-to']")?.getAttribute("data-icon")).toBe(
-      "fast-forward",
-    )
     expect(root.querySelector("[data-testid='replay-continue']")?.getAttribute("data-icon")).toBe(
-      "play",
+      "fast-forward",
     )
 
     mount.update({ busy: true })
-    expect(
-      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
-    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
-
-    controller.publish({
-      active: true,
-      status: "running",
-      deterministic: false,
-      currentSequence: 3,
-      targetSequence: 8,
-    })
-    mount.update({ busy: false })
-    expect(
-      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
-    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-resume']")?.disabled).toBe(true)
+    expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(false)
     mount.dispose()
   })
 })

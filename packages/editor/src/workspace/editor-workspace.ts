@@ -379,6 +379,7 @@ export function mountEditorWorkspace(
                     },
                   },
                   panels: [...registry.values()],
+                  ...(replayPreview === undefined ? {} : { preview: replayPreview }),
                 })
                 const disposeToolbarExtras = toToolbarExtrasDisposer(
                   options.mountToolbarExtras?.(toolbarRoot),

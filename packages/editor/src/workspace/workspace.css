@@ -858,6 +858,23 @@
   overflow: hidden;
 }
 
+.composeui-editor__replay-canvas-banner,
+.composeui-editor__workspace > [data-testid="replay-canvas-banner"] {
+  background: var(--composeui-surface-panel-raised);
+  border: 1px solid var(--composeui-border-strong);
+  color: var(--composeui-text-primary);
+  inset: var(--composeui-space-2) auto auto 50%;
+  padding: var(--composeui-space-1) var(--composeui-space-2);
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+
+.composeui-editor[data-replay="true"] .composeui-editor__workspace {
+  cursor: default;
+}
+
 @media (max-width: 640px) {
   .composeui-editor__workspace-shell {
     --composeui-workspace-min-width: var(--composeui-workspace-min-width-compact);

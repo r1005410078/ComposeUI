@@ -1,4 +1,13 @@
-import { BadgeCheck, FastForward, Play, Square, StepBack, StepForward, createElement } from "lucide"
+import {
+  BadgeCheck,
+  FastForward,
+  Pause,
+  Play,
+  Square,
+  StepBack,
+  StepForward,
+  createElement,
+} from "lucide"
 import type { ReplayControllerPort } from "./replay-controller"
 import { safeText } from "./output-value-format"
 
@@ -63,14 +72,13 @@ export function mountOutputReplayBar(
 
     const controls = document.createElement("div")
     controls.className = "composeui-editor__output-replay-controls"
-    const busy = state.status === "running" || model.busy
     const action = (
       testid: string,
       label: string,
       icon: Parameters<typeof createElement>[0],
       iconName: string,
       handler: () => void | Promise<unknown>,
-      disabled = busy,
+      disabled = model.busy,
     ): HTMLButtonElement => {
       const button = document.createElement("button")
       button.type = "button"
@@ -91,37 +99,39 @@ export function mountOutputReplayBar(
       return button
     }
 
-    controls.append(
-      action("replay-step-backward", "上一步", StepBack, "step-back", () =>
-        options.controller.stepBackward(),
-      ),
-      action("replay-step-forward", "下一步", StepForward, "step-forward", () =>
-        options.controller.stepForward(),
-      ),
-      action(
-        "replay-run-to",
-        "运行到选中项",
-        FastForward,
-        "fast-forward",
-        () => {
-          const sequence = options.getSelectedSequence()
-          if (sequence === undefined) throw new Error("未选择操作")
-          return options.controller.runTo(sequence)
-        },
-        busy || options.getSelectedSequence() === undefined,
-      ),
-      action("replay-verify", "验证", BadgeCheck, "badge-check", () => options.controller.verify()),
-    )
-    if (!state.deterministic) {
+    if (state.status === "running") {
       controls.append(
-        action("replay-continue", "继续回放", Play, "play", () =>
-          options.controller.continueBestEffort(),
+        action("replay-pause", "暂停", Pause, "pause", () => options.controller.pause()),
+        action("replay-stop", "停止", Square, "square", () => options.controller.stop(), false),
+      )
+    } else {
+      if (state.status === "paused" && state.difference === undefined) {
+        controls.append(
+          action("replay-resume", "继续自动播放", Play, "play", () => options.controller.resume()),
+        )
+      }
+      controls.append(
+        action("replay-step-backward", "上一步", StepBack, "step-back", () =>
+          options.controller.stepBackward(),
+        ),
+        action("replay-step-forward", "下一步", StepForward, "step-forward", () =>
+          options.controller.stepForward(),
+        ),
+        action("replay-verify", "验证", BadgeCheck, "badge-check", () =>
+          options.controller.verify(),
         ),
       )
+      if (!state.deterministic || state.difference !== undefined) {
+        controls.append(
+          action("replay-continue", "忽略差异并继续", FastForward, "fast-forward", () =>
+            options.controller.continueBestEffort(),
+          ),
+        )
+      }
+      controls.append(
+        action("replay-stop", "停止", Square, "square", () => options.controller.stop(), false),
+      )
     }
-    controls.append(
-      action("replay-stop", "停止", Square, "square", () => options.controller.stop()),
-    )
 
     const children: Node[] = [summary, controls]
     if (state.difference !== undefined) {
