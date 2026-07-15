@@ -69,7 +69,7 @@ export function createReplayPreviewSource(controller: ReplayControllerPort): Rep
   const unsubscribe = controller.subscribe((state) => {
     if (disposed) return
     current = previewFrameFromState(state)
-    for (const listener of [...listeners]) listener(cloneFrame(current))
+    for (const listener of Array.from(listeners)) listener(cloneFrame(current))
   })
 
   return {
