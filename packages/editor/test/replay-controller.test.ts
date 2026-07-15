@@ -123,6 +123,78 @@ describe("ReplayController", () => {
     expect(engine.step).toHaveBeenCalledTimes(1)
   })
 
+  it("pauses a pending wait and resumes playback with the same engine", async () => {
+    const waits: Array<() => void> = []
+    const wait = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          waits.push(resolve)
+        }),
+    )
+    const engine = {
+      step: vi.fn(async () =>
+        replayResult({
+          status: "paused",
+          currentSequence: 1,
+          targetSequence: 2,
+          state: replayState(1),
+        }),
+      ),
+      runTo: vi.fn(),
+      verify: vi.fn(),
+      continueBestEffort: vi.fn(),
+      getState: vi.fn(() => replayState(0)),
+    }
+    const createEngine = vi.fn(async () => engine)
+    const controller = new ReplayController({ createEngine, wait })
+
+    await controller.start(2)
+    controller.pause()
+    waits.shift()?.()
+    await Promise.resolve()
+    expect(engine.step).not.toHaveBeenCalled()
+
+    await controller.resume()
+    expect(createEngine).toHaveBeenCalledTimes(1)
+    waits.shift()?.()
+    await vi.waitFor(() => expect(controller.getState().frame).toMatchObject({ sequence: 1 }))
+    controller.pause()
+
+    expect(controller.getState()).toMatchObject({
+      active: true,
+      status: "paused",
+      frame: { sequence: 1 },
+    })
+  })
+
+  it("ignores a late auto-playback step after stop", async () => {
+    let resolveStep: ((result: ReturnType<typeof replayResult>) => void) | undefined
+    const engine = {
+      step: vi.fn(
+        () =>
+          new Promise<ReturnType<typeof replayResult>>((resolve) => {
+            resolveStep = resolve
+          }),
+      ),
+      runTo: vi.fn(),
+      verify: vi.fn(),
+      continueBestEffort: vi.fn(),
+      getState: vi.fn(() => replayState(0)),
+    }
+    const controller = new ReplayController({
+      createEngine: vi.fn(async () => engine),
+      wait: async () => {},
+    })
+
+    await controller.start(2)
+    await vi.waitFor(() => expect(engine.step).toHaveBeenCalledOnce())
+    controller.stop()
+    resolveStep?.(replayResult({ currentSequence: 1, targetSequence: 2, state: replayState(1) }))
+    await Promise.resolve()
+
+    expect(controller.getState()).toEqual({ active: false, status: "idle", deterministic: true })
+  })
+
   it("completes auto-playback when the engine has no event at the target", async () => {
     const waits: Array<() => void> = []
     const engine = {
@@ -291,6 +363,29 @@ describe("ReplayController", () => {
     expect(controller.getState()).toMatchObject({ active: true, deterministic: false })
   })
 
+  it("preserves visible frames for manual backward and forward steps", async () => {
+    const engine = {
+      runTo: vi.fn(async () => replayResult({ currentSequence: 1, state: replayState(1) })),
+      step: vi.fn(async () =>
+        replayResult({ status: "paused", currentSequence: 2, state: replayState(2) }),
+      ),
+      verify: vi.fn(),
+      continueBestEffort: vi.fn(),
+      getState: vi.fn(() => replayState(2)),
+    }
+    const controller = new ReplayController({
+      createEngine: vi.fn(async () => engine),
+      wait: async () => {},
+    })
+
+    await controller.start(2)
+    await controller.stepBackward()
+    expect(controller.getState()).toMatchObject({ status: "paused", frame: { sequence: 1 } })
+    await controller.stepForward()
+
+    expect(controller.getState()).toMatchObject({ status: "paused", frame: { sequence: 2 } })
+  })
+
   it("does not resurrect an active replay after stop wins a race", async () => {
     let resolveEngine: ((engine: ReplayEngineLike) => void) | undefined
     const enginePromise = new Promise<ReplayEngineLike>((resolve) => {
@@ -314,9 +409,11 @@ describe("ReplayController", () => {
     expect(controller.getState()).toMatchObject({ active: false, status: "idle" })
   })
 
-  it("clears an old frame when a replacement engine cannot be created", async () => {
+  it("clears the first replay frame and error when a replacement engine cannot be created", async () => {
     const engine = {
-      runTo: vi.fn(),
+      runTo: vi.fn(async () => {
+        throw new Error("first replay failed")
+      }),
       step: vi.fn(),
       verify: vi.fn(),
       continueBestEffort: vi.fn(),
@@ -330,7 +427,11 @@ describe("ReplayController", () => {
     })
 
     await controller.start(2)
-    expect(controller.getState()).toMatchObject({ frame: { sequence: 2 } })
+    await controller.runTo(2)
+    expect(controller.getState()).toMatchObject({
+      frame: { sequence: 2 },
+      error: "first replay failed",
+    })
 
     const state = await controller.start(3)
 

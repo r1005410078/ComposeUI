@@ -907,26 +907,27 @@ describe("workspace panel renderers", () => {
   })
 
   it("renders isolated replay state and a typed difference", async () => {
+    const differenceResult = {
+      status: "paused" as const,
+      deterministic: false,
+      startedAtSequence: 0,
+      currentSequence: 1,
+      targetSequence: 1,
+      difference: {
+        type: "patch-mismatch" as const,
+        sequence: 1,
+        path: "forward.created[0].layout.width",
+        expected: 120,
+        actual: 999,
+      },
+    }
     const replayController = new ReplayController({
       createEngine: vi.fn(async () => ({
-        runTo: vi.fn(async () => ({
-          status: "paused" as const,
-          deterministic: false,
-          startedAtSequence: 0,
-          currentSequence: 1,
-          targetSequence: 1,
-          difference: {
-            type: "patch-mismatch" as const,
-            sequence: 1,
-            path: "forward.created[0].layout.width",
-            expected: 120,
-            actual: 999,
-          },
-        })),
-        step: vi.fn(),
+        runTo: vi.fn(async () => differenceResult),
+        step: vi.fn(async () => differenceResult),
         verify: vi.fn(),
         continueBestEffort: vi.fn(),
-        getState: vi.fn(() => ({ sequence: 1 })),
+        getState: vi.fn(() => ({ sequence: 0 })),
       })),
     })
     const base = fakeOperationLogController([operationEvent()])
@@ -1032,6 +1033,8 @@ describe("workspace panel renderers", () => {
     }
     const replayController: ReplayControllerPort = {
       start: vi.fn(async () => state),
+      pause: vi.fn(),
+      resume: vi.fn(async () => state),
       stepBackward: vi.fn(() => {
         throw new Error("step unavailable")
       }),
@@ -1087,6 +1090,8 @@ describe("workspace panel renderers", () => {
         publish(next)
         return next
       }),
+      pause: vi.fn(),
+      resume: vi.fn(async () => state),
       stepBackward: vi.fn(async () => state),
       stepForward: vi.fn(async () => state),
       runTo: vi.fn(async () => state),

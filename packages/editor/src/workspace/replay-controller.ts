@@ -77,6 +77,8 @@ export type ReplayControllerListener = (state: ReplayControllerState) => void
 export interface ReplayControllerPort {
   readonly replayController?: ReplayController
   start(sequence: number): Promise<ReplayControllerState>
+  pause(): void
+  resume(): Promise<ReplayControllerState>
   stepBackward(): Promise<ReplayControllerState>
   stepForward(): Promise<ReplayControllerState>
   runTo(sequence: number): Promise<ReplayControllerState>
@@ -174,6 +176,26 @@ export class ReplayController implements ReplayControllerPort {
     } catch (error) {
       return this.#recoverStartError(generation, error)
     }
+  }
+
+  pause(): void {
+    if (!this.#state.active || this.#state.status !== "running") return
+    this.#generation += 1
+    this.#publish({ ...this.#state, status: "paused" })
+  }
+
+  async resume(): Promise<ReplayControllerState> {
+    const engine = this.#requireEngine()
+    const targetSequence = this.#state.targetSequence
+    if (targetSequence === undefined) throw new Error("REPLAY_NOT_ACTIVE")
+    if (this.#state.status === "running") return this.getState()
+
+    const generation = ++this.#generation
+    const state = this.#publish({ ...this.#state, status: "running" })
+    void this.#playTo(generation, engine, targetSequence).catch((error) => {
+      this.#recoverFromError(generation, error)
+    })
+    return state
   }
 
   async stepBackward(): Promise<ReplayControllerState> {
