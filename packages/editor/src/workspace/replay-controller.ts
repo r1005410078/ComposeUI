@@ -126,6 +126,7 @@ export class ReplayController implements ReplayControllerPort {
   #engine: ReplayEngineLike | undefined
   #state: ReplayControllerState = { active: false, status: "idle", deterministic: true }
   #generation = 0
+  #playback: Promise<void> | undefined
 
   constructor(options: ReplayControllerOptions) {
     this.#createEngine = options.createEngine
@@ -168,7 +169,9 @@ export class ReplayController implements ReplayControllerPort {
         frame: structuredClone(checkpoint),
       })
       if (checkpoint.sequence < sequence) {
-        void this.#playTo(generation, engine, sequence).catch((error) => {
+        const playback = this.#playTo(generation, engine, sequence)
+        this.#playback = playback
+        void playback.catch((error) => {
           this.#recoverFromError(generation, error)
         })
       }
@@ -178,10 +181,10 @@ export class ReplayController implements ReplayControllerPort {
     }
   }
 
-  pause(): void {
-    if (!this.#state.active || this.#state.status !== "running") return
+  pause(): ReplayControllerState {
+    if (!this.#state.active || this.#state.status !== "running") return this.getState()
     this.#generation += 1
-    this.#publish({ ...this.#state, status: "paused" })
+    return this.#publish({ ...this.#state, status: "paused" })
   }
 
   async resume(): Promise<ReplayControllerState> {
@@ -191,8 +194,15 @@ export class ReplayController implements ReplayControllerPort {
     if (this.#state.status === "running") return this.getState()
 
     const generation = ++this.#generation
-    const state = this.#publish({ ...this.#state, status: "running" })
-    void this.#playTo(generation, engine, targetSequence).catch((error) => {
+    const state = this.#publishRunning()
+    const previousPlayback = this.#playback
+    const playback = (async () => {
+      await previousPlayback
+      if (generation !== this.#generation) return
+      await this.#playTo(generation, engine, targetSequence)
+    })()
+    this.#playback = playback
+    void playback.catch((error) => {
       this.#recoverFromError(generation, error)
     })
     return state
@@ -288,9 +298,9 @@ export class ReplayController implements ReplayControllerPort {
     }
   }
 
-  #publishRunning(overrides: Partial<ReplayControllerState> = {}): void {
+  #publishRunning(overrides: Partial<ReplayControllerState> = {}): ReplayControllerState {
     const { error: _error, ...withoutError } = this.#state
-    this.#publish({ ...withoutError, ...overrides, active: true, status: "running" })
+    return this.#publish({ ...withoutError, ...overrides, active: true, status: "running" })
   }
 
   #recoverFromError(generation: number, error: unknown): ReplayControllerState {

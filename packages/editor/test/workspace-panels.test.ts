@@ -1033,7 +1033,7 @@ describe("workspace panel renderers", () => {
     }
     const replayController: ReplayControllerPort = {
       start: vi.fn(async () => state),
-      pause: vi.fn(),
+      pause: vi.fn(() => state),
       resume: vi.fn(async () => state),
       stepBackward: vi.fn(() => {
         throw new Error("step unavailable")
@@ -1090,7 +1090,7 @@ describe("workspace panel renderers", () => {
         publish(next)
         return next
       }),
-      pause: vi.fn(),
+      pause: vi.fn(() => state),
       resume: vi.fn(async () => state),
       stepBackward: vi.fn(async () => state),
       stepForward: vi.fn(async () => state),

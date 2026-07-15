@@ -14,7 +14,7 @@ function createController(
   const listeners = new Set<(next: ReplayControllerState) => void>()
   return {
     start: vi.fn(async () => state),
-    pause: vi.fn(),
+    pause: vi.fn(() => state),
     resume: vi.fn(async () => state),
     stepBackward: vi.fn(async () => state),
     stepForward: vi.fn(async () => state),
