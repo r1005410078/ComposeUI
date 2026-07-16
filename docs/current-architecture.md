@@ -5,9 +5,10 @@
 
 | 项 | 值 |
 | --- | --- |
-| 对应里程碑 | M0 内核闭环 + M1 Free Layout 编辑器骨架；其后叠加 Dockview workspace 与 operation-log |
+| 对应里程碑 | M0 内核闭环 + M1 Free Layout 编辑器骨架；其后叠加 Dockview workspace 与 operation-log；**M1.5 Foundation** 进行中（P0 目录分层 + 依赖守卫已落地） |
 | 包 | `@composeui/core`、`@composeui/editor`、`@composeui/operation-log`、`apps/playground` |
 | 权威设计（目标态） | [事务型编辑器微内核](./superpowers/specs/2026-07-11-transactional-editor-microkernel-architecture-design.md)、[产品设计](./superpowers/specs/2026-07-11-embeddable-visual-page-composer-design.md) |
+| 基础架构升级（M1.5） | [Foundation Upgrade 设计](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md)（P0 守卫 → P1 Command 插件 → P2 canvas/Query） |
 | 进度表 | [项目概览 · 当前进展](./project-overview.md#当前进展) |
 
 ---
@@ -55,6 +56,8 @@ packages/core/src/
 └── shared/       # Diagnostic / Result
 ```
 
+> **P1 目标：** `kernel/commands.ts` 将拆为 `kernel/commands/`（registry + editor 门面 + builtin）与 `kernel/plugin.ts`。当前仍是单文件 switch；见 [M1.5 Foundation 设计 · Command 插件](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md#6-command-插件设计)。
+
 **`@composeui/editor`**
 
 ```text
@@ -76,6 +79,32 @@ packages/operation-log/src/
 ├── replay/     # 回放引擎与 handlers
 └── *.ts        # recorder、store、bundle、checkpoint…
 ```
+
+### 2.2 包依赖守卫（P0 已落地）
+
+分层不仅靠约定：仓库用机械检查锁住允许的 import 方向。
+
+| 项 | 值 |
+| --- | --- |
+| 命令 | `bun run boundaries`（已挂入 `bun run check`） |
+| 脚本 | [`scripts/check-package-boundaries.mjs`](../scripts/check-package-boundaries.mjs) |
+
+**规则（代码事实）：**
+
+1. **`packages/editor`、`packages/operation-log`、`apps/**` 消费 core 时，只能** `from "@composeui/core"`  
+   - 禁止 `@composeui/core/...` 深路径  
+   - 禁止相对/绝对路径指向 `packages/core/src/**`
+2. **`packages/core/src/query/**` 不得依赖写路径**  
+   - 禁止 import `kernel/commands`、`kernel/plugin` 或任意 `/commands` 模块  
+   - Query 只读 store/document；变更仍经 Command → `transact`
+
+**与 M1.5 的关系：**
+
+- **P0（当前）**：目录分层已合入 + 本守卫 + 本文档对齐。**不**引入 Command 插件运行时，**不**拆 `commands/` 子目录。
+- **P1**：Command Registry / Plugin（`register` / unregister / `dispose`），内置命令迁入 `kernel/commands/builtin/`；见 [Foundation Upgrade 设计](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md)。
+- **P2**：canvas 上帝文件拆分与 Query 路径收纳（含 LayoutProjection 类型占位）。
+
+故意违规 import 时 `bun run boundaries` 必须以非零退出码失败。
 
 ---
 
@@ -184,7 +213,8 @@ PageDocument
 | `node.rename` / `setVisible` / `setLocked` | 属性 |
 | `page.setOverflow` | 页面溢出 |
 
-命令分发目前是 **`commands.ts` 内 switch**，不是可插拔 Command Registry。
+命令分发目前是 **`commands.ts` 内 switch**，不是可插拔 Command Registry。  
+可注册 Command 插件与 `kernel/commands/` 子树是 **M1.5 P1** 目标，设计见 [Foundation Upgrade · §6](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md#6-command-插件设计)。
 
 ---
 
@@ -311,7 +341,8 @@ toolbar/api.undo → editor.undo → History.undo → applyPatch(inverse)
 | 领域 | 状态 |
 | --- | --- |
 | Auto Layout / Grid 引擎与模式迁移 | 未实现 |
-| 插件式 Command/Layout/Import Registry | 未实现（命令写死 switch） |
+| 插件式 Command Registry（M1.5 P1） | 未实现（命令写死 switch；设计见 [Foundation Upgrade](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md)） |
+| Layout / Import 等多贡献点插件平台 | 未实现（M1.5 仅规划 Command 贡献点） |
 | Framework Adapter（Vue/React…）、业务组件注册 | 未实现 |
 | 页面级上下文注入 / 单板单框架运行时根 | 未实现 |
 | Component definition / instance / detach | 未实现 |
