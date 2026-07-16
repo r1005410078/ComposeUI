@@ -119,10 +119,25 @@ export function createInspectorPanel(): FirstPartyPanelDescriptor {
     panel.setAttribute("aria-label", "检查器")
     root.replaceChildren(panel)
 
+    let lastSelectionKey = ""
+    let lastRecordKey = ""
+
     const render = (): void => {
-      const selectedId = context.session.getState().selection[0]
-      const selected = selectedId === undefined ? undefined : context.editor.getRecord(selectedId)
+      const selectedId = context.session.getState().selection[0] ?? ""
+      const selected = selectedId === "" ? undefined : context.editor.getRecord(selectedId)
       const label = recordLabel(selected)
+      // pan/zoom/hover 等 session 噪声不得拆卸重建检查器 DOM
+      const selectionKey = selectedId
+      const recordKey =
+        selected === undefined
+          ? ""
+          : selected.typeName === "node"
+            ? `${selected.id}:${selected.name}:${selected.nodeType}`
+            : `${selected.id}:${selected.typeName}`
+      if (selectionKey === lastSelectionKey && recordKey === lastRecordKey) return
+      lastSelectionKey = selectionKey
+      lastRecordKey = recordKey
+
       panel.replaceChildren()
       const heading = document.createElement("h2")
       heading.textContent = "检查器"

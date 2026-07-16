@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  adaptiveWorldStep,
   GRID_MAJOR_EVERY,
   MIN_MINOR_SCREEN_PX,
+  MIN_RULER_LABEL_SCREEN_PX,
+  MIN_RULER_TICK_SCREEN_PX,
   visibleGridLines,
 } from "../src/canvas/workspace-canvas"
 
@@ -33,9 +36,45 @@ describe("visibleGridLines", () => {
   })
 })
 
+describe("adaptiveWorldStep", () => {
+  it("keeps base step when already sparse enough on screen", () => {
+    // 8 world * zoom 1 = 8px ≥ 4
+    expect(adaptiveWorldStep(8, 1, 4)).toBe(8)
+  })
+
+  it("doubles until screen spacing meets the threshold (Godot-style)", () => {
+    // 8 * 0.004 = 0.032px → keep ×2 until ≥ 50px label gap
+    // 16384 * 0.004 = 65.536 ≥ 50
+    expect(adaptiveWorldStep(8, 0.004, 50)).toBe(16384)
+  })
+
+  it("matches Godot extreme zoom label spacing at 0.4%", () => {
+    const zoom = 0.004
+    const labelStep = adaptiveWorldStep(8, zoom, MIN_RULER_LABEL_SCREEN_PX)
+    expect(labelStep * zoom).toBeGreaterThanOrEqual(MIN_RULER_LABEL_SCREEN_PX)
+    // Tick step stays a power-of-two multiple of base and divides label step
+    const tickStep = adaptiveWorldStep(8, zoom, MIN_RULER_TICK_SCREEN_PX)
+    expect(labelStep % tickStep).toBe(0)
+    expect(tickStep * zoom).toBeGreaterThanOrEqual(MIN_RULER_TICK_SCREEN_PX)
+  })
+
+  it("never shrinks below base step when zoomed in", () => {
+    expect(adaptiveWorldStep(8, 20, MIN_RULER_LABEL_SCREEN_PX)).toBe(8)
+  })
+
+  it("returns empty-safe values for invalid inputs", () => {
+    expect(adaptiveWorldStep(0, 1, 10)).toBe(0)
+    expect(adaptiveWorldStep(-4, 1, 10)).toBe(-4)
+    expect(adaptiveWorldStep(8, 0, 10)).toBe(8)
+    expect(adaptiveWorldStep(8, Number.NaN, 10)).toBe(8)
+  })
+})
+
 describe("grid density constants", () => {
-  it("documents minor-line skip threshold", () => {
+  it("documents minor-line skip threshold and ruler readability targets", () => {
     expect(MIN_MINOR_SCREEN_PX).toBe(4)
     expect(GRID_MAJOR_EVERY).toBe(4)
+    expect(MIN_RULER_TICK_SCREEN_PX).toBe(6)
+    expect(MIN_RULER_LABEL_SCREEN_PX).toBe(50)
   })
 })

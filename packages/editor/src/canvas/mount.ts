@@ -140,16 +140,35 @@ export function mountEditor(
     overlay,
   )
 
-  const redrawWorkspaceCanvas = (): void => {
+  // 缓存 CSS 尺寸 / DPR：避免每次 wheel/pointer 触发 getBoundingClientRect 强制布局
+  let canvasCssWidth = 0
+  let canvasCssHeight = 0
+  let canvasDpr = 1
+  let paintRaf = 0
+  let paintViewport = false
+  let paintOverlay = false
+  let paintCanvas = false
+
+  const measureWorkspaceSize = (): void => {
     const rect = workspace.getBoundingClientRect()
-    const dpr =
+    // jsdom 等无布局环境可能给 0；用 client 尺寸兜底
+    canvasCssWidth = rect.width > 0 ? rect.width : workspace.clientWidth
+    canvasCssHeight = rect.height > 0 ? rect.height : workspace.clientHeight
+    const nextDpr =
       typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
         ? window.devicePixelRatio
         : 1
-    // jsdom 等无布局环境可能给 0；用 client 尺寸兜底
-    const width = rect.width > 0 ? rect.width : workspace.clientWidth
-    const height = rect.height > 0 ? rect.height : workspace.clientHeight
-    workspaceCanvas.setSize(width, height, dpr > 0 ? dpr : 1)
+    canvasDpr = nextDpr > 0 ? nextDpr : 1
+  }
+
+  const applyWorldTransform = (): void => {
+    const { x, y, zoom } = sessionState.viewport
+    world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`
+  }
+
+  const redrawWorkspaceCanvas = (): void => {
+    if (canvasCssWidth <= 0 || canvasCssHeight <= 0) measureWorkspaceSize()
+    workspaceCanvas.setSize(canvasCssWidth, canvasCssHeight, canvasDpr)
     workspaceCanvas.redraw({
       viewport: sessionState.viewport,
       gridVisible: sessionState.gridVisible,
@@ -159,11 +178,49 @@ export function mountEditor(
     })
   }
 
-  const updateViewport = (): void => {
-    world.style.transform = `translate(${sessionState.viewport.x}px, ${sessionState.viewport.y}px) scale(${sessionState.viewport.zoom})`
-    redrawWorkspaceCanvas()
+  const flushPaint = (): void => {
+    paintRaf = 0
+    if (destroyed) return
+    if (paintViewport) {
+      paintViewport = false
+      applyWorldTransform()
+    }
+    if (paintCanvas) {
+      paintCanvas = false
+      redrawWorkspaceCanvas()
+    }
+    if (paintOverlay) {
+      paintOverlay = false
+      renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
+    }
   }
-  updateViewport()
+
+  /** pan/zoom/指针游标等高频路径合并到下一帧，避免每条 wheel 同步全量重绘掉帧。 */
+  const schedulePaint = (flags: {
+    viewport?: boolean
+    canvas?: boolean
+    overlay?: boolean
+  }): void => {
+    if (flags.viewport) paintViewport = true
+    if (flags.canvas) paintCanvas = true
+    if (flags.overlay) paintOverlay = true
+    if (paintRaf !== 0) return
+    if (typeof requestAnimationFrame === "undefined") {
+      flushPaint()
+      return
+    }
+    paintRaf = requestAnimationFrame(flushPaint)
+  }
+
+  const updateViewport = (): void => {
+    // 同步应用 transform 供本帧内指针坐标换算一致；canvas/overlay 可 rAF 合并
+    applyWorldTransform()
+    schedulePaint({ canvas: true, overlay: true })
+  }
+
+  measureWorkspaceSize()
+  applyWorldTransform()
+  redrawWorkspaceCanvas()
   renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
 
   let destroyed = false
@@ -172,7 +229,8 @@ export function mountEditor(
     typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(() => {
           if (destroyed) return
-          redrawWorkspaceCanvas()
+          measureWorkspaceSize()
+          schedulePaint({ canvas: true })
         })
       : null
   resizeObserver?.observe(workspace)
@@ -181,13 +239,14 @@ export function mountEditor(
     if (destroyed) return
     const point = workspacePoint(event, workspace)
     cursorWorld = screenToWorld(point, sessionState.viewport)
-    redrawWorkspaceCanvas()
+    // 仅游标读数变化：合并到 rAF，不与布局测量捆绑
+    schedulePaint({ canvas: true })
   }
   const onWorkspacePointerLeave = (): void => {
     if (destroyed) return
     if (cursorWorld === null) return
     cursorWorld = null
-    redrawWorkspaceCanvas()
+    schedulePaint({ canvas: true })
   }
   workspace.addEventListener("pointermove", onWorkspacePointerMove)
   workspace.addEventListener("pointerleave", onWorkspacePointerLeave)
@@ -246,8 +305,15 @@ export function mountEditor(
       if (expandedChanged) treeMounted.update(currentStore, options.pageId, nextState, true)
       else if (selectionChanged) treeMounted.update(currentStore, options.pageId, nextState, false)
     }
-    if (viewportChanged || gridChanged) updateViewport()
-    if (selectionChanged || viewportChanged) {
+    if (viewportChanged) {
+      // transform 立即更新（指针/滚轮同一事件栈内坐标一致）；重绘走 rAF
+      applyWorldTransform()
+      schedulePaint({ canvas: true, overlay: true })
+    } else if (gridChanged) {
+      schedulePaint({ canvas: true })
+    }
+    if (selectionChanged) {
+      // 选区变更低频且需立刻出现 resize 手柄，同步画 overlay（不走 rAF）
       renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, nextState)
     }
   }
@@ -284,6 +350,10 @@ export function mountEditor(
     destroy() {
       if (destroyed) return
       destroyed = true
+      if (paintRaf !== 0 && typeof cancelAnimationFrame !== "undefined") {
+        cancelAnimationFrame(paintRaf)
+        paintRaf = 0
+      }
       pointer.cancelActive()
       pointer.detach()
       treeMounted?.destroy()

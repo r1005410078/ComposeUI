@@ -174,6 +174,7 @@
   background: transparent;
   border: 0;
   border-radius: var(--composeui-radius-control);
+  color: var(--composeui-text-secondary);
   display: inline-flex;
   height: var(--composeui-icon-button-size);
   justify-content: center;
@@ -181,9 +182,14 @@
   width: var(--composeui-icon-button-size);
 }
 
-.composeui-editor__toolbar-button:hover,
+.composeui-editor__toolbar-button:hover {
+  background: var(--composeui-surface-control-hover);
+  color: var(--composeui-text-primary);
+}
+
 .composeui-editor__toolbar-button[aria-pressed="true"] {
   background: var(--composeui-surface-control-hover);
+  color: var(--composeui-text-primary);
 }
 
 .composeui-editor__toolbar-button:disabled {
@@ -194,6 +200,106 @@
 .composeui-editor__toolbar-button svg {
   height: var(--composeui-icon-size);
   width: var(--composeui-icon-size);
+}
+
+/**
+ * UE 视口式：吸附开关 + 颗粒度 combo 合成一条控件。
+ * 开启吸附时整组轻微强调，数值区用等宽数字 + 右侧 chevron。
+ */
+.composeui-editor__toolbar-snap-unit {
+  align-items: stretch;
+  background: var(--composeui-surface-control);
+  border: 1px solid var(--composeui-border-default);
+  border-radius: var(--composeui-radius-control);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: var(--composeui-icon-button-size);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.composeui-editor__toolbar-snap-unit[data-snap-enabled="true"] {
+  border-color: color-mix(in srgb, var(--composeui-accent-primary) 55%, var(--composeui-border-default));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--composeui-accent-primary) 22%, transparent);
+}
+
+.composeui-editor__toolbar-snap-unit .composeui-editor__toolbar-button {
+  border-radius: 0;
+  height: 100%;
+  width: calc(var(--composeui-icon-button-size) - 2px);
+}
+
+.composeui-editor__toolbar-snap-unit .composeui-editor__toolbar-button:hover {
+  background: var(--composeui-surface-control-hover);
+}
+
+.composeui-editor__toolbar-snap-unit .composeui-editor__toolbar-button[aria-pressed="true"] {
+  /* UE 吸附开启时常为暖色高亮；此处用主题 accent 弱填充，避免抢主工具栏 */
+  background: color-mix(in srgb, var(--composeui-accent-primary) 32%, transparent);
+  color: var(--composeui-text-primary);
+}
+
+.composeui-editor__toolbar-snap-unit .composeui-editor__toolbar-button:disabled {
+  background: transparent;
+}
+
+.composeui-editor__toolbar-granularity {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23718098' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 5px center;
+  background-repeat: no-repeat;
+  background-size: 10px 10px;
+  border: 0;
+  border-left: 1px solid var(--composeui-border-default);
+  border-radius: 0;
+  box-sizing: border-box;
+  color: var(--composeui-text-primary);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  height: 100%;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  min-width: 3.25rem;
+  padding: 0 1.15rem 0 0.45rem;
+  text-align: center;
+}
+
+.composeui-editor__toolbar-snap-unit[data-snap-enabled="true"] .composeui-editor__toolbar-granularity {
+  border-left-color: color-mix(
+    in srgb,
+    var(--composeui-accent-primary) 40%,
+    var(--composeui-border-default)
+  );
+  color: var(--composeui-text-primary);
+}
+
+.composeui-editor__toolbar-granularity:hover:not(:disabled) {
+  background-color: var(--composeui-surface-control-hover);
+}
+
+.composeui-editor__toolbar-granularity:disabled {
+  color: var(--composeui-text-disabled);
+  cursor: default;
+  opacity: 0.72;
+}
+
+.composeui-editor__toolbar-granularity:focus-visible {
+  outline: 2px solid var(--composeui-focus-ring);
+  outline-offset: -2px;
+}
+
+.composeui-editor__toolbar-granularity option {
+  background: var(--composeui-surface-panel);
+  color: var(--composeui-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
 }
 
 .composeui-editor__dockview-host {

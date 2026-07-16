@@ -21,7 +21,7 @@ import {
 } from "lucide"
 import type { Editor } from "@composeui/core"
 import type { EditorPreviewSource } from "../canvas/preview"
-import type { EditorSession } from "../session/session"
+import type { EditorSession, InteractionMode } from "../session/session"
 import type { EditorWorkspaceApi } from "./editor-workspace"
 import type { WorkspacePanelDescriptor } from "./types"
 
@@ -35,7 +35,11 @@ export interface WorkspaceToolbarOptions {
 
 type ToolId = "select" | "pan"
 
-const GRID_SIZE_PRESETS = [8, 16, 32] as const
+/**
+ * 网格/吸附颗粒度预设（对齐 UE 视口工具栏常见档位：2 的幂 + 常用中档）。
+ * 须落在 session 合法范围 1…1024。
+ */
+const GRID_SIZE_PRESETS = [1, 2, 4, 8, 16, 32, 64, 128, 256] as const
 
 function iconButton(
   id: string,
@@ -54,10 +58,11 @@ function iconButton(
 
 function gridSizeSelect(): HTMLSelectElement {
   const select = document.createElement("select")
-  select.className = "composeui-editor__toolbar-select"
+  // UE 式：与吸附开关并排的紧凑颗粒度 combo，不是独立大块 native select
+  select.className = "composeui-editor__toolbar-granularity"
   select.dataset.testid = "workspace-grid-size"
-  select.title = "网格步长"
-  select.setAttribute("aria-label", "网格步长")
+  select.title = "吸附颗粒度"
+  select.setAttribute("aria-label", "吸附颗粒度")
   for (const size of GRID_SIZE_PRESETS) {
     const option = document.createElement("option")
     option.value = String(size)
@@ -65,6 +70,20 @@ function gridSizeSelect(): HTMLSelectElement {
     select.append(option)
   }
   return select
+}
+
+/**
+ * UE 视口习惯：吸附开关 + 颗粒度下拉合成一个控件单元。
+ * 网格可见性仍独立（显示与吸附分离）。
+ */
+function snapGranularityUnit(snap: HTMLButtonElement, gridSize: HTMLSelectElement): HTMLDivElement {
+  const unit = document.createElement("div")
+  unit.className = "composeui-editor__toolbar-snap-unit"
+  unit.dataset.testid = "workspace-snap-granularity"
+  unit.setAttribute("role", "group")
+  unit.setAttribute("aria-label", "网格吸附与颗粒度")
+  unit.append(snap, gridSize)
+  return unit
 }
 
 /** 若当前 session 步长不在预设内，补一条 option 以便 select 正确显示。 */
@@ -113,8 +132,9 @@ export function mountWorkspaceToolbar(
   const select = iconButton("select", "选择工具", MousePointer2)
   const pan = iconButton("pan", "平移工具", Hand)
   const grid = iconButton("grid", "切换网格", Grid3X3)
-  const snap = iconButton("snap", "吸附到网格", Magnet)
+  const snap = iconButton("snap", "启用网格吸附", Magnet)
   const gridSize = gridSizeSelect()
+  const snapUnit = snapGranularityUnit(snap, gridSize)
   const undo = iconButton("undo", "撤销", Undo2)
   const redo = iconButton("redo", "重做", Redo2)
   const move = iconButton("move", "移动工具", Move)
@@ -130,27 +150,64 @@ export function mountWorkspaceToolbar(
     toolbarDivider(),
     toolbarGroup(lock, view),
     toolbarDivider(),
-    toolbarGroup(grid, snap, gridSize),
+    toolbarGroup(grid, snapUnit),
     toolbarDivider(),
     toolbarGroup(undo, redo),
   )
 
   let readOnly = options.preview?.getState().active ?? false
+  // pan/zoom 不改工具条控件状态；跳过 viewport 专用通知，避免每条 wheel 全量 sync
+  // undefined = 尚未首帧渲染，必须跑一次
+  let lastChrome:
+    | {
+        interactionMode: InteractionMode
+        gridVisible: boolean
+        snapEnabled: boolean
+        gridSize: number
+        canUndo: boolean
+        canRedo: boolean
+        readOnly: boolean
+      }
+    | undefined
 
   const render = (): void => {
     const state = options.session.getState()
+    const canUndo = options.editor.canUndo()
+    const canRedo = options.editor.canRedo()
+    if (
+      lastChrome !== undefined &&
+      lastChrome.interactionMode === state.interactionMode &&
+      lastChrome.gridVisible === state.gridVisible &&
+      lastChrome.snapEnabled === state.snapEnabled &&
+      lastChrome.gridSize === state.gridSize &&
+      lastChrome.canUndo === canUndo &&
+      lastChrome.canRedo === canRedo &&
+      lastChrome.readOnly === readOnly
+    ) {
+      return
+    }
+    lastChrome = {
+      interactionMode: state.interactionMode,
+      gridVisible: state.gridVisible,
+      snapEnabled: state.snapEnabled,
+      gridSize: state.gridSize,
+      canUndo,
+      canRedo,
+      readOnly,
+    }
     setPressed(select, state.interactionMode === "select")
     setPressed(pan, state.interactionMode === "pan")
     setPressed(grid, state.gridVisible)
     setPressed(snap, state.snapEnabled)
+    snapUnit.dataset.snapEnabled = String(state.snapEnabled)
     syncGridSizeOptions(gridSize, state.gridSize)
     select.disabled = readOnly
     pan.disabled = readOnly
     grid.disabled = readOnly
     snap.disabled = readOnly
     gridSize.disabled = readOnly
-    undo.disabled = readOnly || !options.editor.canUndo()
-    redo.disabled = readOnly || !options.editor.canRedo()
+    undo.disabled = readOnly || !canUndo
+    redo.disabled = readOnly || !canRedo
   }
   const chooseTool = (tool: ToolId): void => {
     if (readOnly) return

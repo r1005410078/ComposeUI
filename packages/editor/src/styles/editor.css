@@ -288,6 +288,8 @@
   position: absolute;
   top: 0;
   transform-origin: 0 0;
+  /* pan/zoom 只改 transform；提升合成层减少与网格 canvas 的重绘互相抢主线程 */
+  will-change: transform;
   z-index: 1;
 }
 

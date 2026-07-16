@@ -208,7 +208,7 @@ function snapRect(
 
 1. 切换 `gridVisible`
 2. 切换 `snapEnabled`
-3. 设置 `gridSize`（预设 8 / 16 / 32 + 合法自定义数字）
+3. 设置 `gridSize`（UE 式吸附颗粒度预设 1 / 2 / 4 / 8 / 16 / 32 / 64 / 128 / 256 + 合法自定义数字）
 
 控件需稳定 `data-testid` 或 role，供 E2E 使用。
 

@@ -10,6 +10,9 @@
  *
  * 数据流：指针/快捷键/树 UI → EditorSession setters → subscribe 重绘；
  * 可选 operationObserver → operation-log（旁路，失败吞掉）。
+ *
+ * 性能：`#emit` 每轮只 clone 一次 state，listeners 共享只读快照（禁止原地改字段）。
+ * pan/zoom 属高频路径，UI 订阅方应自行忽略无关字段变化。
  */
 
 import { assertValidGridSize } from "./snap"
@@ -181,8 +184,10 @@ export class EditorSession {
   }
 
   #emit(): void {
-    // 重入安全：通知期间的 set* 推入队列，本轮结束后继续刷，避免漏事件或栈溢出
-    this.#pendingStates.push(this.getState())
+    // 重入安全：通知期间的 set* 推入队列，本轮结束后继续刷，避免漏事件或栈溢出。
+    // 每轮通知只 structuredClone 一次；listeners 共享同一快照，禁止原地修改。
+    // pan/zoom 高频路径下，旧实现「队列 clone + 每个 listener 再 clone」会成倍吃掉帧预算。
+    this.#pendingStates.push(structuredClone(this.#state))
     if (this.#notifying) return
 
     this.#notifying = true
@@ -192,7 +197,7 @@ export class EditorSession {
         const listeners = [...this.#listeners]
         for (const listener of listeners) {
           try {
-            listener(structuredClone(state))
+            listener(state)
           } catch {
             // 单个 listener 失败不得中断队列
           }

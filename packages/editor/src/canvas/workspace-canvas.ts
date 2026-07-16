@@ -6,23 +6,40 @@
  * 边界：仅绘制；不写 Document / Session。节点仍由 DOM 渲染。
  * 数据流：session viewport + grid* + cursorWorld → setSize / redraw。
  *
- * 性能：只遍历视口外扩 AABB 内的格线；zoom*gridSize 过小时跳过次线。
+ * 性能：只遍历视口外扩 AABB 内的格线。
+ * 密度：Godot 式 — 从 gridSize 起对 world 步长反复 ×2，直到屏幕间距达标；
+ * 标尺数字与刻度各自有最小 CSS 像素间距，极小 zoom 时也不会挤成一团。
  */
 
 import { screenToWorld, worldToScreen } from "../session/coordinates"
 import type { Viewport } from "../session/session"
 
-/** 主网格间距 = gridSize × GRID_MAJOR_EVERY。 */
+/** 主网格间距 = 当前次线步长 × GRID_MAJOR_EVERY。 */
 export const GRID_MAJOR_EVERY = 4
 
 /**
- * 当 `zoom * gridSize`（CSS 像素）低于此阈值时跳过次网格，只画主线。
- * 避免极小缩放时线过密导致性能塌陷与视觉糊成一片。
+ * 次网格线在屏幕上的最小间距（CSS 像素）。
+ * 低于此值时对 world 步长 ×2 升档，而不是硬画过密线。
  */
 export const MIN_MINOR_SCREEN_PX = 4
 
+/**
+ * 标尺短刻度的最小屏幕间距（CSS 像素）。
+ * 与 Godot 类似：zoom 变小时刻度 world 步长升档，而不是堆叠。
+ */
+export const MIN_RULER_TICK_SCREEN_PX = 6
+
+/**
+ * 标尺数字标签的最小屏幕间距（CSS 像素）。
+ * 保证如 -16384 一类长数字在极小 zoom 下仍可读（Godot 0.4% 时约 50–70px 一档）。
+ */
+export const MIN_RULER_LABEL_SCREEN_PX = 50
+
 /** 顶/左标尺厚度（CSS 像素）。 */
 export const RULER_SIZE = 20
+
+/** 防止极端 zoom 下 ×2 死循环的上限次数。 */
+const ADAPTIVE_STEP_MAX_DOUBLES = 48
 
 const FALLBACK_MINOR = "rgba(40, 94, 145, 0.24)"
 const FALLBACK_MAJOR = "rgba(62, 128, 190, 0.28)"
@@ -50,6 +67,23 @@ export function visibleGridLines(worldMin: number, worldMax: number, step: numbe
     lines.push(i * step)
   }
   return lines
+}
+
+/**
+ * Godot 式自适应 world 步长：从 `baseStep` 起反复 ×2，直到 `step * zoom ≥ minScreenPx`。
+ * 只升档、不降到 base 以下；无效输入原样返回 baseStep（由调用方决定是否跳过绘制）。
+ */
+export function adaptiveWorldStep(baseStep: number, zoom: number, minScreenPx: number): number {
+  if (!Number.isFinite(baseStep) || baseStep <= 0) return baseStep
+  if (!Number.isFinite(zoom) || zoom <= 0) return baseStep
+  if (!Number.isFinite(minScreenPx) || minScreenPx <= 0) return baseStep
+
+  let step = baseStep
+  for (let i = 0; i < ADAPTIVE_STEP_MAX_DOUBLES; i++) {
+    if (step * zoom >= minScreenPx) return step
+    step *= 2
+  }
+  return step
 }
 
 export interface WorkspaceCanvasRedrawInput {
@@ -82,10 +116,26 @@ function formatWorldLabel(value: number): string {
   return value.toFixed(2).replace(/\.?0+$/, "")
 }
 
-/** 主线：grid 索引为 GRID_MAJOR_EVERY 的倍数（含负索引）。 */
-function isMajorGridLine(world: number, gridSize: number): boolean {
-  const index = Math.round(world / gridSize)
+/** 主线：相对当前次线步长，索引为 GRID_MAJOR_EVERY 的倍数（含负索引）。 */
+function isMajorGridLine(world: number, minorStep: number): boolean {
+  const index = Math.round(world / minorStep)
   return ((index % GRID_MAJOR_EVERY) + GRID_MAJOR_EVERY) % GRID_MAJOR_EVERY === 0
+}
+
+/** 标签落点：world 是否对齐 labelStep（含负索引与浮点容差）。 */
+function isLabelStep(world: number, labelStep: number): boolean {
+  if (!Number.isFinite(labelStep) || labelStep <= 0) return false
+  const index = Math.round(world / labelStep)
+  return Math.abs(world - index * labelStep) <= labelStep * 1e-9
+}
+
+interface CanvasThemeColors {
+  minor: string
+  major: string
+  rulerBg: string
+  rulerText: string
+  rulerTick: string
+  cursor: string
 }
 
 export function createWorkspaceCanvas(): WorkspaceCanvas {
@@ -98,27 +148,48 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
   let cssHeight = 0
   let dpr = 1
   let destroyed = false
+  /** getComputedStyle 昂贵；主题 token 稳定，缓存到 resize/重建。 */
+  let theme: CanvasThemeColors | null = null
+  let ctx: CanvasRenderingContext2D | null = null
+
+  const readTheme = (): CanvasThemeColors => {
+    const styles = getComputedStyle(element)
+    return {
+      minor: cssVar(styles, "--composeui-canvas-grid-minor", FALLBACK_MINOR),
+      major: cssVar(styles, "--composeui-canvas-grid-major", FALLBACK_MAJOR),
+      rulerBg: cssVar(styles, "--composeui-surface-panel", FALLBACK_RULER_BG),
+      rulerText: cssVar(styles, "--composeui-text-muted", FALLBACK_RULER_TEXT),
+      rulerTick: cssVar(styles, "--composeui-border-default", FALLBACK_RULER_TICK),
+      cursor: cssVar(styles, "--composeui-canvas-selection", FALLBACK_CURSOR),
+    }
+  }
 
   const setSize = (nextWidth: number, nextHeight: number, nextDpr: number): void => {
     if (destroyed) return
     const safeDpr = Number.isFinite(nextDpr) && nextDpr > 0 ? nextDpr : 1
     const w = Math.max(0, nextWidth)
     const h = Math.max(0, nextHeight)
+    const sizeChanged = cssWidth !== w || cssHeight !== h || dpr !== safeDpr
     cssWidth = w
     cssHeight = h
     dpr = safeDpr
     const bw = Math.max(0, Math.floor(w * safeDpr))
     const bh = Math.max(0, Math.floor(h * safeDpr))
+    // 改 canvas 位图尺寸会清空内容并失掉 context 状态；仅在真正变化时写
     if (element.width !== bw) element.width = bw
     if (element.height !== bh) element.height = bh
-    element.style.width = `${w}px`
-    element.style.height = `${h}px`
+    if (sizeChanged) {
+      element.style.width = `${w}px`
+      element.style.height = `${h}px`
+      // 尺寸变化后重新取 context（部分浏览器在 resize 后仍有效，但统一重置更稳）
+      ctx = null
+    }
   }
 
   const redraw = (input: WorkspaceCanvasRedrawInput): void => {
     if (destroyed) return
     if (cssWidth <= 0 || cssHeight <= 0) return
-    const ctx = element.getContext("2d")
+    if (ctx === null) ctx = element.getContext("2d")
     if (ctx === null) return
 
     const { viewport, gridVisible, gridSize, cursorWorld, showRulers } = input
@@ -127,26 +198,29 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, cssWidth, cssHeight)
 
-    const styles = getComputedStyle(element)
-    const minorColor = cssVar(styles, "--composeui-canvas-grid-minor", FALLBACK_MINOR)
-    const majorColor = cssVar(styles, "--composeui-canvas-grid-major", FALLBACK_MAJOR)
-    const rulerBg = cssVar(styles, "--composeui-surface-panel", FALLBACK_RULER_BG)
-    const rulerText = cssVar(styles, "--composeui-text-muted", FALLBACK_RULER_TEXT)
-    const rulerTick = cssVar(styles, "--composeui-border-default", FALLBACK_RULER_TICK)
-    const cursorColor = cssVar(styles, "--composeui-canvas-selection", FALLBACK_CURSOR)
+    if (theme === null) theme = readTheme()
+    const { minor: minorColor, major: majorColor, rulerBg, rulerText, rulerTick, cursor: cursorColor } =
+      theme
+
+    // Godot 式：网格/标尺 world 步长随 zoom ×2 升档，保证屏幕间距
+    const minorStep = adaptiveWorldStep(gridSize, viewport.zoom, MIN_MINOR_SCREEN_PX)
+    const majorStep = minorStep * GRID_MAJOR_EVERY
+    const rulerTickStep = adaptiveWorldStep(gridSize, viewport.zoom, MIN_RULER_TICK_SCREEN_PX)
+    const rulerLabelStep = adaptiveWorldStep(gridSize, viewport.zoom, MIN_RULER_LABEL_SCREEN_PX)
 
     // 视口对应 world AABB，再外扩一格避免边缘缺线
     const topLeft = screenToWorld({ x: 0, y: 0 }, viewport)
     const bottomRight = screenToWorld({ x: cssWidth, y: cssHeight }, viewport)
-    const expand = gridSize
+    const expand = Math.max(minorStep, rulerTickStep)
     const worldMinX = Math.min(topLeft.x, bottomRight.x) - expand
     const worldMaxX = Math.max(topLeft.x, bottomRight.x) + expand
     const worldMinY = Math.min(topLeft.y, bottomRight.y) - expand
     const worldMaxY = Math.max(topLeft.y, bottomRight.y) + expand
 
-    const minorScreen = viewport.zoom * gridSize
-    const drawMinors = minorScreen >= MIN_MINOR_SCREEN_PX
-    const majorStep = gridSize * GRID_MAJOR_EVERY
+    // 屏幕空间：world * zoom + pan（避免每条线构造 Point + 调 worldToScreen）
+    const { x: panX, y: panY, zoom } = viewport
+    const toScreenX = (worldX: number): number => worldX * zoom + panX
+    const toScreenY = (worldY: number): number => worldY * zoom + panY
 
     if (gridVisible) {
       const drawAxisLines = (axis: "x" | "y", step: number, isMajorPass: boolean): void => {
@@ -154,32 +228,31 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
           axis === "x"
             ? visibleGridLines(worldMinX, worldMaxX, step)
             : visibleGridLines(worldMinY, worldMaxY, step)
-        ctx.beginPath()
+        ctx!.beginPath()
         for (const world of lines) {
           // 主线 pass 只画主；次线 pass 跳过主（避免双描）
-          const isMajor = isMajorGridLine(world, gridSize)
+          const isMajor = isMajorGridLine(world, minorStep)
           if (isMajorPass !== isMajor) continue
           if (axis === "x") {
-            const sx = worldToScreen({ x: world, y: 0 }, viewport).x
+            const sx = toScreenX(world)
             if (sx < -1 || sx > cssWidth + 1) continue
-            ctx.moveTo(sx + 0.5, 0)
-            ctx.lineTo(sx + 0.5, cssHeight)
+            ctx!.moveTo(sx + 0.5, 0)
+            ctx!.lineTo(sx + 0.5, cssHeight)
           } else {
-            const sy = worldToScreen({ x: 0, y: world }, viewport).y
+            const sy = toScreenY(world)
             if (sy < -1 || sy > cssHeight + 1) continue
-            ctx.moveTo(0, sy + 0.5)
-            ctx.lineTo(cssWidth, sy + 0.5)
+            ctx!.moveTo(0, sy + 0.5)
+            ctx!.lineTo(cssWidth, sy + 0.5)
           }
         }
-        ctx.strokeStyle = isMajorPass ? majorColor : minorColor
-        ctx.lineWidth = 1
-        ctx.stroke()
+        ctx!.strokeStyle = isMajorPass ? majorColor : minorColor
+        ctx!.lineWidth = 1
+        ctx!.stroke()
       }
 
-      if (drawMinors) {
-        drawAxisLines("x", gridSize, false)
-        drawAxisLines("y", gridSize, false)
-      }
+      // 次线与主线均用升档后的步长；zoom 足够大时 minorStep === gridSize，行为与原先一致
+      drawAxisLines("x", minorStep, false)
+      drawAxisLines("y", minorStep, false)
       drawAxisLines("x", majorStep, true)
       drawAxisLines("y", majorStep, true)
     }
@@ -196,44 +269,57 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
       ctx.font = "10px ui-sans-serif, system-ui, sans-serif"
       ctx.textBaseline = "middle"
 
-      // 过密时标尺也只画主刻度
-      const tickStep = drawMinors ? gridSize : majorStep
-
-      // 顶标尺（world X）
+      // 顶标尺：短刻度批量 stroke 一次；数字仅 labelStep
       ctx.textAlign = "center"
-      for (const world of visibleGridLines(worldMinX, worldMaxX, tickStep)) {
-        const sx = worldToScreen({ x: world, y: 0 }, viewport).x
+      let lastLabelRight = -Infinity
+      ctx.beginPath()
+      for (const world of visibleGridLines(worldMinX, worldMaxX, rulerTickStep)) {
+        const sx = toScreenX(world)
         if (sx < RULER_SIZE - 1 || sx > cssWidth + 1) continue
-        const isMajor = !drawMinors || isMajorGridLine(world, gridSize)
-        const tickH = isMajor ? 8 : 4
-        ctx.beginPath()
+        const showLabel = isLabelStep(world, rulerLabelStep)
+        const tickH = showLabel ? 8 : 4
         ctx.moveTo(sx + 0.5, RULER_SIZE - tickH)
         ctx.lineTo(sx + 0.5, RULER_SIZE)
-        ctx.stroke()
-        if (isMajor) {
-          ctx.fillText(formatWorldLabel(world), sx, RULER_SIZE / 2 - 1)
+        if (showLabel) {
+          const text = formatWorldLabel(world)
+          const halfW = ctx.measureText(text).width / 2
+          // 与上一标签重叠则跳过（极端长数字的安全网）
+          if (sx - halfW >= lastLabelRight + 4) {
+            ctx.fillText(text, sx, RULER_SIZE / 2 - 1)
+            lastLabelRight = sx + halfW
+          }
         }
       }
+      ctx.strokeStyle = rulerTick
+      ctx.stroke()
 
-      // 左标尺（world Y）
-      for (const world of visibleGridLines(worldMinY, worldMaxY, tickStep)) {
-        const sy = worldToScreen({ x: 0, y: world }, viewport).y
+      // 左标尺：刻度批量 stroke；标签仍逐个 rotate（次数已由 labelStep 限制）
+      let lastLabelEdge = -Infinity
+      ctx.beginPath()
+      for (const world of visibleGridLines(worldMinY, worldMaxY, rulerTickStep)) {
+        const sy = toScreenY(world)
         if (sy < RULER_SIZE - 1 || sy > cssHeight + 1) continue
-        const isMajor = !drawMinors || isMajorGridLine(world, gridSize)
-        const tickW = isMajor ? 8 : 4
-        ctx.beginPath()
+        const showLabel = isLabelStep(world, rulerLabelStep)
+        const tickW = showLabel ? 8 : 4
         ctx.moveTo(RULER_SIZE - tickW, sy + 0.5)
         ctx.lineTo(RULER_SIZE, sy + 0.5)
-        ctx.stroke()
-        if (isMajor) {
-          ctx.save()
-          ctx.translate(RULER_SIZE / 2 - 1, sy)
-          ctx.rotate(-Math.PI / 2)
-          ctx.textAlign = "center"
-          ctx.fillText(formatWorldLabel(world), 0, 0)
-          ctx.restore()
+        if (showLabel) {
+          const text = formatWorldLabel(world)
+          const halfW = ctx.measureText(text).width / 2
+          if (sy - halfW >= lastLabelEdge + 4) {
+            ctx.save()
+            ctx.translate(RULER_SIZE / 2 - 1, sy)
+            ctx.rotate(-Math.PI / 2)
+            ctx.textAlign = "center"
+            ctx.fillStyle = rulerText
+            ctx.fillText(text, 0, 0)
+            ctx.restore()
+            lastLabelEdge = sy + halfW
+          }
         }
       }
+      ctx.strokeStyle = rulerTick
+      ctx.stroke()
 
       // 角块盖住交叉
       ctx.fillStyle = rulerBg
@@ -242,23 +328,24 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
       ctx.strokeRect(0.5, 0.5, RULER_SIZE - 1, RULER_SIZE - 1)
 
       if (cursorWorld !== null) {
-        const screen = worldToScreen(cursorWorld, viewport)
+        const screenX = toScreenX(cursorWorld.x)
+        const screenY = toScreenY(cursorWorld.y)
         ctx.strokeStyle = cursorColor
         ctx.fillStyle = cursorColor
         ctx.lineWidth = 1
 
         // 顶标尺游标
-        if (screen.x >= RULER_SIZE && screen.x <= cssWidth) {
+        if (screenX >= RULER_SIZE && screenX <= cssWidth) {
           ctx.beginPath()
-          ctx.moveTo(screen.x + 0.5, 0)
-          ctx.lineTo(screen.x + 0.5, RULER_SIZE)
+          ctx.moveTo(screenX + 0.5, 0)
+          ctx.lineTo(screenX + 0.5, RULER_SIZE)
           ctx.stroke()
         }
         // 左标尺游标
-        if (screen.y >= RULER_SIZE && screen.y <= cssHeight) {
+        if (screenY >= RULER_SIZE && screenY <= cssHeight) {
           ctx.beginPath()
-          ctx.moveTo(0, screen.y + 0.5)
-          ctx.lineTo(RULER_SIZE, screen.y + 0.5)
+          ctx.moveTo(0, screenY + 0.5)
+          ctx.lineTo(RULER_SIZE, screenY + 0.5)
           ctx.stroke()
         }
 
@@ -271,7 +358,7 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
         const boxW = textW + pad * 2
         const boxH = 14
         const boxX = Math.min(
-          Math.max(RULER_SIZE + 4, screen.x + 8),
+          Math.max(RULER_SIZE + 4, screenX + 8),
           Math.max(RULER_SIZE + 4, cssWidth - boxW - 2),
         )
         const boxY = 3
@@ -287,6 +374,8 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
 
   const destroy = (): void => {
     destroyed = true
+    ctx = null
+    theme = null
     element.remove()
   }
 

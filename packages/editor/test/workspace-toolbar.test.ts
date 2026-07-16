@@ -47,15 +47,30 @@ describe("workspace toolbar", () => {
     const pan = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!
     const snap = root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-snap']")!
     const gridSize = root.querySelector<HTMLSelectElement>("[data-testid='workspace-grid-size']")!
+    const snapUnit = root.querySelector<HTMLDivElement>("[data-testid='workspace-snap-granularity']")!
     expect(grid.getAttribute("aria-label")).toBe("切换网格")
     expect(grid.title).toBe("切换网格")
     expect(grid.querySelector("svg")).not.toBeNull()
-    expect(snap.getAttribute("aria-label")).toBe("吸附到网格")
+    expect(snap.getAttribute("aria-label")).toBe("启用网格吸附")
     expect(snap.getAttribute("aria-pressed")).toBe("true")
     expect(snap.disabled).toBe(false)
-    expect(gridSize.getAttribute("aria-label")).toBe("网格步长")
+    expect(snapUnit?.contains(snap)).toBe(true)
+    expect(snapUnit?.contains(gridSize)).toBe(true)
+    expect(snapUnit?.dataset.snapEnabled).toBe("true")
+    expect(gridSize.getAttribute("aria-label")).toBe("吸附颗粒度")
+    expect(gridSize.className).toContain("composeui-editor__toolbar-granularity")
     expect(gridSize.value).toBe("8")
-    expect(Array.from(gridSize.options).map((option) => option.value)).toEqual(["8", "16", "32"])
+    expect(Array.from(gridSize.options).map((option) => option.value)).toEqual([
+      "1",
+      "2",
+      "4",
+      "8",
+      "16",
+      "32",
+      "64",
+      "128",
+      "256",
+    ])
     expect(select.getAttribute("aria-pressed")).toBe("true")
     expect(root.querySelectorAll("[data-testid='workspace-toolbar-divider']")).toHaveLength(4)
     expect(root.querySelectorAll(".composeui-editor__toolbar-group")).toHaveLength(5)
@@ -112,6 +127,10 @@ describe("workspace toolbar", () => {
 
     context.session.setSnapEnabled(false)
     expect(snap.getAttribute("aria-pressed")).toBe("false")
+    expect(
+      root.querySelector<HTMLDivElement>("[data-testid='workspace-snap-granularity']")?.dataset
+        .snapEnabled,
+    ).toBe("false")
   })
 
   it("enables history controls from editor history without rendering the panel menu", () => {

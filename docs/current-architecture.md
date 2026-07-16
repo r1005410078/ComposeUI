@@ -249,7 +249,7 @@ History                 gridVisible / gridSize     toolbar / output
 - 写入：`EditorSession.setGridSize` / `setSnapEnabled` / `setGridVisible`；可观察 op：`session.gridSize`、`session.snapEnabled`、`session.gridVisibility`。
 - **不**写入 `PageDocument`；golden 导出 JSON 不含这些字段。
 - 吸附纯函数：`session/snap.ts`（`snapScalar` / `snapPoint` / `snapRect`）；非法 step 抛 `INVALID_GRID_SIZE`。
-- 工具条：`workspace/toolbar.ts` 提供网格显隐、吸附开关、步长选择（8/16/32 + 自定义合法值）。
+- 工具条：`workspace/toolbar.ts` 提供网格显隐；吸附开关与颗粒度 combo 合为 UE 式单元（预设 1…256 的 2 的幂 + 自定义合法值）。
 - 回放 checkpoint 缺省 `gridSize`/`snapEnabled` 时回落 `8`/`true`（`replay-preview-source.ts`）。
 
 ### 5.3 主要源码落点
@@ -282,7 +282,7 @@ workspace (position: relative)
   └── overlay            # SVG 选框/手柄
 ```
 
-- **主网格**间距 = `gridSize × 4`（`GRID_MAJOR_EVERY`）；`zoom * gridSize` 过小（`< MIN_MINOR_SCREEN_PX`）时跳过次线。
+- **自适应步长（Godot 式）**：从 `gridSize` 起对 world 步长反复 ×2，直到屏幕间距达标（`adaptiveWorldStep`）。次线目标 ≥ `MIN_MINOR_SCREEN_PX`，主线 = 次线 × `GRID_MAJOR_EVERY`；标尺短刻度 / 数字分别用 `MIN_RULER_TICK_SCREEN_PX` / `MIN_RULER_LABEL_SCREEN_PX`，极小 zoom 时数字不会挤成一团。
 - 网格按 **viewport 可见 world AABB** 绘制（外扩一步），不 clip 到 page board；节点仍由 DOM 渲染，底景只负责辅助线与标尺。
 - 视口/grid 字段/resize/DPR 变化时 `mountEditor` 调用 `setSize` + `redraw`；指针 world 位置驱动标尺游标。
 
