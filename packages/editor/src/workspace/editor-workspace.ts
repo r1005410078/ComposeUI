@@ -652,6 +652,8 @@ export function mountEditorWorkspace(
       if (dockview.getPanel(actualId) === undefined) return false
       syncObservedPanelIds()
       events({ type: "panel-opened", panelId: actualId })
+      // 不依赖 Dockview 是否同步发出 onDidLayoutChange（键盘关面板等路径）
+      scheduleLayout()
       return true
     },
     closePanel(id) {
@@ -669,6 +671,7 @@ export function mountEditorWorkspace(
       }
       syncObservedPanelIds()
       events({ type: "panel-closed", panelId: actualId })
+      scheduleLayout()
       return true
     },
     focusPanel(id) {

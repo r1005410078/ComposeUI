@@ -30,7 +30,8 @@ const PANEL_META: Record<
 > = {
   scene: { title: "场景", closable: true, defaultPosition: "left" },
   resources: { title: "资源", closable: true, defaultPosition: "left" },
-  history: { title: "历史", closable: false, defaultPosition: "left" },
+  // 可关闭：E2E/用户可关掉历史并期望布局写入 localStorage 后跨刷新保持
+  history: { title: "历史", closable: true, defaultPosition: "left" },
   canvas: { title: "画布", closable: false, defaultPosition: "center" },
   inspector: { title: "检查器", closable: false, defaultPosition: "right" },
   signals: { title: "信号", closable: false, defaultPosition: "right" },

@@ -778,9 +778,14 @@ test("persists a closed History panel across reload", async ({ page }) => {
   await expect(historyTab).toBeVisible()
   await historyTab.press("Delete")
   await expect(page.getByRole("tab", { name: "历史" })).toHaveCount(0)
-  await expect(
-    page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v2")),
-  ).resolves.not.toContain('"component":"history"')
+  // Layout save is debounced (~150ms); wait until the envelope is actually written.
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v2")), {
+      timeout: 5_000,
+    })
+    .not.toBeNull()
+  const stored = await page.evaluate(() => localStorage.getItem("composeui:workspace:2d:v2"))
+  expect(stored).not.toContain('"component":"history"')
   await page.reload()
   await expect(page.getByRole("tab", { name: "历史" })).toHaveCount(0)
   await expect(page.getByRole("tab", { name: "画布" })).toBeVisible()
