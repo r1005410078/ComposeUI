@@ -1,8 +1,26 @@
+/**
+ * @module transaction
+ *
+ * 文档权威状态的唯一原子写路径。
+ *
+ * 流程：clone → draft 变更 → 形状与树校验 → 建 patch/inverse → apply → 新 store。
+ * 失败返回原 store，无部分提交。
+ *
+ * 关键策略（M1）：
+ * - 禁止在普通事务中创建/删除 document、创建/删除 page（仅初始化）
+ * - patch 应用有前置条件（before 必须匹配当前），防止脏写
+ * - 同一 id 不得同时出现在 created/updated/removed
+ *
+ * 数据流：Command.prepare → transact(draft) → History.record(forward/inverse)。
+ * UI 与 Session 不得调用 draft 绕过命令层写持久数据。
+ */
+
 import type { Diagnostic, Result } from "./diagnostics"
 import type { PersistentRecord } from "./schema"
 import { RecordStore, updateRecord, validateRecordShape } from "./store"
 import { deepEqual, validateNodeTree } from "./validation"
 
+/** 事务来源，供 history、协作与诊断区分本地命令 vs 撤销重做等。 */
 export type TransactionOrigin =
   | { kind: "local-command"; commandId: string }
   | { kind: "history-undo"; transactionId: string }
@@ -10,6 +28,7 @@ export type TransactionOrigin =
   | { kind: "history-jump"; transactionId: string }
   | { kind: "system-init" }
 
+/** 单条更新在 patch 中的前后快照（含完整 record，便于 inverse 与 precondition）。 */
 export interface UpdatedRecordPatch {
   id: string
   typeName: PersistentRecord["typeName"]
@@ -17,12 +36,14 @@ export interface UpdatedRecordPatch {
   after: PersistentRecord
 }
 
+/** 一次事务的前向变更集。 */
 export interface TransactionPatch {
   created: PersistentRecord[]
   updated: UpdatedRecordPatch[]
   removed: PersistentRecord[]
 }
 
+/** 事务草稿 API：只在 execute 回调内有效，不直接暴露给 UI。 */
 export interface TransactionDraft {
   create(record: PersistentRecord): void
   update(id: string, patch: Partial<PersistentRecord>): void
@@ -63,6 +84,7 @@ function sameValue(left: unknown, right: unknown): boolean {
   return deepEqual(left, right)
 }
 
+/** 比较业务字段是否变化；忽略 id/typeName/revision，避免 revision-only “假更新”。 */
 function recordsDiffer(before: PersistentRecord, after: PersistentRecord): boolean {
   const beforeRecord = before as unknown as Record<string, unknown>
   const afterRecord = after as unknown as Record<string, unknown>
@@ -104,6 +126,7 @@ function buildPatch(before: RecordMap, after: RecordMap): TransactionPatch {
   return { created, updated, removed }
 }
 
+/** 全库形状 + 文档基数 + 节点树策略。 */
 function validateRecords(records: RecordMap): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   for (const record of records.values()) {
@@ -197,6 +220,10 @@ function duplicatePatchRecordId(patch: TransactionPatch): string | undefined {
   return undefined
 }
 
+/**
+ * 在校验前置条件后把 patch 应用到 store。
+ * undo/redo 与 transact 成功路径共用，保证回放语义一致。
+ */
 function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): PatchApplyResult {
   const duplicateId = duplicatePatchRecordId(patch)
   if (duplicateId !== undefined) {
@@ -265,10 +292,16 @@ function applyTransactionPatch(store: RecordStore, patch: TransactionPatch): Pat
   }
 }
 
+/** 对外 apply：History 与外部回放使用。 */
 export function applyPatch(store: RecordStore, patch: TransactionPatch): PatchApplyResult {
   return applyTransactionPatch(store, patch)
 }
 
+/**
+ * 执行原子事务。
+ * execute 内抛 TransactionError 或任意 Error 都会回滚到入参 store。
+ * 无业务变更时仍 ok:true，但 patch 为空（History 可忽略）。
+ */
 export function transact(
   store: RecordStore,
   origin: TransactionOrigin,
@@ -308,6 +341,7 @@ export function transact(
           throw operationError("MISSING_RECORD_ID", "Record id does not exist.", id)
         }
         const rawPatch = patch as Record<string, unknown>
+        // 身份字段必须在类型层与运行时双重禁止
         for (const field of ["id", "typeName", "revision"] as const) {
           if (Object.prototype.hasOwnProperty.call(rawPatch, field)) {
             throw operationError(
@@ -364,6 +398,7 @@ export function transact(
     const applied = applyTransactionPatch(store, patch)
     if (!applied.ok) throw new TransactionError(applied.diagnostics)
     const next = applied.value
+    // inverse：created↔removed 对调，updated 的 before/after 对调
     const inverse: TransactionPatch = {
       created: patch.removed.map((record) => structuredClone(record)),
       updated: patch.updated.map((update) => ({

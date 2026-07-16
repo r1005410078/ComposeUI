@@ -1,3 +1,14 @@
+/**
+ * @module @composeui/editor
+ *
+ * 可嵌入的编辑器 UI 层：Session、画布、组件树、Dockview workspace、操作日志与回放壳。
+ *
+ * 依赖 `@composeui/core` 做文档权威写入；本包负责会话态与 DOM。
+ * 引入本入口会加载 editor/theme/workspace 样式与 dockview CSS。
+ *
+ * 典型组合：createEditor → EditorSession → mountEditorWorkspace / mountEditor。
+ */
+
 import "dockview/dist/styles/dockview.css"
 import "./theme.css"
 import "./editor.css"

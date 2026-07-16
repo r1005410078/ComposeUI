@@ -4,10 +4,7 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest"
 import { IDBFactory, indexedDB } from "fake-indexeddb"
 import { IndexedDbOperationLogStore } from "@composeui/operation-log"
 import type { DockviewFactory, EditorWorkspaceDockview } from "@composeui/editor"
-import {
-  createPlaygroundOperationRuntime,
-  type PlaygroundOperationRuntime,
-} from "./main"
+import { createPlaygroundOperationRuntime, type PlaygroundOperationRuntime } from "./main"
 
 function createDockviewFake(): DockviewFactory {
   return (_root, _options) => {
@@ -114,7 +111,9 @@ describe("playground operation log runtime", () => {
         expect.objectContaining({ type: "workspace.layout.changed" }),
       ]),
     )
-    await expect(runtime.store.getNearestCheckpoint(runtime.recorder.sessionId, 100)).resolves.toMatchObject({
+    await expect(
+      runtime.store.getNearestCheckpoint(runtime.recorder.sessionId, 100),
+    ).resolves.toMatchObject({
       workspaceState: workspace.api.getLayoutSnapshot(),
       workspaceHash: expect.any(String),
     })

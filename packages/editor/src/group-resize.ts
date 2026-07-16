@@ -1,3 +1,12 @@
+/**
+ * @module group-resize
+ *
+ * 多选包围盒缩放的纯几何：按手柄拖拽重算组 bounds，并按比例映射各子项。
+ *
+ * 用于指针预览；松手后应 dispatch `node.resizeMany`。
+ * 最小边长钳制为 1，与 core Free Layout 尺寸策略一致。
+ */
+
 export type GroupResizeHandle = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw"
 
 export interface GroupResizeItem {
@@ -20,6 +29,7 @@ export interface GroupResizePointer {
   y: number
 }
 
+/** 轴对齐包围盒；空数组抛错。 */
 export function selectionBounds(items: readonly GroupResizeItem[]): GroupBounds {
   if (items.length === 0) {
     throw new Error("Cannot calculate selection bounds without items")
@@ -43,6 +53,10 @@ export function selectionBounds(items: readonly GroupResizeItem[]): GroupBounds 
   )
 }
 
+/**
+ * 拖拽某手柄后的新 bounds 与各项布局。
+ * 相对 initial 做均匀缩放；对侧边保持不动（由 handle 字母决定）。
+ */
 export function resizeGroup(
   items: readonly GroupResizeItem[],
   initial: GroupBounds,
@@ -51,6 +65,7 @@ export function resizeGroup(
 ): { bounds: GroupBounds; items: GroupResizeItem[] } {
   const bounds = { ...initial }
 
+  // 保证 left < right、top < bottom，至少 1px 厚度
   if (handle.includes("w")) {
     bounds.left = Math.min(pointer.x, initial.right - 1)
   }

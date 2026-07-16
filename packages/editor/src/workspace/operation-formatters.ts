@@ -1,9 +1,18 @@
+/**
+ * @module workspace/operation-formatters
+ *
+ * Output 列表人类可读摘要。按 event.type 注册 formatter；
+ * 内置 document/history/session 等；未知类型走 safeText 回落。
+ * formatter 抛错不得打挂列表。
+ */
+
 import type { OperationEvent } from "@composeui/operation-log"
 
 export type OperationFormatter = (event: OperationEvent) => string
 
 const formatters = new Map<string, OperationFormatter>()
 
+/** 注册/覆盖某 type 的摘要函数；返回 dispose 取消注册。 */
 export function registerOperationFormatter(
   type: string,
   formatter: OperationFormatter,
@@ -15,6 +24,7 @@ export function registerOperationFormatter(
   }
 }
 
+/** 生成单行摘要；优先自定义 formatter。 */
 export function formatOperation(event: OperationEvent): string {
   const formatter = formatters.get(event.type)
   try {

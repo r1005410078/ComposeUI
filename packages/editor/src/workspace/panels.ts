@@ -1,3 +1,12 @@
+/**
+ * @module workspace/panels
+ *
+ * 一等公民默认面板定义：场景树、画布、历史、检查器占位、输出等。
+ * createWorkspacePanels 供 mountEditorWorkspace 注册；插件可额外 register。
+ *
+ * 画布面板 view=canvas；树走 mountComponentTree；output 走 output-panel。
+ */
+
 import type { EditorRecord, HistoryEntry } from "@composeui/core"
 import { mountComponentTree } from "../component-tree"
 import { mountEditor } from "../editor-view"
@@ -304,6 +313,7 @@ export function createUtilityPanel(
   return descriptor(id, emptyPanel(id, meta.title))
 }
 
+/** 返回内置面板描述符列表（新数组，可再 register 到 PanelRegistry）。 */
 export function createWorkspacePanels(): FirstPartyPanelDescriptor[] {
   return [
     createScenePanel(),

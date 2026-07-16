@@ -220,9 +220,7 @@ test("persists workspace panel activity across reload without mutating the canva
   await expect(canvasNodes).toHaveCount(canvasNodeCount)
 })
 
-test("replays a legacy persisted node move through the operation bundle", async ({
-  page,
-}) => {
+test("replays a legacy persisted node move through the operation bundle", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("tab", { name: "画布" }).click()
   const blue = page.locator("[data-node-id='node-blue']")

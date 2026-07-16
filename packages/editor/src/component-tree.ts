@@ -1,3 +1,16 @@
+/**
+ * @module component-tree
+ *
+ * 组件树 DOM 面板：投影 `getTreeItems` + Session 选中/展开，命令走 core Editor。
+ *
+ * 职责：
+ * - 渲染 page/node 层级，rename / visible / lock / 同级 reorder（拖拽）
+ * - 选中写入 Session，文档变更 `editor.dispatch`
+ * - 重建时尽量恢复焦点，避免键盘导航被打断
+ *
+ * 边界：不持有权威文档副本；store 由挂载方在 editor 变更后传入 update。
+ */
+
 import { getTreeItems } from "@composeui/core"
 import type {
   Diagnostic,
@@ -77,6 +90,7 @@ function restoreFocus(tree: HTMLElement, target: FocusTarget | undefined): void 
   }
 }
 
+/** 无修饰键：单选；Ctrl/Meta/Shift：切换多选（M1 简化，非 range select）。 */
 function selectItem(
   session: EditorSession,
   id: string,
@@ -208,6 +222,10 @@ function lockedTreeRecord(store: RecordStore, id: string): string | undefined {
   return undefined
 }
 
+/**
+ * 将 source 排到 target 同级邻近 index，并 dispatch node.reorder。
+ * 禁止拖到自身子孙（由调用方/校验拒绝）。
+ */
 export function reorderTreeItem(
   editor: Editor,
   store: RecordStore,
@@ -451,6 +469,7 @@ function buildTree(
   tree.replaceChildren(fragment)
 }
 
+/** 判断事务 patch 是否影响树展示（忽略纯几何 layout 变更，避免拖拽时整树重建）。 */
 export function treeNeedsUpdate(patch: TransactionPatch): boolean {
   if (patch.created.length > 0 || patch.removed.length > 0) return true
   return patch.updated.some(({ before, after }) => {
@@ -473,6 +492,7 @@ function sameArray(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
+/** 构建可复用的树视图对象；update(rebuild=true) 会重建 DOM 并尽量保焦/滚动。 */
 export function createComponentTree(
   store: RecordStore,
   pageId: string,
@@ -569,6 +589,7 @@ export function mountComponentTreeView(
   }
 }
 
+/** 独立挂载组件树（非 combined editor-view）；用于 workspace 左栏等。 */
 export function mountComponentTree(
   root: HTMLElement,
   editor: Editor,

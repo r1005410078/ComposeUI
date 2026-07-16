@@ -1,3 +1,10 @@
+/**
+ * @module workspace/toolbar
+ *
+ * 工作区顶栏：选择/平移模式、网格、undo/redo 等。
+ * 文档命令代理 Editor；交互模式写 Session；预览激活时可禁用编辑控件。
+ */
+
 import {
   Eye,
   Grid3X3,
@@ -62,6 +69,7 @@ function toolbarGroup(...buttons: HTMLButtonElement[]): HTMLDivElement {
   return group
 }
 
+/** 挂载工作区工具条；返回的 destroy 移除 DOM 与订阅。 */
 export function mountWorkspaceToolbar(
   root: HTMLElement,
   options: WorkspaceToolbarOptions,

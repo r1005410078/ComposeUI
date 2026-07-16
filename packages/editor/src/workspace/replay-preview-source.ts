@@ -1,3 +1,10 @@
+/**
+ * @module workspace/replay-preview-source
+ *
+ * 把 ReplayController 状态投影为 EditorPreviewSource，供画布只读预览回放帧。
+ * 解析 checkpoint 中的 document/session；非法结构时保持 inactive。
+ */
+
 import type { EditorPreviewFrame, EditorPreviewSource } from "../editor-view"
 import type { EditorSessionState } from "../session"
 import type { ReplayControllerPort, ReplayControllerState } from "./replay-controller"
@@ -62,6 +69,7 @@ function previewFrameFromState(state: ReplayControllerState): EditorPreviewFrame
   }
 }
 
+/** 订阅 controller，产出 active 预览帧；dispose 取消订阅。 */
 export function createReplayPreviewSource(controller: ReplayControllerPort): ReplayPreviewSource {
   let current = previewFrameFromState(controller.getState())
   let disposed = false

@@ -1,3 +1,10 @@
+/**
+ * @module workspace/output-replay-bar
+ *
+ * Output 底部回放控制条：步进、连续播放、暂停、停止、校验等。
+ * 调用 ReplayControllerPort；错误经 onError 上报，不抛到 DOM 处理器外。
+ */
+
 import {
   BadgeCheck,
   FastForward,
@@ -38,6 +45,7 @@ function textElement(
   return element
 }
 
+/** 挂载回放控制条；busy 时禁用部分按钮。 */
 export function mountOutputReplayBar(
   root: HTMLElement,
   options: OutputReplayBarOptions,

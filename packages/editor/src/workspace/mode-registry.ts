@@ -1,3 +1,10 @@
+/**
+ * @module workspace/mode-registry
+ *
+ * 工作区模式（如 2d 编辑）贡献点。多模式时才渲染 mode bar。
+ * 当前产品默认单 2d mode；注册表为后续 3d/预览模式预留。
+ */
+
 import type { WorkspaceModeDescriptor } from "./types"
 
 export class ModeRegistryError extends Error {

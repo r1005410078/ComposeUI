@@ -244,6 +244,69 @@ Use one testing stack:
 - Public packages must remain consumable by ordinary npm, pnpm, Yarn, Node, and Vite hosts.
 - Root scripts must expose stable `dev`, `build`, `typecheck`, `lint`, `format:check`, `test`, and `check` entry points.
 
+## Code Comment Conventions
+
+Source comments use style **A+D** (intent-focused + module narrative). Comment body language is **Chinese**. Identifiers, error codes, `@module` names, and public API symbols stay English.
+
+This applies to production TypeScript in `packages/core` and `packages/editor` first; follow the same style when editing other packages unless a package documents an exception.
+
+### Style A — Intent, Not Narration
+
+Write **why / invariant / boundary / failure semantics**, not a line-by-line translation of the code.
+
+| Write | Do not write |
+| --- | --- |
+| Module or export constraints (Document vs Session, single write path, isolation) | Restating what the signature already says |
+| Non-obvious invariants and policy (e.g. empty patch skips history) | `@param x - the x` style noise |
+| Side effects, observer isolation, and “must not block” rules | Change logs, dated TODOs, or speculative future design essays |
+| Coordinate space and ownership notes (screen / world / parent-local) | Comments on every private one-liner helper |
+
+Prefer a short block above a public export or a one-line `//` at a non-obvious branch. If the code is already clear, add nothing.
+
+### Style D — Module Narrative
+
+Every non-trivial source file should open with a module header:
+
+```ts
+/**
+ * @module transaction
+ *
+ * 文档权威状态的唯一原子写路径。
+ *
+ * 边界：…
+ * 数据流：Command → transact → History
+ */
+```
+
+Include, when useful:
+
+- **职责**：what this file owns
+- **边界**：what it must not depend on or must not store
+- **数据流**：how callers reach the next layer
+
+Do not paste long design-doc prose into source. Link to `docs/superpowers/specs/…` when the full rationale lives there.
+
+### Where Comments Belong
+
+1. **File top** — `@module` narrative (D).
+2. **Public exports** — one short Chinese summary plus constraints when non-obvious (A).
+3. **Critical private paths** — only where behavior would surprise a careful reader (A).
+4. **Tool directives** — keep `oxlint-disable` (and similar) with an English or Chinese reason on the same line or the next line.
+
+### Language Rules
+
+- Comment prose: Chinese.
+- Type names, command ids, diagnostic codes, package names: English as in code.
+- Do not require full TSDoc `@param` / `@returns` / `@throws` on every symbol. Add them only when they carry real contract detail beyond the TypeScript types.
+- Tests may stay lightly commented; prefer readable test names over essay comments.
+
+### Anti-Patterns
+
+- Commenting every field of an obvious DTO.
+- English module essay + Chinese method comments mixed without need (pick Chinese for prose).
+- Duplicating the main product design document inside source files.
+- Leaving comments that contradict current behavior; update or delete them with the code change.
+
 ## Expected Implementation Order
 
 Unless a narrower user request overrides it, implement in vertical slices:
@@ -277,6 +340,7 @@ While editing:
 - Keep domain logic outside UI components.
 - Route persistent changes through commands and transactions.
 - Keep external integrations behind ports.
+- Follow [Code Comment Conventions](#code-comment-conventions) (A+D, Chinese prose) for new or touched modules.
 - Avoid unrelated refactors and speculative abstractions.
 - Add diagnostics for invalid external data instead of silent fallback.
 

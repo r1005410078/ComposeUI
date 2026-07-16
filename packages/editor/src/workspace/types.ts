@@ -1,8 +1,18 @@
+/**
+ * @module workspace/types
+ *
+ * Dockview 工作区的共享类型：上下文、命令、面板描述符、布局持久化、事件。
+ *
+ * 布局（panel 分栏）属 workspace 会话/本地存储，不等于 PageDocument。
+ * 面板 mount 函数可返回 destroy，由 workspace 在卸下面板时调用。
+ */
+
 import type { Editor } from "@composeui/core"
 import type { EditorPreviewSource } from "../editor-view"
 import type { EditorSession } from "../session"
 import type { OperationLogControllerPort } from "../operation-log-controller-port"
 
+/** 注入每个面板 mount 的运行时上下文。 */
 export interface WorkspaceContext {
   editor: Editor
   session: EditorSession
@@ -14,6 +24,7 @@ export interface WorkspaceContext {
   emit: (event: WorkspaceEvent) => void
 }
 
+/** 工具栏与 API 共用的工作区命令（非文档 EditorCommand）。 */
 export type WorkspaceCommand =
   | { type: "open-panel"; panelId: string }
   | { type: "close-panel"; panelId: string }
@@ -78,9 +89,11 @@ export interface WorkspaceResourceService {
   list(): readonly unknown[] | Promise<readonly unknown[]>
 }
 
+/** 本地持久化的 Dockview 布局；version/modeId 用于拒绝不兼容快照。 */
 export interface StoredWorkspaceLayout {
   version: 1
   modeId: "2d"
+  /** dockview toJSON 产物，结构对 editor 不透明。 */
   layout: unknown
 }
 
@@ -90,6 +103,7 @@ export interface WorkspaceError {
   code?: string
 }
 
+/** 将未知 throw 值规范为可序列化 WorkspaceError（供事件总线/日志）。 */
 export function serializeWorkspaceError(error: unknown): WorkspaceError {
   if (error !== null && typeof error === "object") {
     const name = readStringProperty(error, "name")
@@ -133,6 +147,7 @@ export interface WorkspacePanelFailureEvent {
   error: unknown
 }
 
+/** 工作区运行时事件；failure 类的 error 可能是原始 throw 值。 */
 export type WorkspaceEvent =
   | { type: "panel-opened"; panelId: string }
   | { type: "panel-closed"; panelId: string }
@@ -143,6 +158,7 @@ export type WorkspaceEvent =
   | WorkspaceLayoutFailureEvent
   | WorkspacePanelFailureEvent
 
+/** 跨边界传递用：failure.error 已序列化为 WorkspaceError。 */
 export type SerializedWorkspaceEvent =
   | Exclude<WorkspaceEvent, WorkspaceLayoutFailureEvent | WorkspacePanelFailureEvent>
   | { type: "layout-failure"; operation: "load" | "save" | "remove"; error: WorkspaceError }

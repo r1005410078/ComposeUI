@@ -1,3 +1,13 @@
+/**
+ * @module @composeui/core
+ *
+ * ComposeUI 文档内核公共出口：schema、Store、事务、命令、History、投影。
+ * 不依赖 Vue/React、DOM、Yjs、Playground。
+ *
+ * 推荐宿主用法：createEditor(document) → dispatch 命令 → subscribe 渲染；
+ * 导出用 canonicalizeDocument(store)。会话态请用 @composeui/editor 的 EditorSession。
+ */
+
 export type { Diagnostic, Result } from "./diagnostics"
 export { createEditor } from "./commands"
 export type { EditorOperation, EditorOperationObserver } from "./operations"

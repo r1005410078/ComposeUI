@@ -1,6 +1,21 @@
+/**
+ * @module store
+ *
+ * 归一化、不可变的权威 Record Store。
+ *
+ * 设计要点：
+ * - 对外始终返回 structuredClone，防止 UI/调用方就地改坏权威状态。
+ * - 写路径通过 `with*` 产生新实例 + 递增 store.revision，不原地 mutate。
+ * - 单 record 形状校验在此；跨 record 树策略在 validation / transaction。
+ *
+ * 边界：Store 本身不做 undo；History 持有 patch，通过 applyPatch 回放。
+ * 数据流：PageDocument → fromDocument → transact/applyPatch → 新 RecordStore。
+ */
+
 import type { PageDocument, PersistentRecord, RecordUpdatePatch } from "./schema"
 import { deepEqual, validateNodeTree } from "./validation"
 
+/** 各 typeName 允许出现在业务 patch 中的字段白名单。 */
 const UPDATE_FIELDS: Record<PersistentRecord["typeName"], ReadonlySet<string>> = {
   document: new Set(["rootPageId"]),
   page: new Set(["name", "width", "height", "background", "overflow", "layout"]),
@@ -23,6 +38,10 @@ function isFreeLayout(value: unknown): boolean {
   )
 }
 
+/**
+ * 校验单条 record 运行时形状。
+ * 失败抛出稳定错误码字符串（Error.message），供事务转 Diagnostic。
+ */
 export function validateRecordShape(record: PersistentRecord): void {
   if (record.typeName !== "document" && record.typeName !== "page" && record.typeName !== "node") {
     throw new Error("UNKNOWN_RECORD_TYPE")
@@ -69,12 +88,19 @@ export function validateRecordShape(record: PersistentRecord): void {
   }
 }
 
+/** 忽略 id/typeName/revision 后比较业务字段是否一致。 */
 function sameBusinessValue(left: PersistentRecord, right: PersistentRecord): boolean {
   const leftValue = { ...left, id: undefined, typeName: undefined, revision: undefined }
   const rightValue = { ...right, id: undefined, typeName: undefined, revision: undefined }
   return deepEqual(leftValue, rightValue)
 }
 
+/**
+ * 应用字段补丁并返回新 record。
+ * - 静默丢弃 id/typeName/revision 补丁键
+ * - 未知字段 → INVALID_RECORD_PATCH_FIELD
+ * - 业务值未变 → 返回 clone 且 revision 不递增
+ */
 export function updateRecord(
   record: PersistentRecord,
   patch: Partial<PersistentRecord>,
@@ -101,7 +127,12 @@ export function updateRecord(
   return updated
 }
 
+/**
+ * 不可变 record 集合。构造后内部 Map 只读；所有变更返回新 Store。
+ * 权威文档变更应经 transaction，而不是直接拼装 with*（with* 供事务与 patch 应用使用）。
+ */
 export class RecordStore {
+  /** 本实例相对装载以来的变更代数（非单 record.revision）。 */
   readonly revision: number
   readonly #records: ReadonlyMap<string, PersistentRecord>
 
@@ -110,6 +141,10 @@ export class RecordStore {
     this.revision = revision
   }
 
+  /**
+   * 从 PageDocument 装载并做文档级不变量检查。
+   * 要求：恰好 1 document、1 page，且 page 即 rootPageId；树策略通过。
+   */
   static fromDocument(document: PageDocument): RecordStore {
     const records = new Map<string, PersistentRecord>()
     for (const record of document.records) {
@@ -168,6 +203,10 @@ export class RecordStore {
     return new RecordStore(next, this.revision + 1)
   }
 
+  /**
+   * 一次应用删除/替换/创建（事务 commit 与 applyPatch 共用）。
+   * 调用方负责语义合法性；此处只保证 Map 操作与类型身份一致。
+   */
   withAppliedChanges(input: {
     removed: readonly string[]
     replaced: readonly PersistentRecord[]

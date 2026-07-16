@@ -1,3 +1,10 @@
+/**
+ * @module workspace/panel-registry
+ *
+ * 面板贡献点：按 id 注册 WorkspacePanelDescriptor，禁止重复注册。
+ * 宿主/插件在 mount workspace 前 register；core 不感知具体面板。
+ */
+
 import type { WorkspacePanelDescriptor } from "./types"
 
 export class WorkspaceRegistryError extends Error {

@@ -1,3 +1,11 @@
+/**
+ * @module workspace/output-panel
+ *
+ * Output 面板：工具条 + 事件列表 + 详情 + 回放条。
+ * 数据来自 context.operationLog；无 controller 时显示空态。
+ * 选中行可启动回放到对应 sequence。
+ */
+
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
 import { formatOperation } from "./operation-formatters"
 import type { OperationLogControllerState } from "../operation-log-controller-port"

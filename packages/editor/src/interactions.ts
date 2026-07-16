@@ -1,8 +1,19 @@
+/**
+ * @module interactions
+ *
+ * 指针拖拽的会话草稿：屏幕位移换算为 parent-local delta。
+ *
+ * 边界：此处只做预览/commit 几何，不写 Store。
+ * 完成时应 `commit()` 得到 delta 再 `editor.dispatch({ id: "node.move", ... })`。
+ */
+
 import type { Point } from "./coordinates"
 
 export interface PointerMoveSession {
   update(screen: Point): void
+  /** 当前预览下的 parent-local 位置（非 delta）。 */
   preview(): Point
+  /** 相对 startLocal 的位移，供 node.move。 */
   commit(): Point
 }
 
@@ -22,6 +33,11 @@ function assertFiniteResult(point: Point): void {
   }
 }
 
+/**
+ * @param startScreen 拖拽起点屏幕坐标
+ * @param startLocal 节点起始 parent-local
+ * @param zoom 当前 viewport.zoom（屏幕像素 / world 单位）
+ */
 export function createPointerMoveSession(
   startScreen: Point,
   startLocal: Point,

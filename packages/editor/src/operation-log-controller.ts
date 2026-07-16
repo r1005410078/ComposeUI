@@ -1,3 +1,14 @@
+/**
+ * @module operation-log-controller
+ *
+ * Output 面板的操作日志视图模型：从 OperationLogStore 拉行、过滤、选中与导入导出。
+ *
+ * 边界：
+ * - 不直接改文档；回放通过注入的 startReplay / replayController
+ * - store 订阅异步 refresh 用 generation 丢弃过期结果
+ * - UI listener 异常不得打断 refresh
+ */
+
 import type { OperationEvent, OperationLogStore } from "@composeui/operation-log"
 import type {
   OperationLogControllerListener,
@@ -28,6 +39,10 @@ export interface OperationLogControllerOptions {
   replayController?: ReplayControllerPort
 }
 
+/**
+ * 实现 OperationLogControllerPort；dispose 后 subscribe 为空操作。
+ * 导入导出与回放钩子可选，缺省为空实现便于单测。
+ */
 export class OperationLogController implements OperationLogControllerPort {
   readonly #store: OperationLogStore
   readonly #sessionId: string

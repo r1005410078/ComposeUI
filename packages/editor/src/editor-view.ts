@@ -1,3 +1,21 @@
+/**
+ * @module editor-view
+ *
+ * 画布与可选组合壳的 DOM 挂载：page board、节点 Light DOM、SVG 选中叠层、指针交互。
+ *
+ * 架构分层：
+ * - Document：core Editor + RecordStore（节点几何与属性）
+ * - Session：viewport / selection / pan 模式（不入文档）
+ * - 预览：EditorPreviewSource 可覆盖展示用 document/session（回放只读预览）
+ *
+ * 渲染约定：
+ * - 业务节点在 Light DOM（当前为 rectangle div）；编辑器 chrome 可用 Shadow/叠层
+ * - 选中框与手柄在 SVG overlay，不改节点内部 DOM
+ * - 拖拽/缩放过程用 session 预览，pointerup 再 dispatch 单次命令
+ *
+ * 数据流：mountEditor → 订阅 editor + session → 重绘 board；交互 → dispatch。
+ */
+
 import { createEditor } from "@composeui/core"
 import type { Editor, NodeRecord, PageDocument, PageRecord, RecordStore } from "@composeui/core"
 import type { EditorChangeEvent, TransactionPatch } from "@composeui/core"
@@ -30,10 +48,13 @@ const GROUP_RESIZE_HANDLES: readonly GroupResizeHandle[] = [
 export interface MountEditorOptions {
   pageId: string
   session?: EditorSession
+  /** combined：画布+内嵌树；canvas：仅画布（workspace 分栏时用）。 */
   view?: "combined" | "canvas"
+  /** 回放/只读预览源；active 时展示预览帧而非 live store。 */
   preview?: EditorPreviewSource
 }
 
+/** 预览帧：active=false 时视图回落 live editor。 */
 export interface EditorPreviewFrame {
   readonly active: boolean
   readonly document?: PageDocument
@@ -93,6 +114,7 @@ function indexChildren(store: RecordStore): Map<string, NodeRecord[]> {
   return children
 }
 
+/** 节点定位使用 parent-local；fill 经 safeColor 防 CSS 注入。 */
 function applyNodeStyle(element: HTMLElement, node: NodeRecord): void {
   Object.assign(element.style, {
     position: "absolute",
@@ -104,6 +126,7 @@ function applyNodeStyle(element: HTMLElement, node: NodeRecord): void {
   })
 }
 
+/** 默认白底走 CSS 变量空串，便于主题；其它颜色仍 sanitize。 */
 function applyPageStyle(board: HTMLElement, page: PageRecord): void {
   const pageBackground = page.background.trim().toLowerCase()
   Object.assign(board.style, {
@@ -441,6 +464,11 @@ function previewStore(frame: EditorPreviewFrame): RecordStore | undefined {
   return frame.document === undefined ? undefined : createEditor(frame.document).getStore()
 }
 
+/**
+ * 将编辑器挂到 host 容器。
+ * @param coreEditor 已装载文档的 core Editor（权威写入口）
+ * @returns destroy 时释放 DOM 与订阅；Session 若为外部传入则不销毁实例本身
+ */
 export function mountEditor(
   root: HTMLElement,
   coreEditor: Editor,

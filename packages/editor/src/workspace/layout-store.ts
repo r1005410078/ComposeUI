@@ -1,3 +1,10 @@
+/**
+ * @module workspace/layout-store
+ *
+ * 将 Dockview 布局 JSON 持久化到 StorageLike（通常 localStorage）。
+ * 损坏或版本不匹配时 load 返回 undefined，由 workspace 回落默认布局。
+ */
+
 import type { StoredWorkspaceLayout, WorkspaceLayoutStore } from "./types"
 
 export interface StorageLike {

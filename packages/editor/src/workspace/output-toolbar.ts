@@ -1,3 +1,10 @@
+/**
+ * @module workspace/output-toolbar
+ *
+ * Output 顶栏：级别/类别过滤、搜索、导入导出与回放入口控件。
+ * 变更通过回调写回 OperationLogController，不直接碰 store。
+ */
+
 import type { OperationCategory, OperationStatus } from "@composeui/operation-log"
 import { Filter, MoreHorizontal, Play, RotateCcw, Search, createElement } from "lucide"
 
@@ -102,6 +109,7 @@ function menuItem(testid: string, label: string, onClick: () => void): HTMLButto
   return item
 }
 
+/** 挂载 Output 过滤工具条。 */
 export function mountOutputToolbar(
   root: HTMLElement,
   actions: OutputToolbarActions,

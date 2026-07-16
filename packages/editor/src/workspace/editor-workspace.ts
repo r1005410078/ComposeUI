@@ -1,3 +1,17 @@
+/**
+ * @module workspace/editor-workspace
+ *
+ * Godot 风格主工作区：Dockview 分栏 + 工具栏 + 面板注册表 + 布局持久化。
+ *
+ * 组装：
+ * - core Editor / EditorSession 注入各面板
+ * - 默认面板（canvas、树、inspector 占位、output）来自 panels.ts
+ * - 可选 operationLog + replay 预览源挂到 canvas
+ *
+ * 边界：布局存 localStorage，不是 PageDocument；undo/redo 代理到 core Editor。
+ * 面板 mount 失败应 emit 事件而非拖垮整个 shell。
+ */
+
 import {
   createDockview,
   type AddPanelOptions,
@@ -227,6 +241,10 @@ function createNonClosableTab(): ITabRenderer {
   }
 }
 
+/**
+ * 挂载完整编辑器工作区到 host 根节点。
+ * 负责 Dockview 生命周期、默认/恢复布局、工具栏与事件总线。
+ */
 export function mountEditorWorkspace(
   root: HTMLElement,
   editor: Editor,
@@ -462,7 +480,7 @@ export function mountEditorWorkspace(
           : { initialHeight: descriptor.defaultSize }),
     }
     if (actualId === canvasId(pageId)) {
-      // Canvas is the anchor for the Godot-style default layout.
+      // 画布为 Godot 式默认布局的锚面板，给足最小尺寸
       optionsForPanel.minimumWidth = 320
       optionsForPanel.minimumHeight = 500
     } else if (actualId === "scene") {

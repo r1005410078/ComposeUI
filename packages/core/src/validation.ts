@@ -1,6 +1,21 @@
+/**
+ * @module validation
+ *
+ * 跨 record 策略与结构比较工具。
+ *
+ * 数据流：事务 commit 前 / Store 装载时调用 `validateNodeTree`；
+ * `deepEqual` 用于 patch 前置条件与“业务值是否变化”判断。
+ *
+ * 不依赖 UI；不修改入参。
+ */
+
 import type { Diagnostic } from "./diagnostics"
 import type { PersistentRecord } from "./schema"
 
+/**
+ * 深度值相等（支持数组与普通对象）。
+ * 用于 revision 无关的业务 diff、patch precondition，以及 history 相关比较。
+ */
 export function deepEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true
   if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
@@ -21,6 +36,17 @@ export function deepEqual(left: unknown, right: unknown): boolean {
   return leftKeys.every((key) => deepEqual(leftRecord[key], rightRecord[key]))
 }
 
+/**
+ * 校验节点树跨 record 不变量。
+ *
+ * 检查项：
+ * - parentId 存在且为 page 或 node
+ * - 作为 parent 的 page 必须是文档 root page（M1 单 page）
+ * - 禁止自引用与祖先环
+ * - 同 parent 下 index 唯一
+ *
+ * 返回诊断列表，不抛异常；调用方决定是否拒绝事务。
+ */
 export function validateNodeTree(
   records: ReadonlyMap<string, PersistentRecord>,
   rootPageId: string,
@@ -31,6 +57,7 @@ export function validateNodeTree(
     (record): record is Extract<PersistentRecord, { typeName: "node" }> =>
       record.typeName === "node",
   )
+  // 0 未访问 / 1 路径中 / 2 已完成 —— 经典 DFS 着色检环
   const colors = new Map<string, 0 | 1 | 2>()
 
   for (const record of nodes) {

@@ -1,25 +1,46 @@
+/**
+ * @module history
+ *
+ * 基于 forward/inverse patch 的线性撤销栈。
+ *
+ * 不变量：
+ * - 空 patch 不入栈
+ * - 在 past 中间 record 新操作会截断 future
+ * - undo/redo/jump 通过 `applyPatch` 重放，失败则不移动 currentIndex
+ *
+ * 边界：History 不持有 Store；每次操作由调用方传入当前 store 并接收新 store。
+ * 协作场景下将来由 Y.UndoManager 替代/协同，本类服务本地命令路径。
+ *
+ * 数据流：Editor 成功事务 → history.record → undo/redo → applyPatch → 新 store + emit。
+ */
+
 import type { Result } from "./diagnostics"
 import type { RecordStore } from "./store"
 import { applyPatch } from "./transaction"
 import type { TransactionOrigin, TransactionPatch } from "./transaction"
 
+/** 可撤销的一次文档事务记录。 */
 export interface HistoryEntry {
   transactionId: string
+  /** 通常为 command id，供 UI 标签展示。 */
   label: string
   forward: TransactionPatch
   inverse: TransactionPatch
 }
 
+/** undo/redo/jump 成功后交给 Editor 广播的载荷。 */
 export interface HistoryChange {
   store: RecordStore
   entry: HistoryEntry
   origin: Extract<TransactionOrigin, { kind: "history-undo" | "history-redo" | "history-jump" }>
 }
 
+/** 快照：past 为已应用栈，future 为可 redo 栈（时间逆序便于 UI 展示）。 */
 export interface HistorySnapshot {
   past: HistoryEntry[]
   future: HistoryEntry[]
   entries: HistoryEntry[]
+  /** 0..entries.length；等于 length 表示在最新状态。 */
   currentIndex: number
 }
 
@@ -55,6 +76,10 @@ export class History {
     this.#limit = limit
   }
 
+  /**
+   * 记录一次成功事务。会丢弃 currentIndex 之后的 future。
+   * 超过 limit 时从头部丢弃最旧条目。
+   */
   record(entry: HistoryEntry): void {
     if (isEmptyPatch(entry.forward)) return
     this.#entries.splice(this.#currentIndex)
@@ -109,6 +134,10 @@ export class History {
     return this.#currentIndex < this.#entries.length
   }
 
+  /**
+   * 跳转到指定 history 索引（0 = 全部撤销后，length = 最新）。
+   * 连续 apply 中间任一步失败则整体失败且不更新 index。
+   */
   jumpTo(store: RecordStore, currentIndex: number): Result<HistoryChange> {
     if (
       !Number.isInteger(currentIndex) ||
@@ -172,13 +201,13 @@ export class History {
   }
 
   snapshot(): HistorySnapshot {
-    const future = this.#entries.slice(this.#currentIndex).reduceRight<HistoryEntry[]>(
-      (reversed, entry) => {
+    // future 按“最近可 redo 优先”反转，便于操作日志/时间线 UI
+    const future = this.#entries
+      .slice(this.#currentIndex)
+      .reduceRight<HistoryEntry[]>((reversed, entry) => {
         reversed.push(entry)
         return reversed
-      },
-      [],
-    )
+      }, [])
     return {
       past: structuredClone(this.#entries.slice(0, this.#currentIndex)),
       future: structuredClone(future),

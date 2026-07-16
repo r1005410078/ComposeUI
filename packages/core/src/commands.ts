@@ -1,3 +1,17 @@
+/**
+ * @module commands
+ *
+ * 文档命令门面：`createEditor` 将用户意图统一为 prepare → transact → history → 订阅通知。
+ *
+ * 不变量：
+ * - 工具栏 / 画布 / 树 / 快捷键必须调用同一套 dispatch，禁止 UI 旁路改 Store
+ * - 一次命令 = 一次事务 = 一步 undo（多节点 move/delete 也是单步）
+ * - 失败返回 Result + Diagnostic，不抛业务异常给调用方
+ * - operationObserver / listener 抛错只记诊断，不回滚已提交文档
+ *
+ * 数据流：EditorCommand → prepare* → transact → History.record → subscribe / observe。
+ */
+
 import type { Diagnostic, Result } from "./diagnostics"
 import { History } from "./history"
 import type { HistoryEntry } from "./history"
@@ -13,6 +27,7 @@ import type {
   TransactionResult,
 } from "./transaction"
 
+/** 在 parent 下创建 rectangle；index 由 core 分配，调用方不指定同级序。 */
 export interface CreateNodeCommand {
   id: "node.create"
   payload: {
@@ -27,16 +42,25 @@ export interface CreateNodeCommand {
   }
 }
 
+/**
+ * 平移一组节点。仅更新选中集合中的“顶层”节点，避免父子同选时双重位移。
+ * 任一节点自身或祖先 locked 则整命令失败。
+ */
 export interface MoveNodeCommand {
   id: "node.move"
   payload: { ids: string[]; delta: { x: number; y: number } }
 }
 
+/** 单节点缩放；可选改 x/y（锚点拖拽时由 editor 计算）。 */
 export interface ResizeNodeCommand {
   id: "node.resize"
   payload: { id: string; x?: number; y?: number; width: number; height: number }
 }
 
+/**
+ * 多选等比/组缩放提交：≥2 个节点、同 parent、坐标尺寸一次写齐。
+ * 指针预览应在 session，完成时再 dispatch 本命令。
+ */
 export interface ResizeManyNodeCommand {
   id: "node.resizeMany"
   payload: {
@@ -44,11 +68,16 @@ export interface ResizeManyNodeCommand {
   }
 }
 
+/** 删除节点及其子树；禁止删 page。删除顺序由深到浅，保证 draft 一致性。 */
 export interface DeleteNodeCommand {
   id: "node.delete"
   payload: { ids: string[] }
 }
 
+/**
+ * 调整同级/跨 parent 顺序。若目标 index 被占用且仍在同 parent，
+ * 与占用者交换 index，避免 sibling 冲突。
+ */
 export interface ReorderNodeCommand {
   id: "node.reorder"
   payload: { id: string; parentId: string; index: string }
@@ -74,6 +103,7 @@ export interface SetPageOverflowCommand {
   payload: { id: string; overflow: PageRecord["overflow"] }
 }
 
+/** 所有文档变更意图的可辨识联合；新增命令须同步 prepare 与 operation log。 */
 export type EditorCommand =
   | CreateNodeCommand
   | MoveNodeCommand
@@ -86,6 +116,7 @@ export type EditorCommand =
   | SetNodeLockedCommand
   | SetPageOverflowCommand
 
+/** 成功提交后广播给 UI 的变更事件（含新 store 与 history 条目）。 */
 export interface EditorChangeEvent {
   store: RecordStore
   transaction: HistoryEntry
@@ -94,12 +125,18 @@ export interface EditorChangeEvent {
 
 export interface EditorOptions {
   onDiagnostic?: (diagnostic: Diagnostic) => void
+  /** 旁路观察；异常不得阻断 dispatch。 */
   operationObserver?: EditorOperationObserver
 }
 
+/**
+ * 单文档编辑会话的核心门面（非 DOM）。
+ * 多实例互不共享 store/history；宿主每挂载一个 board 应 createEditor 一次。
+ */
 export interface Editor {
   readonly store: RecordStore
   dispatch(command: EditorCommand): Result<void>
+  /** 与 dispatch 相同，保留兼容别名。 */
   execute(command: EditorCommand): Result<void>
   getRecord(id: string): ReturnType<RecordStore["get"]>
   getStore(): RecordStore
@@ -115,6 +152,7 @@ export interface Editor {
   }
   jumpToHistory(index: number): Result<void>
   getDiagnostics(): Diagnostic[]
+  /** 返回 dispose；listener 异常记诊断不摘掉其他监听。 */
   subscribe(listener: (event: EditorChangeEvent) => void): () => void
 }
 
@@ -216,6 +254,10 @@ function validSize(width: number, height: number): boolean {
   return Number.isFinite(width) && Number.isFinite(height) && width >= 1 && height >= 1
 }
 
+/**
+ * 变换（move/resize）锁屏障：自身或任意祖先 locked 则返回该锁节点。
+ * 锁定祖先时子节点同样不可拖拽变换。
+ */
 function lockedTransformBarrier(store: RecordStore, node: NodeRecord): NodeRecord | undefined {
   let current: NodeRecord | undefined = node
   while (current !== undefined) {
@@ -226,6 +268,7 @@ function lockedTransformBarrier(store: RecordStore, node: NodeRecord): NodeRecor
   return undefined
 }
 
+/** 分配 `a0`,`a1`,… 形式的同级 index；仅保证当前 store 内唯一，非 fractional indexing 完整实现。 */
 function nextSiblingIndex(store: RecordStore, parentId: string): string {
   const indexes = new Set(
     store
@@ -296,6 +339,7 @@ function prepareMove(store: RecordStore, command: MoveNodeCommand): PreparedComm
     nodes.push(result.value)
   }
 
+  // 父子同选时只移动祖先，子节点随父布局保留相对坐标
   const topLevelNodes = nodes.filter((node) => {
     let parent = store.get(node.parentId)
     while (parent?.typeName === "node") {
@@ -462,7 +506,7 @@ function prepareDelete(store: RecordStore, command: DeleteNodeCommand): Prepared
     }
   }
 
-  // This is a fresh array; sorting it cannot mutate Store or command input.
+  // 深节点先删；数组为新建，排序不会改 Store / 命令入参
   const ids = subtree
     // oxlint-disable-next-line unicorn/no-array-sort
     .sort((left, right) => {
@@ -565,6 +609,10 @@ function runCommand(store: RecordStore, command: EditorCommand): TransactionResu
   return transact(store, { kind: "local-command", commandId: command.id }, prepared.value)
 }
 
+/**
+ * 从 PageDocument 创建隔离的 Editor 实例。
+ * 含独立 History、诊断缓冲与订阅表；勿跨实例共享闭包状态。
+ */
 export function createEditor(document: PageDocument, options: EditorOptions = {}): Editor {
   let store = RecordStore.fromDocument(document)
   const history = new History()
@@ -578,6 +626,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
     try {
       options.onDiagnostic(structuredClone(diagnostic))
     } catch (error) {
+      // 宿主 hook 失败不得形成递归炸栈；再记一条诊断即可
       diagnostics.push({
         code: "EDITOR_DIAGNOSTIC_HOOK_ERROR",
         severity: "error",
@@ -681,6 +730,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
   }
 
   const dispatch = (command: EditorCommand): Result<void> => {
+    // before 在事务前冻结，供 operation log / 回放对齐
     const before = structuredClone(canonicalizeDocument(store))
     observeOperation({ type: "document.command", status: "started", command })
     const result = runCommand(store, command)
@@ -709,6 +759,7 @@ export function createEditor(document: PageDocument, options: EditorOptions = {}
       before,
       after: structuredClone(canonicalizeDocument(store)),
     })
+    // 空 patch：命令合法但无业务变化，不污染 history、不通知订阅者
     if (isEmptyPatch(result.patch)) return { ok: true, value: undefined, diagnostics: [] }
     history.record(entry)
     emit({ store, transaction: entry, origin: result.origin })

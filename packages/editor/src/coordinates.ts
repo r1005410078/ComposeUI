@@ -1,3 +1,16 @@
+/**
+ * @module coordinates
+ *
+ * 坐标系纯函数：screen ↔ world ↔ parent-local，以及指针中心缩放。
+ *
+ * 约定：
+ * - world：workspace 无限画布坐标
+ * - screen：DOM 指针/视口像素
+ * - parent-local：写入 FreeLayout 的坐标（相对父节点 world 原点）
+ *
+ * 不读写 Session/Store；非法输入抛稳定错误码。
+ */
+
 import type { Viewport } from "./session"
 
 export interface Point {
@@ -31,6 +44,7 @@ function assertFiniteResult(point: Point): void {
   }
 }
 
+/** world → screen：先缩放再加 viewport 平移。 */
 export function worldToScreen(point: Point, viewport: Viewport): Point {
   assertValidPoint(point)
   assertValidViewport(viewport)
@@ -42,6 +56,7 @@ export function worldToScreen(point: Point, viewport: Viewport): Point {
   return result
 }
 
+/** screen → world：平移逆运算后再除以 zoom。 */
 export function screenToWorld(point: Point, viewport: Viewport): Point {
   assertValidPoint(point)
   assertValidViewport(viewport)
@@ -53,6 +68,10 @@ export function screenToWorld(point: Point, viewport: Viewport): Point {
   return result
 }
 
+/**
+ * world 点转为相对父级 world 原点的局部坐标。
+ * Free Layout 子节点 layout.x/y 使用此空间。
+ */
 export function worldToParentLocal(point: Point, parentWorldOrigin: Point): Point {
   assertValidPoint(point)
   assertValidPoint(parentWorldOrigin)
@@ -64,6 +83,10 @@ export function worldToParentLocal(point: Point, parentWorldOrigin: Point): Poin
   return result
 }
 
+/**
+ * 以 screenPoint 为锚点缩放到 nextZoom，使该点下的 world 坐标不变。
+ * 实现指针中心滚轮缩放。
+ */
 export function zoomAt(viewport: Viewport, screenPoint: Point, nextZoom: number): Viewport {
   assertValidViewport(viewport)
   assertValidPoint(screenPoint)

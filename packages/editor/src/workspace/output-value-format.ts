@@ -1,3 +1,11 @@
+/**
+ * @module workspace/output-value-format
+ *
+ * 将任意 payload 安全格式化为 Output 面板可读文本。
+ * 处理 bigint、循环引用与 JSON 失败，避免详情区抛错。
+ */
+
+/** 序列化未知值；失败返回占位中文串。 */
 export function safeText(value: unknown): string {
   const seen = new WeakSet<object>()
   try {

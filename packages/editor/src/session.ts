@@ -1,3 +1,18 @@
+/**
+ * @module session
+ *
+ * 编辑器会话态（Session Scope）：视口、选中、树展开、hover、网格与交互模式。
+ *
+ * 边界：
+ * - 全部不进 PageDocument / RecordStore；宿主 save 时忽略本模块状态。
+ * - 持久节点变更仍走 core `Editor.dispatch`。
+ * - 与 core 的 Editor 一对一组合使用，禁止进程级单例。
+ *
+ * 数据流：指针/快捷键/树 UI → EditorSession setters → subscribe 重绘；
+ * 可选 operationObserver → operation-log（旁路，失败吞掉）。
+ */
+
+/** Workspace 视口：平移偏移 + 缩放；非 page board 尺寸。 */
 export interface Viewport {
   x: number
   y: number
@@ -9,12 +24,14 @@ export type InteractionMode = "select" | "pan"
 export interface EditorSessionState {
   viewport: Viewport
   selection: string[]
+  /** 组件树已展开节点 id（含 page）。 */
   expanded: string[]
   hoveredId: string | null
   gridVisible: boolean
   interactionMode: InteractionMode
 }
 
+/** 会话侧可观察操作；与 core `EditorOperation` 分立，避免污染文档 log 语义。 */
 export type SessionOperation =
   | { type: "session.selection"; selection: string[] }
   | { type: "session.viewport"; viewport: Viewport }
@@ -42,6 +59,9 @@ function assertValidViewport(viewport: Viewport): void {
   assertValidZoom(viewport.zoom)
 }
 
+/**
+ * 可变会话状态容器。setter 无变化时短路；通知队列可重入（listener 内再 set 会排到后续帧）。
+ */
 export class EditorSession {
   readonly #operationObserver: EditorSessionOperationObserver | undefined
   #state: EditorSessionState = {
@@ -79,6 +99,7 @@ export class EditorSession {
   }
 
   setSelection(selection: readonly string[]): void {
+    // 去重保序：先出现的 id 保留
     const next = [...new Set(selection)]
     if (
       next.length === this.#state.selection.length &&
@@ -130,11 +151,12 @@ export class EditorSession {
     try {
       this.#operationObserver.observe(structuredClone(operation))
     } catch {
-      // Operation logging must not block session state changes.
+      // 操作日志不得阻断会话态更新
     }
   }
 
   #emit(): void {
+    // 重入安全：通知期间的 set* 推入队列，本轮结束后继续刷，避免漏事件或栈溢出
     this.#pendingStates.push(this.getState())
     if (this.#notifying) return
 
@@ -147,7 +169,7 @@ export class EditorSession {
           try {
             listener(structuredClone(state))
           } catch {
-            // Listener failures must not interrupt the session notification queue.
+            // 单个 listener 失败不得中断队列
           }
         }
       }

@@ -1,3 +1,14 @@
+/**
+ * @module workspace/replay-controller
+ *
+ * 操作回放 UI 控制器：驱动 operation-log ReplayEngine 的 step/runTo/pause 等。
+ *
+ * EditorSessionReplayAdapter 将引擎对会话端口的写入落到 EditorSession。
+ * 文档回放由引擎 + core 适配完成；本模块不直接 patch Store。
+ *
+ * 监听器失败不得中断回放状态机。
+ */
+
 import type {
   ReplayDifference,
   ReplayEngine,
@@ -20,6 +31,7 @@ export interface ReplayControllerOptions {
   readonly wait?: (delayMs: number) => Promise<void>
 }
 
+/** 将 ReplaySessionPort 映射到现有 EditorSession（会话侧回放）。 */
 export class EditorSessionReplayAdapter implements ReplaySessionPort {
   readonly #session: EditorSession
 
@@ -118,6 +130,10 @@ function stateFromResult(
   }
 }
 
+/**
+ * 回放控制面：createEngine 懒创建引擎实例；frameDelayMs 控制连续播放节奏。
+ * busy 期间拒绝交错命令，避免竞态。
+ */
 export class ReplayController implements ReplayControllerPort {
   readonly #createEngine: ReplayEngineFactory
   readonly #frameDelayMs: number
