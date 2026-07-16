@@ -16,13 +16,13 @@ import "./styles/workspace.css"
 
 export { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "./session/coordinates"
 export type { Point } from "./session/coordinates"
-export { mountEditor } from "./canvas/editor-view"
+export { mountEditor } from "./canvas/mount"
 export type {
   EditorPreviewFrame,
   EditorPreviewSource,
   MountedEditor,
   MountEditorOptions,
-} from "./canvas/editor-view"
+} from "./canvas/mount"
 export { mountComponentTree } from "./tree/component-tree"
 export type { MountComponentTreeOptions, MountedComponentTree } from "./tree/component-tree"
 export { EditorSession } from "./session/session"

@@ -9,7 +9,7 @@
 
 import type { EditorRecord, HistoryEntry } from "@composeui/core"
 import { mountComponentTree } from "../tree/component-tree"
-import { mountEditor } from "../canvas/editor-view"
+import { mountEditor } from "../canvas/mount"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
 import { createOutputPanelMount } from "./output/panel"
 

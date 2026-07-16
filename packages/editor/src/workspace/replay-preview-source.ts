@@ -5,7 +5,7 @@
  * 解析 checkpoint 中的 document/session；非法结构时保持 inactive。
  */
 
-import type { EditorPreviewFrame, EditorPreviewSource } from "../canvas/editor-view"
+import type { EditorPreviewFrame, EditorPreviewSource } from "../canvas/preview"
 import type { EditorSessionState } from "../session/session"
 import type { ReplayControllerPort, ReplayControllerState } from "./replay-controller"
 

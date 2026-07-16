@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
 import { EditorSession } from "../src/index"
-import type { EditorPreviewFrame, EditorPreviewSource } from "../src/canvas/editor-view"
+import type { EditorPreviewFrame, EditorPreviewSource } from "../src/canvas/preview"
 import { mountWorkspaceToolbar } from "../src/workspace/toolbar"
 
 function createToolbarContext() {

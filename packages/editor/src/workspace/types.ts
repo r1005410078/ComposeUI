@@ -8,7 +8,7 @@
  */
 
 import type { Editor } from "@composeui/core"
-import type { EditorPreviewSource } from "../canvas/editor-view"
+import type { EditorPreviewSource } from "../canvas/preview"
 import type { EditorSession } from "../session/session"
 import type { OperationLogControllerPort } from "../operation-log/controller-port"
 

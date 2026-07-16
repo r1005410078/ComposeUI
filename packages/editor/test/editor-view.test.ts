@@ -6,7 +6,7 @@ import type { PageDocument } from "@composeui/core"
 import { reorderTreeItem } from "../src/tree/component-tree"
 import { mountEditor } from "../src/index"
 import { EditorSession } from "../src/session/session"
-import type { EditorPreviewFrame, EditorPreviewSource } from "../src/canvas/editor-view"
+import type { EditorPreviewFrame, EditorPreviewSource } from "../src/canvas/preview"
 
 function createDocumentWithPage(): PageDocument {
   const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
