@@ -1,0 +1,53 @@
+{
+  "checkpoints": [],
+  "events": [
+    {
+      "category": "document",
+      "eventId": "move-1",
+      "payload": {
+        "from": { "x": 400, "y": 200 },
+        "nodeId": "node-blue",
+        "to": { "x": 440, "y": 230 }
+      },
+      "projectId": "golden-project",
+      "schemaVersion": 1,
+      "sequence": 1,
+      "sessionId": "golden-session",
+      "status": "succeeded",
+      "timestamp": "2026-07-15T00:00:01.000Z",
+      "type": "node.move"
+    }
+  ],
+  "manifest": {
+    "bundleVersion": 2,
+    "canonicalization": { "algorithm": "canonical-json", "version": 1 },
+    "exportedAt": "2026-07-15T00:00:03.000Z",
+    "hashAlgorithm": "SHA-256",
+    "integrity": {
+      "chainHash": "a6cae31003fdbae31dd2d5949f9186583c5d80e2d4df818da1a10e787808f086",
+      "checkpointCount": 0,
+      "eventCount": 1,
+      "firstEventId": "move-1",
+      "lastEventId": "move-1"
+    },
+    "manifestHash": "252f0e097926c0588dede52dfc601e83d71b406ae408229cb5b91f401ad854d1",
+    "productVersion": "0.0.0",
+    "redaction": { "policy": "none", "version": 1 },
+    "runtime": {},
+    "schemaVersion": 2,
+    "sectionHashes": {
+      "checkpoints": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "events": "e3781f9677e263feab4a6365f32222c239f6a49d3a6d48e625e3fffae56324ca",
+      "session": "a26ea7405228000b84fc3b0b40765835b2bb0809e919c06fa46d77a90850ffaa"
+    },
+    "sessionId": "golden-session"
+  },
+  "session": {
+    "endedAt": "2026-07-15T00:00:02.000Z",
+    "eventCount": 1,
+    "projectId": "golden-project",
+    "sessionId": "golden-session",
+    "startedAt": "2026-07-15T00:00:00.000Z",
+    "status": "ended"
+  }
+}

@@ -251,7 +251,8 @@ describe("log bundles", () => {
     legacyWorkspace.manifest.sectionHashes.checkpoints = await hashCanonical(
       legacyWorkspace.checkpoints,
     )
-    const { manifestHash: _legacyManifestHash, ...legacyManifestWithoutHash } = legacyWorkspace.manifest
+    const { manifestHash: _legacyManifestHash, ...legacyManifestWithoutHash } =
+      legacyWorkspace.manifest
     legacyWorkspace.manifest.manifestHash = await hashCanonical(legacyManifestWithoutHash)
     await expect(importLogBundle(canonicalJson(legacyWorkspace))).rejects.toThrow(
       "LOG_BUNDLE_INTEGRITY_FAILED",
@@ -380,6 +381,55 @@ describe("log bundles", () => {
     await expect(
       exportLogBundle(store, { sessionId: "s1", productVersion: "0.0.0" }),
     ).rejects.toThrow("LOG_BUNDLE_INTEGRITY_FAILED")
+  })
+
+  it("normalizes undefined object fields from legacy persisted events before export", async () => {
+    const legacyEvent = {
+      ...event(1),
+      payload: {
+        nodeId: "node-1",
+        position: { x: 120, y: 80, legacyOptional: undefined },
+      },
+    }
+    const store = {
+      getSession: async () => ({
+        ...session,
+        eventCount: 1,
+        finalHash: undefined,
+      }),
+      query: async () => [legacyEvent],
+      getNearestCheckpoint: async () => undefined,
+    } as unknown as OperationLifecycleStore
+
+    const encoded = await exportLogBundle(store, {
+      sessionId: "s1",
+      productVersion: "0.0.0",
+      exportedAt: "2026-07-13T00:02:00.000Z",
+      redactor: <T>(value: T): T => structuredClone(value),
+    })
+    const bundle = await importLogBundle(encoded)
+
+    expect(bundle.session).not.toHaveProperty("finalHash")
+    expect(bundle.events[0]?.payload).toEqual({
+      nodeId: "node-1",
+      position: { x: 120, y: 80 },
+    })
+  })
+
+  it("does not normalize undefined array entries from persisted events", async () => {
+    const store = {
+      getSession: async () => ({ ...session, eventCount: 1 }),
+      query: async () => [{ ...event(1), payload: { points: [undefined] } }],
+      getNearestCheckpoint: async () => undefined,
+    } as unknown as OperationLifecycleStore
+
+    await expect(
+      exportLogBundle(store, {
+        sessionId: "s1",
+        productVersion: "0.0.0",
+        redactor: <T>(value: T): T => structuredClone(value),
+      }),
+    ).rejects.toThrow("UNSUPPORTED_CANONICAL_VALUE")
   })
 
   it("exports a sequence-zero checkpoint even when the session has no events", async () => {

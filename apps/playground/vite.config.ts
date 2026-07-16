@@ -22,6 +22,10 @@ export default defineConfig({
         find: "@composeui/core",
         replacement: fromRoot("../../packages/core/src/index.ts"),
       },
+      {
+        find: "@composeui/operation-log",
+        replacement: fromRoot("../../packages/operation-log/src/index.ts"),
+      },
     ],
   },
 })

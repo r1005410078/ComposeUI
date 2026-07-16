@@ -113,21 +113,24 @@ export async function exportLogBundle(
   store: OperationLifecycleStore,
   options: ExportLogBundleOptions,
 ): Promise<string> {
-  const session = await store.getSession(options.sessionId)
-  if (session === undefined) throw new Error("LOG_BUNDLE_SESSION_NOT_FOUND")
-  const events = await store.query({ sessionId: options.sessionId })
-  const checkpoints: OperationCheckpoint[] = []
+  const storedSession = await store.getSession(options.sessionId)
+  if (storedSession === undefined) throw new Error("LOG_BUNDLE_SESSION_NOT_FOUND")
+  const storedEvents = await store.query({ sessionId: options.sessionId })
+  const storedCheckpoints: OperationCheckpoint[] = []
   const initialCheckpoint = await store.getNearestCheckpoint(options.sessionId, 0)
-  if (initialCheckpoint !== undefined) checkpoints.push(initialCheckpoint)
-  for (const event of events) {
+  if (initialCheckpoint !== undefined) storedCheckpoints.push(initialCheckpoint)
+  for (const event of storedEvents) {
     const checkpoint = await store.getNearestCheckpoint(options.sessionId, event.sequence)
     if (
       checkpoint !== undefined &&
-      !checkpoints.some((item) => item.sequence === checkpoint.sequence)
+      !storedCheckpoints.some((item) => item.sequence === checkpoint.sequence)
     ) {
-      checkpoints.push(checkpoint)
+      storedCheckpoints.push(checkpoint)
     }
   }
+  const session = normalizeLegacyCanonicalValue(storedSession)
+  const events = normalizeLegacyCanonicalValue(storedEvents)
+  const checkpoints = normalizeLegacyCanonicalValue(storedCheckpoints)
   const redactor = options.redactor ?? defaultRedactor
   validateBundleContents(session, checkpoints, events, {
     sessionId: options.sessionId,
@@ -825,6 +828,66 @@ function enforceByteLimit(encoded: string, maxBytes: number): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function isArrayIndexKey(key: string): boolean {
+  const index = Number(key)
+  return Number.isInteger(index) && index >= 0 && index < 2 ** 32 - 1 && String(index) === key
+}
+
+function normalizeLegacyCanonicalValue<T>(value: T): T {
+  const active = new Set<object>()
+
+  const normalize = (current: unknown): unknown => {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean" ||
+      (typeof current === "number" && Number.isFinite(current))
+    ) {
+      return current
+    }
+    if (typeof current !== "object" || active.has(current)) {
+      throw new Error("UNSUPPORTED_CANONICAL_VALUE")
+    }
+
+    active.add(current)
+    try {
+      if (Array.isArray(current)) {
+        for (const key of Reflect.ownKeys(current)) {
+          if (typeof key === "symbol" || (key !== "length" && !isArrayIndexKey(key))) {
+            throw new Error("UNSUPPORTED_CANONICAL_VALUE")
+          }
+        }
+        const normalized = current.map((item) => {
+          if (item === undefined) throw new Error("UNSUPPORTED_CANONICAL_VALUE")
+          return normalize(item)
+        })
+        canonicalJson(normalized)
+        return normalized
+      }
+
+      const prototype = Object.getPrototypeOf(current)
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error("UNSUPPORTED_CANONICAL_VALUE")
+      }
+      if (Reflect.ownKeys(current).some((key) => typeof key === "symbol")) {
+        throw new Error("UNSUPPORTED_CANONICAL_VALUE")
+      }
+
+      const normalized: Record<string, unknown> = {}
+      for (const [key, item] of Object.entries(current)) {
+        if (item !== undefined) normalized[key] = normalize(item)
+      }
+      return normalized
+    } finally {
+      active.delete(current)
+    }
+  }
+
+  const normalized = normalize(value)
+  canonicalJson(normalized)
+  return normalized as T
 }
 
 function integrityError(): Error {

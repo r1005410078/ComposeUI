@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "preview:e2e": "vite preview --host 127.0.0.1 --port 4173"
+    "preview:e2e": "vite build && vite preview --host 127.0.0.1 --port 4173"
   },
   "dependencies": {
     "@composeui/core": "workspace:*",

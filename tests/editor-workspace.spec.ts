@@ -4,7 +4,7 @@ async function dispatchPointer(
   target: Locator,
   type: "pointerdown" | "pointermove" | "pointerup",
   point: { x: number; y: number },
-) {
+): Promise<void> {
   await target.dispatchEvent(type, {
     bubbles: true,
     button: 0,
@@ -19,7 +19,7 @@ async function dispatchWindowPointer(
   page: Page,
   type: "pointermove" | "pointerup",
   point: { x: number; y: number },
-) {
+): Promise<void> {
   await page.evaluate(
     ({ eventType, eventPoint }) =>
       window.dispatchEvent(
@@ -46,6 +46,44 @@ async function waitForOutputRowsToSettle(page: Page) {
       return settled
     })
     .toBe(true)
+}
+
+async function addLegacyUndefinedToLatestMove(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const openRequest = indexedDB.open("composeui:playground:operation-log:v1")
+        openRequest.addEventListener("error", () => reject(openRequest.error))
+        openRequest.addEventListener("success", () => {
+          const database = openRequest.result
+          const transaction = database.transaction("events", "readwrite")
+          const store = transaction.objectStore("events")
+          const readRequest = store.getAll()
+          transaction.addEventListener("complete", () => {
+            database.close()
+            resolve()
+          })
+          transaction.addEventListener("error", () => reject(transaction.error))
+          readRequest.addEventListener("error", () => reject(readRequest.error))
+          readRequest.addEventListener("success", () => {
+            const moveEvent = readRequest.result
+              .filter(
+                (event) =>
+                  event.category === "document" &&
+                  event.type === "document.command" &&
+                  event.status === "succeeded",
+              )
+              .at(-1)
+            if (moveEvent === undefined) {
+              reject(new Error("SUCCEEDED_MOVE_EVENT_MISSING"))
+              return
+            }
+            moveEvent.payload.legacyOptional = undefined
+            store.put(moveEvent)
+          })
+        })
+      }),
+  )
 }
 
 test("replays the final operation after reload without mutating the source session", async ({
@@ -180,4 +218,52 @@ test("persists workspace panel activity across reload without mutating the canva
   await page.getByTestId("output-filter-close").click()
   await expect(closedPanelEntry).toBeVisible()
   await expect(canvasNodes).toHaveCount(canvasNodeCount)
+})
+
+test("replays a legacy persisted node move through the operation bundle", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("tab", { name: "画布" }).click()
+  const blue = page.locator("[data-node-id='node-blue']")
+  const before = await blue.boundingBox()
+  if (before === null) throw new Error("node-blue was not rendered")
+  const beforePosition = await blue.evaluate((node) => ({
+    left: Number.parseFloat(getComputedStyle(node).left),
+    top: Number.parseFloat(getComputedStyle(node).top),
+  }))
+
+  await dispatchPointer(blue, "pointerdown", { x: before.x + 10, y: before.y + 10 })
+  await dispatchWindowPointer(page, "pointermove", { x: before.x + 50, y: before.y + 40 })
+  await dispatchWindowPointer(page, "pointerup", { x: before.x + 50, y: before.y + 40 })
+  await expect(blue).toHaveCSS("left", `${beforePosition.left + 40}px`)
+  await expect(blue).toHaveCSS("top", `${beforePosition.top + 30}px`)
+
+  await page.reload()
+  await page.getByRole("tab", { name: "输出" }).click()
+  const moveEntry = page
+    .locator("[data-testid='output-entry'][data-category='document']")
+    .filter({ hasText: "移动“node-blue”" })
+    .filter({ hasText: "成功" })
+    .last()
+  await expect(moveEntry).toBeVisible()
+  await addLegacyUndefinedToLatestMove(page)
+  await page.reload()
+  await page.getByRole("tab", { name: "输出" }).click()
+  const persistedMoveEntry = page
+    .locator("[data-testid='output-entry'][data-category='document']")
+    .filter({ hasText: "移动“node-blue”" })
+    .filter({ hasText: "成功" })
+    .last()
+  await expect(persistedMoveEntry).toBeVisible()
+  await persistedMoveEntry.evaluate((row) => {
+    const entry = row as HTMLElement
+    entry.click()
+    document.querySelector<HTMLButtonElement>("[data-testid='output-replay']")?.click()
+  })
+
+  await expect(page.getByTestId("output-error")).toBeHidden()
+  await expect(page.getByTestId("replay-host")).not.toHaveAttribute("hidden")
+  await expect(page.getByTestId("replay-summary")).toContainText("状态：completed")
+  await expect(page.getByTestId("replay-summary")).toContainText("一致")
 })
