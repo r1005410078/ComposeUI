@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:golden": "vitest run packages/core/test/snapshot.golden.test.ts packages/operation-log/test/bundle.golden.test.ts",
     "test:e2e": "playwright test",
-    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
+    "boundaries": "node scripts/check-package-boundaries.mjs",
+    "check": "bun run format:check && bun run lint && bun run boundaries && bun run typecheck && bun run test && bun run build"
   },
   "devDependencies": {
     "@playwright/test": "latest",
