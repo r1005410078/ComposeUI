@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createEmptyDocument } from "@composeui/core"
 import type { ReplayState } from "@composeui/operation-log"
-import { EditorSession } from "../src/session"
+import { EditorSession } from "../src/session/session"
 import {
   EditorSessionReplayAdapter,
   ReplayController,

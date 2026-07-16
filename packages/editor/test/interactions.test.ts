@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createPointerMoveSession } from "../src/interactions"
+import { createPointerMoveSession } from "../src/canvas/interactions"
 
 describe("pointer move session", () => {
   it("keeps preview state ephemeral and emits one parent-local delta on commit", () => {

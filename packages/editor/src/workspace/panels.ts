@@ -8,10 +8,10 @@
  */
 
 import type { EditorRecord, HistoryEntry } from "@composeui/core"
-import { mountComponentTree } from "../component-tree"
-import { mountEditor } from "../editor-view"
+import { mountComponentTree } from "../tree/component-tree"
+import { mountEditor } from "../canvas/editor-view"
 import type { WorkspacePanelDescriptor, WorkspacePanelMount } from "./types"
-import { createOutputPanelMount } from "./output-panel"
+import { createOutputPanelMount } from "./output/panel"
 
 export type PanelId =
   | "scene"

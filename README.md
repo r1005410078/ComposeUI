@@ -12,12 +12,14 @@ M0/M1 spine is implemented: transactional document core, Free Layout desktop edi
 
 ## Packages
 
-| Package | Role |
-| --- | --- |
-| `@composeui/core` | Authoritative document store, transactions, commands, history |
-| `@composeui/editor` | Session state, canvas/tree UI, workspace shell |
-| `@composeui/operation-log` | Side-channel record / persist / replay |
-| `apps/playground` | Single Vite demo and E2E host |
+| Package | Role | Source layout |
+| --- | --- | --- |
+| `@composeui/core` | Authoritative document store, transactions, commands, history | `document/` · `store/` · `kernel/` · `query/` · `shared/` |
+| `@composeui/editor` | Session state, canvas/tree UI, workspace shell | `session/` · `canvas/` · `tree/` · `workspace/` · `operation-log/` · `styles/` |
+| `@composeui/operation-log` | Side-channel record / persist / replay | `adapters/` · `replay/` · recorder/store/… |
+| `apps/playground` | Single Vite demo and E2E host | — |
+
+Folder maps: [packages/core/src/README.md](packages/core/src/README.md), [packages/editor/src/README.md](packages/editor/src/README.md).
 
 ## Develop
 

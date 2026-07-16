@@ -14,8 +14,8 @@
  * 数据流：Editor 成功事务 → history.record → undo/redo → applyPatch → 新 store + emit。
  */
 
-import type { Result } from "./diagnostics"
-import type { RecordStore } from "./store"
+import type { Result } from "../shared/diagnostics"
+import type { RecordStore } from "../store/store"
 import { applyPatch } from "./transaction"
 import type { TransactionOrigin, TransactionPatch } from "./transaction"
 

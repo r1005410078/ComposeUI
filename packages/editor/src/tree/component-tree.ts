@@ -32,8 +32,8 @@ import {
   Unlock,
   createElement as createIconElement,
 } from "lucide"
-import { EditorSession } from "./session"
-import type { EditorSessionState } from "./session"
+import { EditorSession } from "../session/session"
+import type { EditorSessionState } from "../session/session"
 
 interface FocusTarget {
   testId: string

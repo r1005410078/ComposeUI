@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest"
-import { mountOutputReplayBar } from "../src/workspace/output-replay-bar"
+import { mountOutputReplayBar } from "../src/workspace/output/replay-bar"
 import type {
   ReplayControllerPort,
   ReplayControllerState,

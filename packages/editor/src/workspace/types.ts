@@ -8,9 +8,9 @@
  */
 
 import type { Editor } from "@composeui/core"
-import type { EditorPreviewSource } from "../editor-view"
-import type { EditorSession } from "../session"
-import type { OperationLogControllerPort } from "../operation-log-controller-port"
+import type { EditorPreviewSource } from "../canvas/editor-view"
+import type { EditorSession } from "../session/session"
+import type { OperationLogControllerPort } from "../operation-log/controller-port"
 
 /** 注入每个面板 mount 的运行时上下文。 */
 export interface WorkspaceContext {

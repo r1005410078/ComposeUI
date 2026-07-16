@@ -12,13 +12,13 @@
  * 数据流：EditorCommand → prepare* → transact → History.record → subscribe / observe。
  */
 
-import type { Diagnostic, Result } from "./diagnostics"
+import type { Diagnostic, Result } from "../shared/diagnostics"
 import { History } from "./history"
 import type { HistoryEntry } from "./history"
 import type { EditorOperation, EditorOperationObserver } from "./operations"
-import type { NodeRecord, PageDocument, PageRecord } from "./schema"
-import { canonicalizeDocument } from "./snapshot"
-import { RecordStore } from "./store"
+import type { NodeRecord, PageDocument, PageRecord } from "../document/schema"
+import { canonicalizeDocument } from "../document/snapshot"
+import { RecordStore } from "../store/store"
 import { transact } from "./transaction"
 import type {
   TransactionDraft,

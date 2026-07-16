@@ -8,7 +8,7 @@
  */
 
 import type { PageDocument } from "./schema"
-import type { RecordStore } from "./store"
+import type { RecordStore } from "../store/store"
 
 /**
  * 从当前 store 生成可序列化文档快照。

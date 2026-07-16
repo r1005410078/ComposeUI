@@ -15,10 +15,10 @@
  * UI 与 Session 不得调用 draft 绕过命令层写持久数据。
  */
 
-import type { Diagnostic, Result } from "./diagnostics"
-import type { PersistentRecord } from "./schema"
-import { RecordStore, updateRecord, validateRecordShape } from "./store"
-import { deepEqual, validateNodeTree } from "./validation"
+import type { Diagnostic, Result } from "../shared/diagnostics"
+import type { PersistentRecord } from "../document/schema"
+import { RecordStore, updateRecord, validateRecordShape } from "../store/store"
+import { deepEqual, validateNodeTree } from "../store/validation"
 
 /** 事务来源，供 history、协作与诊断区分本地命令 vs 撤销重做等。 */
 export type TransactionOrigin =

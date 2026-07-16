@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import type { OperationEvent, OperationLogStore } from "@composeui/operation-log"
-import { OperationLogController } from "../src/operation-log-controller"
+import { OperationLogController } from "../src/operation-log/controller"
 
 function event(
   sequence: number,

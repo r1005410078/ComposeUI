@@ -20,8 +20,8 @@ import {
   createElement,
 } from "lucide"
 import type { Editor } from "@composeui/core"
-import type { EditorPreviewSource } from "../editor-view"
-import type { EditorSession } from "../session"
+import type { EditorPreviewSource } from "../canvas/editor-view"
+import type { EditorSession } from "../session/session"
 import type { EditorWorkspaceApi } from "./editor-workspace"
 import type { WorkspacePanelDescriptor } from "./types"
 

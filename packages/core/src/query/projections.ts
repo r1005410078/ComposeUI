@@ -11,8 +11,8 @@
  * 数据流：RecordStore + session.expanded → TreeItem[] → 组件树面板。
  */
 
-import type { NodeRecord, PageRecord } from "./schema"
-import type { RecordStore } from "./store"
+import type { NodeRecord, PageRecord } from "../document/schema"
+import type { RecordStore } from "../store/store"
 
 /** 组件树一行：深度优先展开后的扁平项。 */
 export interface TreeItem {

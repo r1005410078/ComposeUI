@@ -15,8 +15,8 @@ import {
   StepForward,
   createElement,
 } from "lucide"
-import type { ReplayControllerPort } from "./replay-controller"
-import { safeText } from "./output-value-format"
+import type { ReplayControllerPort } from "../replay-controller"
+import { safeText } from "./value-format"
 
 export interface OutputReplayBarModel {
   readonly busy: boolean

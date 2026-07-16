@@ -180,7 +180,11 @@ interface EditorOptions {
 说明：
 
 - 今日全部 `EditorCommand` 变体由 **builtin plugin(s)** 注册，源码位于 `kernel/commands/builtin/`。
-- `EditorCommand` 可保留可辨识联合类型以便 TypeScript 体验；分发**不得**依赖手写穷尽 switch 作为唯一扩展方式。宿主扩展命令可采用可辨识扩展（如开放 `id` 字符串 + payload）或并行类型——实施计划中选定一种并更新导出；**破坏性变更允许**。
+- **命令载荷类型（钉死）：**
+  - 内置命令：保留可辨识联合 `EditorCommand`（`id` 字面量 + payload）。
+  - 分发入口：`dispatch(command: EditorCommand | { id: string; payload?: unknown })`（或等价宽松入口），registry 按 `id` 查找；builtin 的 `prepare` 内再收窄类型。
+  - 宿主插件命令：使用自有 `id` 字符串 + `payload`；**不要求**并入 `EditorCommand` 联合。插件侧自行断言 payload。
+  - 分发**不得**依赖手写穷尽 `switch` 作为唯一扩展方式。
 - 同一 `CommandId` 重复注册：**失败**。禁止静默覆盖。
 
 ### 6.3 数据流

@@ -6,10 +6,10 @@ import { describe, expect, it } from "vitest"
 const editorRoot = fileURLToPath(new URL("../", import.meta.url))
 
 describe("editor theme artifact", () => {
-  it("builds dist/theme.css byte-identically from src/theme.css", () => {
+  it("builds dist/theme.css byte-identically from src/styles/theme.css", () => {
     execFileSync("bun", ["run", "build"], { cwd: editorRoot, stdio: "pipe" })
 
-    const sourcePath = `${editorRoot}src/theme.css`
+    const sourcePath = `${editorRoot}src/styles/theme.css`
     const artifactPath = `${editorRoot}dist/theme.css`
     const bundledEditorPath = `${editorRoot}dist/editor.css`
     expect(existsSync(artifactPath)).toBe(true)

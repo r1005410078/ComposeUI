@@ -10,7 +10,7 @@ const playgroundStyles = fileURLToPath(
 
 describe("editor theme contract", () => {
   it("defines the required semantic token groups in one theme file", () => {
-    const theme = readEditorFile("src/theme.css")
+    const theme = readEditorFile("src/styles/theme.css")
 
     for (const token of [
       "--composeui-surface-app",
@@ -45,8 +45,8 @@ describe("editor theme contract", () => {
   })
 
   it("defines and consumes compact hierarchy tokens", () => {
-    const theme = readEditorFile("src/theme.css")
-    const editorCss = readEditorFile("src/editor.css")
+    const theme = readEditorFile("src/styles/theme.css")
+    const editorCss = readEditorFile("src/styles/editor.css")
 
     for (const token of [
       "--composeui-tree-row-height",
@@ -63,8 +63,8 @@ describe("editor theme contract", () => {
   })
 
   it("defines and consumes compact panel tokens", () => {
-    const theme = readEditorFile("src/theme.css")
-    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+    const theme = readEditorFile("src/styles/theme.css")
+    const workspaceCss = readEditorFile("src/styles/workspace.css")
 
     for (const token of [
       "--composeui-panel-toolbar-height",
@@ -77,7 +77,7 @@ describe("editor theme contract", () => {
   })
 
   it("keeps disabled hierarchy actions low contrast in active row states", () => {
-    const editorCss = readEditorFile("src/editor.css")
+    const editorCss = readEditorFile("src/styles/editor.css")
     const activeOpacityRule = editorCss.indexOf(
       ".composeui-editor__tree-row:hover .composeui-editor__tree-action,",
     )
@@ -103,9 +103,9 @@ describe("editor theme contract", () => {
     const entry = readEditorFile("src/index.ts")
     const importIndices = [
       entry.indexOf('"dockview/dist/styles/dockview.css"'),
-      entry.indexOf('"./theme.css"'),
-      entry.indexOf('"./editor.css"'),
-      entry.indexOf('"./workspace/workspace.css"'),
+      entry.indexOf('"./styles/theme.css"'),
+      entry.indexOf('"./styles/editor.css"'),
+      entry.indexOf('"./styles/workspace.css"'),
     ]
 
     expect(importIndices.every((index) => index >= 0)).toBe(true)
@@ -127,11 +127,11 @@ describe("editor theme contract", () => {
     const config = readEditorFile("vite.config.ts")
 
     expect(config).toContain('fileName: "theme.css"')
-    expect(config).toContain('new URL("./src/theme.css", import.meta.url)')
+    expect(config).toContain('new URL("./src/styles/theme.css", import.meta.url)')
   })
 
   it("keeps structural stylesheets free of palette literals", () => {
-    for (const path of ["src/editor.css", "src/workspace/workspace.css"]) {
+    for (const path of ["src/styles/editor.css", "src/styles/workspace.css"]) {
       const structuralCss = readEditorFile(path)
       const paletteLiterals = structuralCss.match(/#[0-9a-f]{3,8}|rgb\([^)]*\)/gi) ?? []
 
@@ -140,13 +140,13 @@ describe("editor theme contract", () => {
   })
 
   it("makes the standalone editor stylesheet self-contained for source consumers", () => {
-    const editorCss = readEditorFile("src/editor.css")
+    const editorCss = readEditorFile("src/styles/editor.css")
 
     expect(editorCss.startsWith('@import "./theme.css";')).toBe(true)
   })
 
   it("tokenizes Dockview group backgrounds and renders the active tab indicator", () => {
-    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+    const workspaceCss = readEditorFile("src/styles/workspace.css")
 
     expect(workspaceCss).toContain(
       "--dv-group-view-background-color: var(--composeui-surface-panel)",
@@ -172,8 +172,8 @@ describe("editor theme contract", () => {
   })
 
   it("references shared dimension, radius, and spacing tokens in structural styles", () => {
-    const editorCss = readEditorFile("src/editor.css")
-    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+    const editorCss = readEditorFile("src/styles/editor.css")
+    const workspaceCss = readEditorFile("src/styles/workspace.css")
 
     expect(editorCss).toContain("var(--composeui-component-tree-width)")
     expect(editorCss).toContain("var(--composeui-radius-panel)")
@@ -221,8 +221,8 @@ describe("editor theme contract", () => {
   })
 
   it("styles editor scroll containers with themed native scrollbars", () => {
-    const editorCss = readEditorFile("src/editor.css")
-    const workspaceCss = readEditorFile("src/workspace/workspace.css")
+    const editorCss = readEditorFile("src/styles/editor.css")
+    const workspaceCss = readEditorFile("src/styles/workspace.css")
     const scrollbarCss = `${editorCss}\n${workspaceCss}`
 
     for (const token of [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { resizeGroup, selectionBounds } from "../src/group-resize"
+import { resizeGroup, selectionBounds } from "../src/canvas/group-resize"
 
 const items = [
   { id: "first", x: 10, y: 20, width: 100, height: 80 },

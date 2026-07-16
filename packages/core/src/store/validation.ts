@@ -9,8 +9,8 @@
  * 不依赖 UI；不修改入参。
  */
 
-import type { Diagnostic } from "./diagnostics"
-import type { PersistentRecord } from "./schema"
+import type { Diagnostic } from "../shared/diagnostics"
+import type { PersistentRecord } from "../document/schema"
 
 /**
  * 深度值相等（支持数组与普通对象）。

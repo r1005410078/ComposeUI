@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest"
-import { mountOutputToolbar } from "../src/workspace/output-toolbar"
+import { mountOutputToolbar } from "../src/workspace/output/toolbar"
 
 function actions() {
   return {

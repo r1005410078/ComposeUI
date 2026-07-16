@@ -40,6 +40,43 @@ playground ──► editor ──► core
 - **operation-log** 可观察 core 的 `EditorOperation`，不反向修改 core 内部。
 - **editor** 通过 command/session API 使用 core；日志 UI 依赖 operation-log 的 store/controller 端口。
 
+### 2.1 源码目录即分层（扫一眼应能看懂）
+
+包的**公共 API 仍只从各包 `src/index.ts` 导出**；内部按架构分目录。更细的目录说明见各包 `src/README.md`。
+
+**`@composeui/core`**
+
+```text
+packages/core/src/
+├── document/     # schema + canonicalize 快照
+├── store/        # RecordStore + 树校验
+├── kernel/       # transaction / history / commands / operations
+├── query/        # 只读投影（组件树等）
+└── shared/       # Diagnostic / Result
+```
+
+**`@composeui/editor`**
+
+```text
+packages/editor/src/
+├── session/        # Session Scope（viewport、selection…）+ 坐标
+├── canvas/         # 画布 mount、指针交互、组缩放
+├── tree/           # 组件树
+├── operation-log/  # 日志 UI 控制器与 session 观察适配
+├── workspace/      # Dockview 壳、面板、回放控制
+│   └── output/     # Output 面板子树
+└── styles/         # theme / editor / workspace CSS
+```
+
+**`@composeui/operation-log`**（已有清晰子树）
+
+```text
+packages/operation-log/src/
+├── adapters/   # core / workspace 观察者
+├── replay/     # 回放引擎与 handlers
+└── *.ts        # recorder、store、bundle、checkpoint…
+```
+
 ---
 
 ## 3. 运行时总图（Playground 装配）
@@ -83,18 +120,18 @@ playground ──► editor ──► core
 
 ### 4.1 模块与职责
 
-| 模块 | 文件 | 职责 |
+| 模块 | 路径 | 职责 |
 | --- | --- | --- |
-| Schema | `schema.ts` | `PageDocument`、document/page/node(rectangle)、Free Layout |
-| Store | `store.ts` | 不可变 `RecordStore`，读路径 clone |
-| Validation | `validation.ts` | 树策略（parent、环、sibling index） |
-| Transaction | `transaction.ts` | `transact` / `applyPatch`，forward + inverse |
-| History | `history.ts` | 线性 undo/redo/jump（patch 回放） |
-| Commands | `commands.ts` | `createEditor`、`dispatch`、节点/page 命令 |
-| Projections | `projections.ts` | `getTreeItems` / `getChildren` |
-| Snapshot | `snapshot.ts` | `canonicalizeDocument`（稳定序列化） |
-| Operations | `operations.ts` | `EditorOperation` 观察契约 |
-| Diagnostics | `diagnostics.ts` | `Diagnostic` / `Result` |
+| Schema | `document/schema.ts` | `PageDocument`、document/page/node(rectangle)、Free Layout |
+| Snapshot | `document/snapshot.ts` | `canonicalizeDocument`（稳定序列化） |
+| Store | `store/store.ts` | 不可变 `RecordStore`，读路径 clone |
+| Validation | `store/validation.ts` | 树策略（parent、环、sibling index） |
+| Transaction | `kernel/transaction.ts` | `transact` / `applyPatch`，forward + inverse |
+| History | `kernel/history.ts` | 线性 undo/redo/jump（patch 回放） |
+| Commands | `kernel/commands.ts` | `createEditor`、`dispatch`、节点/page 命令 |
+| Operations | `kernel/operations.ts` | `EditorOperation` 观察契约 |
+| Projections | `query/projections.ts` | `getTreeItems` / `getChildren` |
+| Diagnostics | `shared/diagnostics.ts` | `Diagnostic` / `Result` |
 
 ### 4.2 写路径（硬约束）
 
@@ -167,16 +204,17 @@ History                 grid, interactionMode      toolbar / output
 
 ### 5.2 主要源码落点
 
-| 区域 | 文件 | 说明 |
+| 区域 | 路径 | 说明 |
 | --- | --- | --- |
-| Session | `session.ts` | 会话态；不进文档 |
-| 坐标 | `coordinates.ts` | screen ↔ world ↔ parent-local、`zoomAt` |
-| 交互草稿 | `interactions.ts`, `group-resize.ts` | 拖拽/组缩放纯几何，commit 再 dispatch |
-| 画布 | `editor-view.ts` | page board、节点 DOM、SVG 叠层、指针、预览帧 |
-| 组件树 | `component-tree.ts` | `getTreeItems` + session；变更走 command |
+| Session | `session/session.ts` | 会话态；不进文档 |
+| 坐标 | `session/coordinates.ts` | screen ↔ world ↔ parent-local、`zoomAt` |
+| 交互草稿 | `canvas/interactions.ts`, `canvas/group-resize.ts` | 拖拽/组缩放纯几何，commit 再 dispatch |
+| 画布 | `canvas/editor-view.ts` | page board、节点 DOM、SVG 叠层、指针、预览帧 |
+| 组件树 | `tree/component-tree.ts` | `getTreeItems` + session；变更走 command |
 | Workspace | `workspace/editor-workspace.ts` 等 | Dockview 分栏、默认面板、布局持久化 |
-| 日志 UI | `operation-log-controller*.ts`, `workspace/output-*` | 列表/过滤/回放条 |
+| 日志 UI | `operation-log/*`, `workspace/output/*` | 列表/过滤/回放条 |
 | 回放控制 | `workspace/replay-controller.ts`, `replay-preview-source.ts` | 驱动 engine，预览覆盖画布 |
+| 样式 | `styles/theme.css`, `editor.css`, `workspace.css` | 主题 token + 结构样式 |
 
 ### 5.3 默认 Workspace 面板（一等公民）
 
@@ -187,7 +225,7 @@ History                 grid, interactionMode      toolbar / output
 
 ### 5.4 UI 实现形态（现状诚实描述）
 
-- 原生 DOM + CSS（`editor.css` / `theme.css` / `workspace.css`），无 React/Vue 编辑器壳。
+- 原生 DOM + CSS（`styles/editor.css` / `theme.css` / `workspace.css`），无 React/Vue 编辑器壳。
 - 画布节点为 **rectangle 的 div**；选框/手柄在 **SVG overlay**。
 - 业务组件 Light DOM / 编辑器 Shadow DOM 的完整隔离策略 **尚未按产品设计完整落地**（当前仍是编辑器自渲染矩形）。
 

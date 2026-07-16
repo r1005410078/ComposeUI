@@ -8,7 +8,7 @@ function emitThemeCss(): Plugin {
       this.emitFile({
         type: "asset",
         fileName: "theme.css",
-        source: readFileSync(new URL("./src/theme.css", import.meta.url), "utf8"),
+        source: readFileSync(new URL("./src/styles/theme.css", import.meta.url), "utf8"),
       })
     },
   }
@@ -19,7 +19,7 @@ export default defineConfig({
   build: {
     lib: { entry: "src/index.ts", formats: ["es"], fileName: "index", cssFileName: "editor" },
     rollupOptions: {
-      external: ["@composeui/core", "dockview", "lucide"],
+      external: ["@composeui/core", "@composeui/operation-log", "dockview", "lucide"],
     },
   },
 })

@@ -11,10 +11,10 @@
  * 数据流：Editor.dispatch / undo / redo / jump → observe → operation-log 适配器。
  */
 
-import type { Diagnostic } from "./diagnostics"
+import type { Diagnostic } from "../shared/diagnostics"
 import type { EditorCommand } from "./commands"
 import type { HistoryEntry } from "./history"
-import type { PageDocument } from "./schema"
+import type { PageDocument } from "../document/schema"
 
 /**
  * 一次文档编辑生命周期事件。

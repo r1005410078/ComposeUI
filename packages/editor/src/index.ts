@@ -10,22 +10,22 @@
  */
 
 import "dockview/dist/styles/dockview.css"
-import "./theme.css"
-import "./editor.css"
-import "./workspace/workspace.css"
+import "./styles/theme.css"
+import "./styles/editor.css"
+import "./styles/workspace.css"
 
-export { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "./coordinates"
-export type { Point } from "./coordinates"
-export { mountEditor } from "./editor-view"
+export { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "./session/coordinates"
+export type { Point } from "./session/coordinates"
+export { mountEditor } from "./canvas/editor-view"
 export type {
   EditorPreviewFrame,
   EditorPreviewSource,
   MountedEditor,
   MountEditorOptions,
-} from "./editor-view"
-export { mountComponentTree } from "./component-tree"
-export type { MountComponentTreeOptions, MountedComponentTree } from "./component-tree"
-export { EditorSession } from "./session"
+} from "./canvas/editor-view"
+export { mountComponentTree } from "./tree/component-tree"
+export type { MountComponentTreeOptions, MountedComponentTree } from "./tree/component-tree"
+export { EditorSession } from "./session/session"
 export type {
   EditorSessionOperationObserver,
   EditorSessionOptions,
@@ -33,8 +33,8 @@ export type {
   InteractionMode,
   SessionOperation,
   Viewport,
-} from "./session"
-export { createSessionOperationObserver } from "./operation-log-adapter"
+} from "./session/session"
+export { createSessionOperationObserver } from "./operation-log/adapter"
 export {
   ReplayController,
   EditorSessionReplayAdapter,
@@ -47,7 +47,7 @@ export {
 } from "./workspace/replay-controller"
 export { formatOperation, registerOperationFormatter } from "./workspace/operation-formatters"
 export type { OperationFormatter } from "./workspace/operation-formatters"
-export { OperationLogController } from "./operation-log-controller"
+export { OperationLogController } from "./operation-log/controller"
 export type {
   OperationLogControllerListener,
   OperationLogControllerPort,
@@ -57,7 +57,7 @@ export type {
   OperationLogFilterValue,
   OperationLogLevel,
   OperationLogViewQuery,
-} from "./operation-log-controller"
+} from "./operation-log/controller"
 
 export {
   PanelRegistry,

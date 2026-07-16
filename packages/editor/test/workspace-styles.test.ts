@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
 const editorRoot = fileURLToPath(new URL("../", import.meta.url))
-const workspaceCss = readFileSync(`${editorRoot}src/workspace/workspace.css`, "utf8")
+const workspaceCss = readFileSync(`${editorRoot}src/styles/workspace.css`, "utf8")
 
 describe("operation output workspace styles", () => {
   it("keeps the output toolbar fixed while the body fills the panel", () => {

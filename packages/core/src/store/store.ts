@@ -12,7 +12,7 @@
  * 数据流：PageDocument → fromDocument → transact/applyPatch → 新 RecordStore。
  */
 
-import type { PageDocument, PersistentRecord, RecordUpdatePatch } from "./schema"
+import type { PageDocument, PersistentRecord, RecordUpdatePatch } from "../document/schema"
 import { deepEqual, validateNodeTree } from "./validation"
 
 /** 各 typeName 允许出现在业务 patch 中的字段白名单。 */

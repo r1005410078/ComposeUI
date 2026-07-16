@@ -3,10 +3,10 @@
 import { describe, expect, it, vi } from "vitest"
 import { canonicalizeDocument, createEditor, createEmptyDocument } from "@composeui/core"
 import type { PageDocument } from "@composeui/core"
-import { reorderTreeItem } from "../src/component-tree"
+import { reorderTreeItem } from "../src/tree/component-tree"
 import { mountEditor } from "../src/index"
-import { EditorSession } from "../src/session"
-import type { EditorPreviewFrame, EditorPreviewSource } from "../src/editor-view"
+import { EditorSession } from "../src/session/session"
+import type { EditorPreviewFrame, EditorPreviewSource } from "../src/canvas/editor-view"
 
 function createDocumentWithPage(): PageDocument {
   const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })

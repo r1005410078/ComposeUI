@@ -7,12 +7,12 @@
  */
 
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
-import { formatOperation } from "./operation-formatters"
-import type { OperationLogControllerState } from "../operation-log-controller-port"
-import { mountOutputReplayBar, type OutputReplayBarMount } from "./output-replay-bar"
-import { mountOutputToolbar, type OutputToolbarMount } from "./output-toolbar"
-import { safeText } from "./output-value-format"
-import type { WorkspaceContext, WorkspacePanelMount } from "./types"
+import { formatOperation } from "../operation-formatters"
+import type { OperationLogControllerState } from "../../operation-log/controller-port"
+import { mountOutputReplayBar, type OutputReplayBarMount } from "./replay-bar"
+import { mountOutputToolbar, type OutputToolbarMount } from "./toolbar"
+import { safeText } from "./value-format"
+import type { WorkspaceContext, WorkspacePanelMount } from "../types"
 
 const levelLabels: Record<OperationStatus, string> = {
   observed: "记录",

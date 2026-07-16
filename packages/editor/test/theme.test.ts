@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
 const editorRoot = fileURLToPath(new URL("../", import.meta.url))
-const themeCss = readFileSync(`${editorRoot}src/theme.css`, "utf8")
+const themeCss = readFileSync(`${editorRoot}src/styles/theme.css`, "utf8")
 
 describe("operation output theme tokens", () => {
   it("defines compact output density tokens", () => {

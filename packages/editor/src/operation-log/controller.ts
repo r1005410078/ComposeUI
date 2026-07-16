@@ -17,8 +17,8 @@ import type {
   OperationLogFilter,
   OperationLogFilterValue,
   OperationLogViewQuery,
-} from "./operation-log-controller-port"
-import type { ReplayControllerPort } from "./workspace/replay-controller"
+} from "./controller-port"
+import type { ReplayControllerPort } from "../workspace/replay-controller"
 
 export type {
   OperationLogControllerListener,
@@ -28,7 +28,7 @@ export type {
   OperationLogFilterValue,
   OperationLogLevel,
   OperationLogViewQuery,
-} from "./operation-log-controller-port"
+} from "./controller-port"
 
 export interface OperationLogControllerOptions {
   store: OperationLogStore

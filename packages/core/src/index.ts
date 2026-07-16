@@ -8,9 +8,9 @@
  * 导出用 canonicalizeDocument(store)。会话态请用 @composeui/editor 的 EditorSession。
  */
 
-export type { Diagnostic, Result } from "./diagnostics"
-export { createEditor } from "./commands"
-export type { EditorOperation, EditorOperationObserver } from "./operations"
+export type { Diagnostic, Result } from "./shared/diagnostics"
+export { createEditor } from "./kernel/commands"
+export type { EditorOperation, EditorOperationObserver } from "./kernel/operations"
 export type {
   CreateNodeCommand,
   DeleteNodeCommand,
@@ -26,12 +26,12 @@ export type {
   SetPageOverflowCommand,
   SetNodeLockedCommand,
   SetNodeVisibleCommand,
-} from "./commands"
-export { History } from "./history"
-export type { HistoryChange, HistoryEntry } from "./history"
-export { getChildren, getTreeItems } from "./projections"
-export type { TreeItem } from "./projections"
-export { createEmptyDocument } from "./schema"
+} from "./kernel/commands"
+export { History } from "./kernel/history"
+export type { HistoryChange, HistoryEntry } from "./kernel/history"
+export { getChildren, getTreeItems } from "./query/projections"
+export type { TreeItem } from "./query/projections"
+export { createEmptyDocument } from "./document/schema"
 export type {
   BaseRecord,
   DocumentRecord,
@@ -42,9 +42,9 @@ export type {
   PageRecord,
   PersistentRecord,
   RecordUpdatePatch,
-} from "./schema"
-export { RecordStore } from "./store"
-export { applyPatch, transact } from "./transaction"
+} from "./document/schema"
+export { RecordStore } from "./store/store"
+export { applyPatch, transact } from "./kernel/transaction"
 export type {
   TransactionDraft,
   TransactionOrigin,
@@ -52,5 +52,5 @@ export type {
   TransactionResult,
   PatchApplyResult,
   UpdatedRecordPatch,
-} from "./transaction"
-export { canonicalizeDocument } from "./snapshot"
+} from "./kernel/transaction"
+export { canonicalizeDocument } from "./document/snapshot"

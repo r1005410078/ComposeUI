@@ -6,7 +6,7 @@
  */
 
 import type { OperationCategory, OperationEvent, OperationStatus } from "@composeui/operation-log"
-import type { ReplayControllerPort } from "./workspace/replay-controller"
+import type { ReplayControllerPort } from "../workspace/replay-controller"
 
 export type OperationLogLevel = OperationStatus
 

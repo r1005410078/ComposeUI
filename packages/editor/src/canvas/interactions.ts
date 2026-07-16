@@ -7,7 +7,7 @@
  * 完成时应 `commit()` 得到 delta 再 `editor.dispatch({ id: "node.move", ... })`。
  */
 
-import type { Point } from "./coordinates"
+import type { Point } from "../session/coordinates"
 
 export interface PointerMoveSession {
   update(screen: Point): void

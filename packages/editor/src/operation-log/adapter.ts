@@ -8,8 +8,8 @@
  */
 
 import type { OperationRecorder } from "@composeui/operation-log"
-import type { EditorSessionOperationObserver, SessionOperation } from "./session"
-export { EditorSessionReplayAdapter } from "./workspace/replay-controller"
+import type { EditorSessionOperationObserver, SessionOperation } from "../session/session"
+export { EditorSessionReplayAdapter } from "../workspace/replay-controller"
 
 /** 创建 Session → Recorder 观察者；record 失败由 recorder 自行处理，此处 fire-and-forget。 */
 export function createSessionOperationObserver(

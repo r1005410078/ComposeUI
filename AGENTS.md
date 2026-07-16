@@ -22,6 +22,7 @@ ComposeUI is not a general low-code platform and is not a Figma replacement. Its
 Read the relevant documents before changing architecture or behavior:
 
 - [**Current implemented architecture**](docs/current-architecture.md) — what the code actually does today (packages, write path, Document/Session/Workspace). Prefer this over design docs when answering “is X implemented?”
+- Package source maps: [packages/core/src/README.md](packages/core/src/README.md), [packages/editor/src/README.md](packages/editor/src/README.md). New code belongs in the matching folder; do not dump domain logic into flat `src/` roots.
 - [Project overview](docs/project-overview.md)
 - [Main product design](docs/superpowers/specs/2026-07-11-embeddable-visual-page-composer-design.md)
 - [Transactional editor microkernel](docs/superpowers/specs/2026-07-11-transactional-editor-microkernel-architecture-design.md)

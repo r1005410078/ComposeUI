@@ -8,11 +8,11 @@ export default defineConfig({
     alias: [
       {
         find: "@composeui/editor/editor.css",
-        replacement: fromRoot("../../packages/editor/src/editor.css"),
+        replacement: fromRoot("../../packages/editor/src/styles/editor.css"),
       },
       {
         find: "@composeui/editor/theme.css",
-        replacement: fromRoot("../../packages/editor/src/theme.css"),
+        replacement: fromRoot("../../packages/editor/src/styles/theme.css"),
       },
       {
         find: "@composeui/editor",
