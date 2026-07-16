@@ -21,10 +21,7 @@ export function snapScalar(value: number, step: number): number {
   return snapped === 0 ? 0 : snapped
 }
 
-export function snapPoint(
-  point: { x: number; y: number },
-  step: number,
-): { x: number; y: number } {
+export function snapPoint(point: { x: number; y: number }, step: number): { x: number; y: number } {
   return { x: snapScalar(point.x, step), y: snapScalar(point.y, step) }
 }
 

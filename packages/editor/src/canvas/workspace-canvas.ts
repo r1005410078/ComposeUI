@@ -270,7 +270,10 @@ export function createWorkspaceCanvas(): WorkspaceCanvas {
         const textW = ctx.measureText(readout).width
         const boxW = textW + pad * 2
         const boxH = 14
-        const boxX = Math.min(Math.max(RULER_SIZE + 4, screen.x + 8), Math.max(RULER_SIZE + 4, cssWidth - boxW - 2))
+        const boxX = Math.min(
+          Math.max(RULER_SIZE + 4, screen.x + 8),
+          Math.max(RULER_SIZE + 4, cssWidth - boxW - 2),
+        )
         const boxY = 3
         ctx.fillStyle = rulerBg
         ctx.fillRect(boxX, boxY, boxW, boxH)

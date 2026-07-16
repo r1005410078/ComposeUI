@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { snapPoint, snapRect, snapScalar } from "../src/session/snap"
+import { snapRect, snapScalar } from "../src/session/snap"
 
 describe("snapScalar", () => {
   it("rounds to nearest step", () => {
@@ -28,11 +28,7 @@ describe("snapRect", () => {
   })
 
   it("snaps only requested edges on resize-like updates", () => {
-    const r = snapRect(
-      { x: 0, y: 0, width: 13, height: 20 },
-      8,
-      { right: true, bottom: true },
-    )
+    const r = snapRect({ x: 0, y: 0, width: 13, height: 20 }, 8, { right: true, bottom: true })
     expect(r.x).toBe(0)
     expect(r.y).toBe(0)
     expect(r.width).toBe(16)

@@ -4,11 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
 import type { PageDocument } from "@composeui/core"
 import { mountEditor } from "../src/index"
-import {
-  edgesForResizeHandle,
-  shouldSnap,
-  snapGroupResizeResult,
-} from "../src/canvas/pointer"
+import { edgesForResizeHandle, shouldSnap, snapGroupResizeResult } from "../src/canvas/pointer"
 import { selectionBounds } from "../src/canvas/group-resize"
 
 function createDocumentWithPage(): PageDocument {

@@ -156,9 +156,9 @@ describe("workspace toolbar", () => {
         root.querySelector<HTMLButtonElement>(`[data-testid='workspace-tool-${id}']`)?.disabled,
       ).toBe(true)
     }
-    expect(root.querySelector<HTMLSelectElement>("[data-testid='workspace-grid-size']")?.disabled).toBe(
-      true,
-    )
+    expect(
+      root.querySelector<HTMLSelectElement>("[data-testid='workspace-grid-size']")?.disabled,
+    ).toBe(true)
     root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-grid']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-snap']")!.click()
@@ -182,9 +182,9 @@ describe("workspace toolbar", () => {
     expect(
       root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-snap']")?.disabled,
     ).toBe(false)
-    expect(root.querySelector<HTMLSelectElement>("[data-testid='workspace-grid-size']")?.disabled).toBe(
-      false,
-    )
+    expect(
+      root.querySelector<HTMLSelectElement>("[data-testid='workspace-grid-size']")?.disabled,
+    ).toBe(false)
     root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!.click()
     expect(context.session.getState().interactionMode).toBe("pan")
     root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-snap']")!.click()

@@ -7,13 +7,15 @@
 src/
 ├── index.ts                 # 公共出口 + 样式入口
 ├── session/                 # Session Scope（不进 PageDocument）
-│   ├── session.ts           # viewport / selection / expanded / …
-│   └── coordinates.ts       # screen ↔ world ↔ parent-local
+│   ├── session.ts           # viewport / selection / gridSize / snapEnabled / …
+│   ├── coordinates.ts       # screen ↔ world ↔ parent-local
+│   └── snap.ts              # 网格吸附纯函数（snapScalar/Point/Rect）
 ├── canvas/                  # 画布 DOM + 指针交互（按职责拆分）
 │   ├── mount.ts             # mountEditor 装配与订阅
 │   ├── board-render.ts      # page board / 节点 DOM
+│   ├── workspace-canvas.ts  # Canvas2D 无限网格 + 标尺/游标
 │   ├── overlay.ts           # SVG 选框与手柄
-│   ├── pointer.ts           # move/resize/group-resize 状态机
+│   ├── pointer.ts           # move/resize/group-resize 状态机（可选 snap）
 │   ├── pointer-pan.ts       # 平移手势
 │   ├── pointer-marquee.ts   # 框选
 │   ├── pointer-helpers.ts   # 坐标 / 修饰键
