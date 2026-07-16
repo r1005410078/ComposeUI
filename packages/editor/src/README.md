@@ -9,8 +9,12 @@ src/
 ├── session/                 # Session Scope（不进 PageDocument）
 │   ├── session.ts           # viewport / selection / expanded / …
 │   └── coordinates.ts       # screen ↔ world ↔ parent-local
-├── canvas/                  # 画布 DOM + 指针交互
-│   ├── editor-view.ts       # mountEditor
+├── canvas/                  # 画布 DOM + 指针交互（按职责拆分）
+│   ├── mount.ts             # mountEditor 装配与订阅
+│   ├── board-render.ts      # page board / 节点 DOM
+│   ├── overlay.ts           # SVG 选框与手柄
+│   ├── pointer.ts           # 指针控制器
+│   ├── preview.ts           # 预览帧 / 回放 banner
 │   ├── interactions.ts      # 拖拽草稿
 │   ├── group-resize.ts      # 多选缩放几何
 │   └── colors.ts            # 安全色
@@ -38,7 +42,6 @@ src/
 **三态：** Document（core）· Session（本包 session/）· Workspace chrome（workspace/ + localStorage）。  
 **引擎侧日志：** `@composeui/operation-log`；本包只做观察适配与 Output UI。
 
-**包边界（P0）：** 本包只能 `from "@composeui/core"`，禁止 `@composeui/core/...` 或 `packages/core/src` 深路径。守卫：`bun run boundaries`（`scripts/check-package-boundaries.mjs`）。  
-**M1.5：** canvas 上帝文件拆分属 **P2**；core 侧 Command 插件属 **P1**。见 [Foundation Upgrade](../../../docs/superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md) 与 [current-architecture §2.2](../../../docs/current-architecture.md#22-包依赖守卫p0-已落地)。
+**包边界：** 本包只能 `from "@composeui/core"`，禁止 `@composeui/core/...` 或 `packages/core/src` 深路径。守卫：`bun run boundaries`（`scripts/check-package-boundaries.mjs`）。
 
 详见 [docs/current-architecture.md](../../../docs/current-architecture.md)。

@@ -5,11 +5,12 @@
 
 | 项 | 值 |
 | --- | --- |
-| 对应里程碑 | M0 内核闭环 + M1 Free Layout 编辑器骨架；其后叠加 Dockview workspace 与 operation-log；**M1.5 Foundation** 进行中（P0 目录分层 + 依赖守卫已落地） |
+| 对应里程碑 | M0 内核闭环 + M1 Free Layout 编辑器骨架 + Dockview workspace / operation-log；**M1.5 Foundation 已落地**（目录分层、依赖守卫、Command 插件、canvas/Query 收纳） |
 | 包 | `@composeui/core`、`@composeui/editor`、`@composeui/operation-log`、`apps/playground` |
 | 权威设计（目标态） | [事务型编辑器微内核](./superpowers/specs/2026-07-11-transactional-editor-microkernel-architecture-design.md)、[产品设计](./superpowers/specs/2026-07-11-embeddable-visual-page-composer-design.md) |
-| 基础架构升级（M1.5） | [Foundation Upgrade 设计](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md)（P0 守卫 → P1 Command 插件 → P2 canvas/Query） |
+| 基础架构升级（M1.5） | [Foundation Upgrade 设计](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md) |
 | 进度表 | [项目概览 · 当前进展](./project-overview.md#当前进展) |
+| 包内源码地图 | [`packages/core/src/README.md`](../packages/core/src/README.md)、[`packages/editor/src/README.md`](../packages/editor/src/README.md) |
 
 ---
 
@@ -49,26 +50,28 @@ playground ──► editor ──► core
 
 ```text
 packages/core/src/
-├── document/     # schema + canonicalize 快照
-├── store/        # RecordStore + 树校验
-├── kernel/       # transaction / history / commands / operations
-├── query/        # 只读投影（组件树等）
-└── shared/       # Diagnostic / Result
+├── document/          # schema + canonicalize 快照
+├── store/             # RecordStore + 树校验
+├── kernel/
+│   ├── transaction.ts
+│   ├── history.ts
+│   ├── operations.ts
+│   └── commands/      # registry + plugin + editor + builtin/*
+├── query/             # tree 投影 + LayoutProjection 类型占位
+└── shared/            # Diagnostic / Result
 ```
-
-> **P1 目标：** `kernel/commands.ts` 将拆为 `kernel/commands/`（registry + editor 门面 + builtin）与 `kernel/plugin.ts`。当前仍是单文件 switch；见 [M1.5 Foundation 设计 · Command 插件](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md#6-command-插件设计)。
 
 **`@composeui/editor`**
 
 ```text
 packages/editor/src/
-├── session/        # Session Scope（viewport、selection…）+ 坐标
-├── canvas/         # 画布 mount、指针交互、组缩放
-├── tree/           # 组件树
-├── operation-log/  # 日志 UI 控制器与 session 观察适配
-├── workspace/      # Dockview 壳、面板、回放控制
-│   └── output/     # Output 面板子树
-└── styles/         # theme / editor / workspace CSS
+├── session/           # Session Scope（viewport、selection…）+ 坐标
+├── canvas/            # mount / board-render / overlay / pointer / preview + 交互几何
+├── tree/              # 组件树
+├── operation-log/     # 日志 UI 控制器与 session 观察适配
+├── workspace/         # Dockview 壳、面板、回放控制
+│   └── output/        # Output 面板子树
+└── styles/            # theme / editor / workspace CSS
 ```
 
 **`@composeui/operation-log`**（已有清晰子树）
@@ -80,7 +83,7 @@ packages/operation-log/src/
 └── *.ts        # recorder、store、bundle、checkpoint…
 ```
 
-### 2.2 包依赖守卫（P0 已落地）
+### 2.2 包依赖守卫（已落地）
 
 分层不仅靠约定：仓库用机械检查锁住允许的 import 方向。
 
@@ -98,11 +101,13 @@ packages/operation-log/src/
    - 禁止 import `kernel/commands`、`kernel/plugin` 或任意 `/commands` 模块  
    - Query 只读 store/document；变更仍经 Command → `transact`
 
-**与 M1.5 的关系：**
+**M1.5 Foundation 落地情况：**
 
-- **P0（当前）**：目录分层已合入 + 本守卫 + 本文档对齐。**不**引入 Command 插件运行时，**不**拆 `commands/` 子目录。
-- **P1**：Command Registry / Plugin（`register` / unregister / `dispose`），内置命令迁入 `kernel/commands/builtin/`；见 [Foundation Upgrade 设计](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md)。
-- **P2**：canvas 上帝文件拆分与 Query 路径收纳（含 LayoutProjection 类型占位）。
+| 阶段 | 状态 | 内容 |
+| --- | --- | --- |
+| **P0** | 已落地 | 目录分层 + 依赖守卫 + 文档对齐 |
+| **P1** | 已落地 | `kernel/commands/`（registry / plugin / editor / builtin）；构造期 `CommandPlugin` |
+| **P2** | 已落地 | canvas 拆为 mount/board-render/overlay/pointer/preview；`query/tree` + `query/types`（`LayoutProjection` 类型占位，无算法） |
 
 故意违规 import 时 `bun run boundaries` 必须以非零退出码失败。
 
@@ -157,9 +162,10 @@ packages/operation-log/src/
 | Validation | `store/validation.ts` | 树策略（parent、环、sibling index） |
 | Transaction | `kernel/transaction.ts` | `transact` / `applyPatch`，forward + inverse |
 | History | `kernel/history.ts` | 线性 undo/redo/jump（patch 回放） |
-| Commands | `kernel/commands.ts` | `createEditor`、`dispatch`、节点/page 命令 |
+| Commands | `kernel/commands/` | `createEditor`、`CommandRegistry`、构造期插件安装、builtin 贡献 |
 | Operations | `kernel/operations.ts` | `EditorOperation` 观察契约 |
-| Projections | `query/projections.ts` | `getTreeItems` / `getChildren` |
+| Tree query | `query/tree.ts` | `getTreeItems` / `getChildren` |
+| Query types | `query/types.ts` | `LayoutProjection` / `ResolvedBox` 类型占位（无默认实现） |
 | Diagnostics | `shared/diagnostics.ts` | `Diagnostic` / `Result` |
 
 ### 4.2 写路径（硬约束）
@@ -171,10 +177,10 @@ UI / 工具条 / 树 / 画布
 Editor.dispatch(EditorCommand)
         │
         ▼
-prepare*（业务校验、锁、顶层 move…）
+CommandRegistry.get(id) → prepare*（业务校验、锁、顶层 move…）
         │
         ▼
-transact(store, origin, draft => …)
+transact(store, origin, draft => …)   // contribution.execute
         │  失败 → 原 store + diagnostics，无部分提交
         ▼
 History.record(forward, inverse)   // 空 patch 不入栈
@@ -201,20 +207,19 @@ PageDocument
 - 页面：`overflow`、`background`、`width`/`height` 可持久。
 - **无**：auto/grid、业务组件、definition/instance、binding、asset record、adapterId 运行时字段落地。
 
-### 4.4 已实现命令
+### 4.4 已实现命令与插件
 
-| Command id | 作用 |
-| --- | --- |
-| `node.create` | 创建 rectangle |
-| `node.move` | 多选平移（仅顶层，尊重 lock 祖先） |
-| `node.resize` / `node.resizeMany` | 单/多选尺寸 |
-| `node.delete` | 子树删除（不可删 page） |
-| `node.reorder` | parent/index（可与同级交换 index） |
-| `node.rename` / `setVisible` / `setLocked` | 属性 |
-| `page.setOverflow` | 页面溢出 |
+| Command id | 贡献位置（builtin） | 作用 |
+| --- | --- | --- |
+| `node.create` | `node-create.ts` | 创建 rectangle |
+| `node.move` | `node-transform.ts` | 多选平移（仅顶层，尊重 lock 祖先） |
+| `node.resize` / `node.resizeMany` | `node-transform.ts` | 单/多选尺寸 |
+| `node.delete` | `node-tree.ts` | 子树删除（不可删 page） |
+| `node.reorder` | `node-tree.ts` | parent/index（可与同级交换 index） |
+| `node.rename` / `setVisible` / `setLocked` | `node-tree.ts` | 属性 |
+| `page.setOverflow` | `page.ts` | 页面溢出 |
 
-命令分发目前是 **`commands.ts` 内 switch**，不是可插拔 Command Registry。  
-可注册 Command 插件与 `kernel/commands/` 子树是 **M1.5 P1** 目标，设计见 [Foundation Upgrade · §6](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md#6-command-插件设计)。
+命令经 **`CommandRegistry`** 按 id 分发；内置命令由 **`builtinCommandPlugin`** 在 `createEditor` 时安装。宿主可传入额外 `CommandPlugin[]`（构造期 `installCommandPlugins`）；**无**运行时 `installPlugin`。设计背景见 [Foundation Upgrade · §6](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md#6-command-插件设计)。
 
 ---
 
@@ -239,7 +244,11 @@ History                 grid, interactionMode      toolbar / output
 | Session | `session/session.ts` | 会话态；不进文档 |
 | 坐标 | `session/coordinates.ts` | screen ↔ world ↔ parent-local、`zoomAt` |
 | 交互草稿 | `canvas/interactions.ts`, `canvas/group-resize.ts` | 拖拽/组缩放纯几何，commit 再 dispatch |
-| 画布 | `canvas/editor-view.ts` | page board、节点 DOM、SVG 叠层、指针、预览帧 |
+| 画布挂载 | `canvas/mount.ts` | `mountEditor`：装配 board / overlay / pointer / preview 订阅 |
+| Board 渲染 | `canvas/board-render.ts` | page board、节点 DOM |
+| 叠层 | `canvas/overlay.ts` | SVG 选框与手柄 |
+| 指针 | `canvas/pointer.ts` | 指针控制器 |
+| 预览 | `canvas/preview.ts` | 回放/只读预览帧与 banner |
 | 组件树 | `tree/component-tree.ts` | `getTreeItems` + session；变更走 command |
 | Workspace | `workspace/editor-workspace.ts` 等 | Dockview 分栏、默认面板、布局持久化 |
 | 日志 UI | `operation-log/*`, `workspace/output/*` | 列表/过滤/回放条 |
@@ -301,7 +310,7 @@ Replay：checkpoint/document 快照 + 事件顺序重放；editor 通过 `Editor
 pointerdown  → createPointerMoveSession（session 预览）
 pointermove  → 更新预览 DOM/叠层（不写 store）
 pointerup    → commit delta → dispatch({ id: "node.move", … })
-             → transact → history → subscribe → 正式重绘
+             → registry → prepare → transact → history → subscribe → 正式重绘
              → operation-log: document.command started/succeeded
 ```
 
@@ -325,7 +334,7 @@ toolbar/api.undo → editor.undo → History.undo → applyPatch(inverse)
 
 | 层 | 工具 | 覆盖侧重 |
 | --- | --- | --- |
-| 单元/集成 | Vitest | core 事务/命令/history；editor session/view/workspace；operation-log |
+| 单元/集成 | Vitest | core 事务/命令/history/插件；editor session/canvas/workspace；operation-log |
 | 属性 | fast-check | 树/事务类不变量（core） |
 | Golden | JSON 文件 | canonical document、部分 log bundle |
 | E2E | Playwright Chromium | Playground 主路径、workspace、回放相关 |
@@ -341,8 +350,8 @@ toolbar/api.undo → editor.undo → History.undo → applyPatch(inverse)
 | 领域 | 状态 |
 | --- | --- |
 | Auto Layout / Grid 引擎与模式迁移 | 未实现 |
-| 插件式 Command Registry（M1.5 P1） | 未实现（命令写死 switch；设计见 [Foundation Upgrade](./superpowers/specs/2026-07-16-foundation-architecture-upgrade-design.md)） |
-| Layout / Import 等多贡献点插件平台 | 未实现（M1.5 仅规划 Command 贡献点） |
+| LayoutProjection **算法实现**（M1.5 仅类型占位） | 未实现（契约在 `query/types.ts`） |
+| Layout / Import 等多贡献点插件平台 | 未实现（M1.5 仅落地 Command 贡献点） |
 | Framework Adapter（Vue/React…）、业务组件注册 | 未实现 |
 | 页面级上下文注入 / 单板单框架运行时根 | 未实现 |
 | Component definition / instance / detach | 未实现 |
@@ -373,7 +382,7 @@ toolbar/api.undo → editor.undo → History.undo → applyPatch(inverse)
 3. 设计文档中的目标态描述（可能尚未编码）
 ```
 
-`AGENTS.md` 中的产品不变量（嵌入优先、Document/Session 分离、命令统一写路径等）**已在当前实现中部分兑现**；插件平台与运行时编译等仍属目标态。
+`AGENTS.md` 中的产品不变量（嵌入优先、Document/Session 分离、命令统一写路径等）**已在当前实现中部分兑现**；多贡献点插件平台与运行时编译等仍属目标态。
 
 ---
 
@@ -381,17 +390,17 @@ toolbar/api.undo → editor.undo → History.undo → applyPatch(inverse)
 
 | 若要做… | 建议落在… | 不要… |
 | --- | --- | --- |
-| 新持久节点字段/命令 | `core` schema + command + transaction 校验 + golden | 在 `editor-view` 直接改 record |
+| 新持久节点字段/命令 | `core` schema + `commands/builtin` 或宿主 `CommandPlugin` + transaction 校验 + golden | 在 `canvas/*` 直接改 record |
 | 新会话交互 | `EditorSession` 或交互纯函数 + 最后 dispatch | 把预览坐标写入 PageDocument |
 | 新 Dock 面板 | `PanelRegistry` + `workspace/panels` | 把面板布局塞进文档 JSON |
 | 新可观测事件 | operation-log category/handler + editor 观察适配 | 让 log 成为第二权威 store |
-| 布局算法 Auto/Grid | 新 core 布局模块 + 命令迁移事务 | 仅在 DOM 上模拟布局 |
+| 布局算法 Auto/Grid | 新 core 布局模块 + `LayoutProjection` 实现 + 命令迁移事务 | 仅在 DOM 上模拟布局 |
 | 业务组件 | 未来 adapter 包 + runtime 根 | 在 core 依赖 React/Vue |
 
 ---
 
 ## 13. 维护约定
 
-- 合并会改变**包边界、写路径或 Document/Session 归属**的 PR 时，同步更新本文。
+- 合并会改变**包边界、写路径或 Document/Session 归属**的 PR 时，同步更新本文与包内 `src/README.md`。
 - 仅新增命令字段或面板标题的琐碎改动，可不必改总图，但应保证 golden/测试反映行为。
 - 注释规范（A+D 中文）见 `AGENTS.md` → Code Comment Conventions；模块导读应与本文分层一致。
