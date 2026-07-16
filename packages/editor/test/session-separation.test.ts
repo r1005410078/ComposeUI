@@ -14,6 +14,8 @@ describe("Document and Session scopes", () => {
     expect(serialized).not.toContain("viewport")
     expect(serialized).not.toContain("selection")
     expect(serialized).not.toContain("gridVisible")
+    expect(serialized).not.toContain("gridSize")
+    expect(serialized).not.toContain("snapEnabled")
   })
 
   it("isolates state and listeners between session instances", () => {
@@ -31,6 +33,8 @@ describe("Document and Session scopes", () => {
       expanded: [],
       hoveredId: null,
       gridVisible: true,
+      gridSize: 8,
+      snapEnabled: true,
       interactionMode: "select",
     })
     expect(secondNotifications).toBe(0)

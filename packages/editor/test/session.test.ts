@@ -25,6 +25,8 @@ describe("EditorSession", () => {
       expanded: ["node-1"],
       hoveredId: "node-2",
       gridVisible: false,
+      gridSize: 8,
+      snapEnabled: true,
       interactionMode: "pan",
     })
   })
@@ -48,6 +50,8 @@ describe("EditorSession", () => {
       expanded: ["node-2"],
       hoveredId: null,
       gridVisible: true,
+      gridSize: 8,
+      snapEnabled: true,
       interactionMode: "select",
     })
   })
@@ -142,6 +146,51 @@ describe("EditorSession", () => {
       "session.expandedTree",
       "session.interactionMode",
       "session.hoveredId",
+    ])
+  })
+
+  it("sets grid size and snap enabled", () => {
+    const session = new EditorSession()
+    expect(session.getState().gridSize).toBe(8)
+    expect(session.getState().snapEnabled).toBe(true)
+
+    session.setGridSize(16)
+    session.setSnapEnabled(false)
+    expect(session.getState().gridSize).toBe(16)
+    expect(session.getState().snapEnabled).toBe(false)
+
+    session.setGridSize(16)
+    session.setSnapEnabled(false)
+    expect(session.getState()).toMatchObject({ gridSize: 16, snapEnabled: false })
+  })
+
+  it("rejects invalid grid size", () => {
+    const session = new EditorSession()
+
+    expect(() => session.setGridSize(0)).toThrow("INVALID_GRID_SIZE")
+    expect(() => session.setGridSize(-1)).toThrow("INVALID_GRID_SIZE")
+    expect(() => session.setGridSize(0.5)).toThrow("INVALID_GRID_SIZE")
+    expect(() => session.setGridSize(1025)).toThrow("INVALID_GRID_SIZE")
+    expect(() => session.setGridSize(Number.NaN)).toThrow("INVALID_GRID_SIZE")
+    expect(session.getState().gridSize).toBe(8)
+  })
+
+  it("emits grid size and snap enabled changes", () => {
+    const events: SessionOperation[] = []
+    const session = new EditorSession({
+      operationObserver: { observe: (event) => events.push(event) },
+    })
+
+    session.setGridSize(32)
+    session.setGridSize(32)
+    session.setSnapEnabled(false)
+    session.setSnapEnabled(false)
+    session.setSnapEnabled(true)
+
+    expect(events).toEqual([
+      { type: "session.gridSize", gridSize: 32 },
+      { type: "session.snapEnabled", snapEnabled: false },
+      { type: "session.snapEnabled", snapEnabled: true },
     ])
   })
 })

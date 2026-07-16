@@ -12,7 +12,9 @@ describe("Editor Session properties", () => {
         fc.double({ min: 0.1, max: 4, noNaN: true, noDefaultInfinity: true }),
         fc.uniqueArray(fc.string({ minLength: 1, maxLength: 12 }), { maxLength: 12 }),
         fc.boolean(),
-        (x, y, zoom, selection, gridVisible) => {
+        fc.integer({ min: 1, max: 1024 }),
+        fc.boolean(),
+        (x, y, zoom, selection, gridVisible, gridSize, snapEnabled) => {
           const editor = createEditor(
             createEmptyDocument({ documentId: "doc-1", pageId: "page-1" }),
           )
@@ -22,6 +24,8 @@ describe("Editor Session properties", () => {
           session.setViewport({ x, y, zoom })
           session.setSelection(selection)
           session.setGridVisible(gridVisible)
+          session.setGridSize(gridSize)
+          session.setSnapEnabled(snapEnabled)
 
           expect(canonicalizeDocument(editor.getStore())).toEqual(before)
         },

@@ -12,6 +12,8 @@
  * 可选 operationObserver → operation-log（旁路，失败吞掉）。
  */
 
+import { assertValidGridSize } from "./snap"
+
 /** Workspace 视口：平移偏移 + 缩放；非 page board 尺寸。 */
 export interface Viewport {
   x: number
@@ -28,6 +30,10 @@ export interface EditorSessionState {
   expanded: string[]
   hoveredId: string | null
   gridVisible: boolean
+  /** 次网格步长（world/local 同一数值语义）；默认 8。 */
+  gridSize: number
+  /** 是否启用吸附；默认 true。与 gridVisible 独立。 */
+  snapEnabled: boolean
   interactionMode: InteractionMode
 }
 
@@ -37,6 +43,8 @@ export type SessionOperation =
   | { type: "session.viewport"; viewport: Viewport }
   | { type: "session.expandedTree"; expanded: string[] }
   | { type: "session.gridVisibility"; gridVisible: boolean }
+  | { type: "session.gridSize"; gridSize: number }
+  | { type: "session.snapEnabled"; snapEnabled: boolean }
   | { type: "session.interactionMode"; interactionMode: InteractionMode }
   | { type: "session.hoveredId"; hoveredId: string | null }
 
@@ -70,6 +78,8 @@ export class EditorSession {
     expanded: [],
     hoveredId: null,
     gridVisible: true,
+    gridSize: 8,
+    snapEnabled: true,
     interactionMode: "select",
   }
 
@@ -131,6 +141,21 @@ export class EditorSession {
     if (this.#state.gridVisible === gridVisible) return
     this.#state = { ...this.#state, gridVisible }
     this.#observe({ type: "session.gridVisibility", gridVisible })
+    this.#emit()
+  }
+
+  setGridSize(gridSize: number): void {
+    assertValidGridSize(gridSize)
+    if (this.#state.gridSize === gridSize) return
+    this.#state = { ...this.#state, gridSize }
+    this.#observe({ type: "session.gridSize", gridSize })
+    this.#emit()
+  }
+
+  setSnapEnabled(snapEnabled: boolean): void {
+    if (this.#state.snapEnabled === snapEnabled) return
+    this.#state = { ...this.#state, snapEnabled }
+    this.#observe({ type: "session.snapEnabled", snapEnabled })
     this.#emit()
   }
 

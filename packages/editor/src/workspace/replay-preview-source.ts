@@ -32,6 +32,19 @@ function readSession(value: unknown): EditorSessionState | undefined {
   const x = viewport.x
   const y = viewport.y
   const zoom = viewport.zoom
+  // gridSize / snapEnabled：旧 checkpoint 可缺省，回落 8 / true；若显式给出则校验
+  const gridSize =
+    value.gridSize === undefined
+      ? 8
+      : typeof value.gridSize === "number" && Number.isFinite(value.gridSize) && value.gridSize > 0
+        ? value.gridSize
+        : undefined
+  const snapEnabled =
+    value.snapEnabled === undefined
+      ? true
+      : typeof value.snapEnabled === "boolean"
+        ? value.snapEnabled
+        : undefined
   if (
     typeof x !== "number" ||
     !Number.isFinite(x) ||
@@ -44,6 +57,8 @@ function readSession(value: unknown): EditorSessionState | undefined {
     !isStringArray(value.expanded) ||
     (typeof value.hoveredId !== "string" && value.hoveredId !== null) ||
     typeof value.gridVisible !== "boolean" ||
+    gridSize === undefined ||
+    snapEnabled === undefined ||
     (value.interactionMode !== "select" && value.interactionMode !== "pan")
   ) {
     return undefined
@@ -54,6 +69,8 @@ function readSession(value: unknown): EditorSessionState | undefined {
     expanded: [...value.expanded],
     hoveredId: value.hoveredId,
     gridVisible: value.gridVisible,
+    gridSize,
+    snapEnabled,
     interactionMode: value.interactionMode,
   }
 }

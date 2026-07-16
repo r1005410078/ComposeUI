@@ -58,6 +58,8 @@ describe("createReplayPreviewSource", () => {
           expanded: ["page-1"],
           hoveredId: "node-1",
           gridVisible: false,
+          gridSize: 16,
+          snapEnabled: false,
           interactionMode: "pan",
         },
         workspace: {},
@@ -76,6 +78,8 @@ describe("createReplayPreviewSource", () => {
         expanded: ["page-1"],
         hoveredId: "node-1",
         gridVisible: false,
+        gridSize: 16,
+        snapEnabled: false,
         interactionMode: "pan",
       },
       currentSequence: 2,
@@ -85,6 +89,40 @@ describe("createReplayPreviewSource", () => {
     controller.publish({ active: false, status: "idle", deterministic: true })
 
     expect(frames.at(-1)).toEqual({ active: false })
+  })
+
+  it("defaults missing gridSize and snapEnabled for old checkpoints", () => {
+    const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
+    const controller = createController({
+      active: true,
+      status: "paused",
+      deterministic: true,
+      frame: {
+        sequence: 1,
+        document,
+        session: {
+          viewport: { x: 0, y: 0, zoom: 1 },
+          selection: [],
+          expanded: [],
+          hoveredId: null,
+          gridVisible: true,
+          interactionMode: "select",
+        },
+        workspace: {},
+      },
+    })
+    const source = createReplayPreviewSource(controller)
+
+    expect(source.getState().session).toEqual({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      selection: [],
+      expanded: [],
+      hoveredId: null,
+      gridVisible: true,
+      gridSize: 8,
+      snapEnabled: true,
+      interactionMode: "select",
+    })
   })
 
   it("omits malformed replay session state and returns isolated snapshots", () => {
