@@ -32,10 +32,7 @@ export function previewStore(frame: EditorPreviewFrame): RecordStore | undefined
 /**
  * 保证树侧至少展开当前 page（预览 session 可能未含 pageId）。
  */
-export function treeSessionState(
-  state: EditorSessionState,
-  pageId: string,
-): EditorSessionState {
+export function treeSessionState(state: EditorSessionState, pageId: string): EditorSessionState {
   return state.expanded.includes(pageId)
     ? state
     : { ...state, expanded: [...state.expanded, pageId] }
@@ -50,9 +47,7 @@ export interface PreviewSubscriptionOptions {
 }
 
 /** 订阅预览源；无 source 时返回 undefined。 */
-export function subscribePreview(
-  options: PreviewSubscriptionOptions,
-): (() => void) | undefined {
+export function subscribePreview(options: PreviewSubscriptionOptions): (() => void) | undefined {
   return options.source?.subscribe((nextFrame) => {
     if (options.isDestroyed()) return
     options.cancelActiveInteraction()
@@ -78,9 +73,7 @@ export function updateReplayBanner(options: {
     previewFrame.currentSequence === undefined
       ? undefined
       : `当前 #${previewFrame.currentSequence}`,
-    previewFrame.targetSequence === undefined
-      ? undefined
-      : `目标 #${previewFrame.targetSequence}`,
+    previewFrame.targetSequence === undefined ? undefined : `目标 #${previewFrame.targetSequence}`,
   ].filter((sequence): sequence is string => sequence !== undefined)
   replayBanner.textContent = ["回放预览", ...sequences].join(" ")
   workspace.append(replayBanner)

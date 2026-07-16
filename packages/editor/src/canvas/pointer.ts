@@ -305,12 +305,7 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
         const node = getCurrentStore().get(item.id)
         if (element !== undefined && node?.typeName === "node") applyNodeStyle(element, node)
       }
-      renderSelectionOverlay(
-        overlay,
-        getCurrentStore(),
-        canvas.visibleNodes,
-        getSessionState(),
-      )
+      renderSelectionOverlay(overlay, getCurrentStore(), canvas.visibleNodes, getSessionState())
     }
     const removeListeners = (): void => {
       window.removeEventListener("pointermove", onPointerMove)
