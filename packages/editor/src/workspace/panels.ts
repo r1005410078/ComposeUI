@@ -71,6 +71,7 @@ export function createCanvasPanel(): FirstPartyPanelDescriptor {
       pageId: context.pageId,
       session: context.session,
       view: "canvas",
+      ...(context.preview === undefined ? {} : { preview: context.preview }),
     })
     return () => mounted.destroy()
   })

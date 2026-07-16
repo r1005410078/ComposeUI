@@ -71,6 +71,12 @@ function operationEvent(overrides: Partial<OperationEvent> = {}): OperationEvent
   }
 }
 
+function operationEvents(count: number): OperationEvent[] {
+  return Array.from({ length: count }, (_, index) =>
+    operationEvent({ eventId: `event-${index + 1}`, sequence: index + 1 }),
+  )
+}
+
 function fakeOperationLogController(events: readonly OperationEvent[]): OperationLogControllerPort {
   const listeners = new Set<() => void>()
   const controller: OperationLogControllerPort = {
@@ -355,6 +361,95 @@ describe("workspace panel renderers", () => {
     expect(root.querySelector("[data-testid='output-replay']")).toBeNull()
 
     if (typeof dispose === "function") dispose()
+  })
+
+  it("keeps a selected operation reading position while logs and replay state update", async () => {
+    let rows = operationEvents(30)
+    const logListeners = new Set<(state: OperationLogControllerState) => void>()
+    const replayListeners = new Set<(state: ReplayControllerState) => void>()
+    let replayState: ReplayControllerState = { active: false, status: "idle", deterministic: true }
+    const publishReplay = (next: ReplayControllerState): void => {
+      replayState = next
+      for (const listener of replayListeners) listener(next)
+    }
+    const replayController: ReplayControllerPort = {
+      start: vi.fn(async () => replayState),
+      pause: vi.fn(() => replayState),
+      resume: vi.fn(async () => replayState),
+      stepBackward: vi.fn(async () => replayState),
+      stepForward: vi.fn(async () => replayState),
+      runTo: vi.fn(async () => replayState),
+      verify: vi.fn(async () => replayState),
+      continueBestEffort: vi.fn(async () => replayState),
+      stop: vi.fn(),
+      getState: vi.fn(() => replayState),
+      subscribe: vi.fn((listener) => {
+        replayListeners.add(listener)
+        listener(replayState)
+        return () => replayListeners.delete(listener)
+      }),
+    }
+    const operationLog: OperationLogControllerPort = {
+      ...fakeOperationLogController(rows),
+      query: vi.fn(async () => rows),
+      subscribe: vi.fn((listener) => {
+        logListeners.add(listener)
+        return () => logListeners.delete(listener)
+      }),
+      replayController,
+    }
+    const publishRows = (next: OperationEvent[]): void => {
+      rows = next
+      const state: OperationLogControllerState = {
+        rows,
+        query: { levels: [], categories: [], search: "" },
+        filter: {},
+      }
+      for (const listener of logListeners) listener(state)
+    }
+    const root = document.createElement("div")
+    const dispose = panel("output").mount(root, createContext(undefined, operationLog))
+    await vi.waitFor(() =>
+      expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(30),
+    )
+
+    const list = root.querySelector<HTMLElement>("[data-testid='output-list']")!
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 200 },
+    })
+    list.scrollTop = 320
+    root.querySelectorAll<HTMLElement>("[data-testid='output-entry']")[5]!.click()
+
+    publishRows(operationEvents(31))
+    publishRows(operationEvents(32))
+
+    expect(list.scrollTop).toBe(320)
+    expect(root.querySelectorAll("[data-testid='output-entry']")).toHaveLength(32)
+    expect(root.querySelector("[data-testid='output-new-entries']")?.textContent).toBe(
+      "新增 2 条 · 回到底部",
+    )
+
+    publishReplay({
+      active: true,
+      status: "paused",
+      deterministic: true,
+      currentSequence: 2,
+    })
+    expect(list.scrollTop).toBe(320)
+    expect(
+      root
+        .querySelectorAll<HTMLElement>("[data-testid='output-entry']")[1]
+        ?.getAttribute("data-replay-current"),
+    ).toBe("true")
+
+    root.querySelector<HTMLButtonElement>("[data-testid='output-new-entries']")!.click()
+    expect(list.scrollTop).toBe(900)
+    expect(root.querySelector("[data-testid='output-new-entries']")).toBeNull()
+
+    dispose?.()
+    expect(logListeners).toHaveLength(0)
+    expect(replayListeners).toHaveLength(0)
   })
 
   it("updates details immediately from controller notifications", async () => {
@@ -907,26 +1002,27 @@ describe("workspace panel renderers", () => {
   })
 
   it("renders isolated replay state and a typed difference", async () => {
+    const differenceResult = {
+      status: "paused" as const,
+      deterministic: false,
+      startedAtSequence: 0,
+      currentSequence: 1,
+      targetSequence: 1,
+      difference: {
+        type: "patch-mismatch" as const,
+        sequence: 1,
+        path: "forward.created[0].layout.width",
+        expected: 120,
+        actual: 999,
+      },
+    }
     const replayController = new ReplayController({
       createEngine: vi.fn(async () => ({
-        runTo: vi.fn(async () => ({
-          status: "paused" as const,
-          deterministic: false,
-          startedAtSequence: 0,
-          currentSequence: 1,
-          targetSequence: 1,
-          difference: {
-            type: "patch-mismatch" as const,
-            sequence: 1,
-            path: "forward.created[0].layout.width",
-            expected: 120,
-            actual: 999,
-          },
-        })),
-        step: vi.fn(),
+        runTo: vi.fn(async () => differenceResult),
+        step: vi.fn(async () => differenceResult),
         verify: vi.fn(),
         continueBestEffort: vi.fn(),
-        getState: vi.fn(() => ({ sequence: 1 })),
+        getState: vi.fn(() => ({ sequence: 0 })),
       })),
     })
     const base = fakeOperationLogController([operationEvent()])
@@ -1032,6 +1128,8 @@ describe("workspace panel renderers", () => {
     }
     const replayController: ReplayControllerPort = {
       start: vi.fn(async () => state),
+      pause: vi.fn(() => state),
+      resume: vi.fn(async () => state),
       stepBackward: vi.fn(() => {
         throw new Error("step unavailable")
       }),
@@ -1087,6 +1185,8 @@ describe("workspace panel renderers", () => {
         publish(next)
         return next
       }),
+      pause: vi.fn(() => state),
+      resume: vi.fn(async () => state),
       stepBackward: vi.fn(async () => state),
       stepForward: vi.fn(async () => state),
       runTo: vi.fn(async () => state),
@@ -1140,9 +1240,17 @@ describe("workspace panel renderers", () => {
     root.querySelector<HTMLButtonElement>("[data-testid='output-more-trigger']")!.click()
     root.querySelector<HTMLButtonElement>("[data-testid='output-export']")!.click()
     await vi.waitFor(() => expect(exportSession).toHaveBeenCalledOnce())
-    expect(
-      root.querySelectorAll<HTMLButtonElement>(".composeui-editor__output-replay-controls button"),
-    ).toSatisfy((buttons) => [...buttons].every((button) => button.disabled))
+    const replayControls = [
+      ...root.querySelectorAll<HTMLButtonElement>(
+        ".composeui-editor__output-replay-controls button",
+      ),
+    ]
+    expect(replayControls.filter((button) => button.dataset.testid !== "replay-stop")).toSatisfy(
+      (buttons) => buttons.every((button) => button.disabled),
+    )
+    expect(replayControls.find((button) => button.dataset.testid === "replay-stop")?.disabled).toBe(
+      false,
+    )
     resolveExport?.("bundle")
     await vi.waitFor(() =>
       expect(root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")?.disabled).toBe(
@@ -1161,7 +1269,7 @@ describe("workspace panel renderers", () => {
     expect(root.querySelector("[data-testid='replay-difference']")?.textContent).toContain(
       "patch-mismatch",
     )
-    expect(root.querySelector("[aria-label='继续回放']")).not.toBeNull()
+    expect(root.querySelector("[aria-label='忽略差异并继续']")).not.toBeNull()
 
     root.querySelector<HTMLButtonElement>("[data-testid='replay-stop']")!.click()
     await vi.waitFor(() => expect(replayController.stop).toHaveBeenCalledOnce())

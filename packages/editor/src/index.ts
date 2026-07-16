@@ -6,7 +6,12 @@ import "./workspace/workspace.css"
 export { screenToWorld, worldToParentLocal, worldToScreen, zoomAt } from "./coordinates"
 export type { Point } from "./coordinates"
 export { mountEditor } from "./editor-view"
-export type { MountedEditor, MountEditorOptions } from "./editor-view"
+export type {
+  EditorPreviewFrame,
+  EditorPreviewSource,
+  MountedEditor,
+  MountEditorOptions,
+} from "./editor-view"
 export { mountComponentTree } from "./component-tree"
 export type { MountComponentTreeOptions, MountedComponentTree } from "./component-tree"
 export { EditorSession } from "./session"
@@ -25,6 +30,7 @@ export {
   type ReplayControllerListener,
   type ReplayControllerPort,
   type ReplayControllerState,
+  type ReplayControllerOptions,
   type ReplayEngineFactory,
   type ReplayEngineLike,
 } from "./workspace/replay-controller"

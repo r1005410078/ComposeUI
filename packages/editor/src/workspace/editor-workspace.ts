@@ -11,6 +11,7 @@ import { EditorSession } from "../session"
 import { createModeRegistry, type ModeRegistry } from "./mode-registry"
 import type { PanelRegistry } from "./panel-registry"
 import { createWorkspacePanels } from "./panels"
+import { createReplayPreviewSource } from "./replay-preview-source"
 import { mountWorkspaceToolbar } from "./toolbar"
 import { serializeWorkspaceError } from "./types"
 import type {
@@ -36,11 +37,15 @@ export interface EditorWorkspaceDockview {
     | { subscribe(listener: () => void): { dispose(): void } }
   readonly onDidActivePanelChange?:
     | ((
-        listener: (panel: { id: string } | { panel: { id: string } | undefined } | undefined) => void,
+        listener: (
+          panel: { id: string } | { panel: { id: string } | undefined } | undefined,
+        ) => void,
       ) => { dispose(): void })
     | {
         subscribe(
-          listener: (panel: { id: string } | { panel: { id: string } | undefined } | undefined) => void,
+          listener: (
+            panel: { id: string } | { panel: { id: string } | undefined } | undefined,
+          ) => void,
         ): { dispose(): void }
       }
   addPanel(options: AddPanelOptions): { id: string; focus?(): void }
@@ -130,6 +135,20 @@ function containsPanel(value: unknown, id: string): boolean {
     return Object.values(value).some((item) => containsPanel(item, id))
   }
   return false
+}
+
+function normalizePersistedLayout(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => normalizePersistedLayout(item))
+  if (value !== null && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return value
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, normalizePersistedLayout(item)]),
+    )
+  }
+  return value
 }
 
 function toDisposer(mount: ReturnType<WorkspacePanelMount>): (() => void) | undefined {
@@ -273,14 +292,15 @@ export function mountEditorWorkspace(
   save.addEventListener("click", () => options.onSave?.())
   actions.append(run, save)
   const replayController = options.operationLog?.replayController
-  const updateReplayActions = (): void => {
-    const active = replayController?.getState().active ?? false
+  const replayPreview =
+    replayController === undefined ? undefined : createReplayPreviewSource(replayController)
+  const updateReplayActions = (active: boolean): void => {
     run.disabled = active
     save.disabled = active
     root.classList.toggle("composeui-editor__workspace-replay-active", active)
   }
-  updateReplayActions()
-  const unsubscribeReplay = replayController?.subscribe(updateReplayActions)
+  updateReplayActions(replayPreview?.getState().active ?? false)
+  const unsubscribeReplay = replayPreview?.subscribe((frame) => updateReplayActions(frame.active))
   const dockviewHost = document.createElement("div")
   dockviewHost.className = "composeui-editor__dockview-host"
   header.append(title, modeSlot, actions)
@@ -353,6 +373,9 @@ export function mountEditorWorkspace(
               emit: emitContextEvent,
               ...(options.resources === undefined ? {} : { resources: options.resources }),
               ...(options.operationLog === undefined ? {} : { operationLog: options.operationLog }),
+              ...(descriptor.id !== CANVAS || replayPreview === undefined
+                ? {}
+                : { preview: replayPreview }),
             }
             try {
               if (descriptor.id === CANVAS) {
@@ -374,6 +397,7 @@ export function mountEditorWorkspace(
                     },
                   },
                   panels: [...registry.values()],
+                  ...(replayPreview === undefined ? {} : { preview: replayPreview }),
                 })
                 const disposeToolbarExtras = toToolbarExtrasDisposer(
                   options.mountToolbarExtras?.(toolbarRoot),
@@ -526,7 +550,11 @@ export function mountEditorWorkspace(
   }
 
   const getLayoutSnapshot = (): StoredWorkspaceLayout =>
-    structuredClone({ version: 1, modeId: "2d", layout: dockview.toJSON() })
+    structuredClone({
+      version: 1,
+      modeId: "2d",
+      layout: normalizePersistedLayout(dockview.toJSON()),
+    })
 
   const flushLayout = (): Promise<void> => {
     if (layoutTimer !== undefined) {
@@ -544,7 +572,11 @@ export function mountEditorWorkspace(
         await options.layoutStore?.save(layout)
       } catch (error) {
         if (!disposed) {
-          events({ type: "layout-failure", operation: "save", error: serializeWorkspaceError(error) })
+          events({
+            type: "layout-failure",
+            operation: "save",
+            error: serializeWorkspaceError(error),
+          })
         }
       }
     })
@@ -712,7 +744,11 @@ export function mountEditorWorkspace(
             events({ type: "layout-loaded", layout: getLayoutSnapshot() })
           }
         } catch (error) {
-          events({ type: "layout-failure", operation: "load", error: serializeWorkspaceError(error) })
+          events({
+            type: "layout-failure",
+            operation: "load",
+            error: serializeWorkspaceError(error),
+          })
           applyDefaultLayout()
         } finally {
           applyingLayout = wasApplyingLayout
@@ -720,7 +756,11 @@ export function mountEditorWorkspace(
       },
       (error) => {
         if (!disposed) {
-          events({ type: "layout-failure", operation: "load", error: serializeWorkspaceError(error) })
+          events({
+            type: "layout-failure",
+            operation: "load",
+            error: serializeWorkspaceError(error),
+          })
         }
       },
     )
@@ -737,6 +777,7 @@ export function mountEditorWorkspace(
       unsubscribeReplay?.()
       for (const dispose of disposers.values()) dispose()
       disposers.clear()
+      replayPreview?.dispose()
       dockview.dispose()
       root.replaceChildren()
     },

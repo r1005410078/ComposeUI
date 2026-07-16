@@ -2,6 +2,7 @@ import type {
   ReplayDifference,
   ReplayEngine,
   ReplayResult,
+  ReplayState,
   ReplaySessionPort,
 } from "@composeui/operation-log"
 import type { EditorSession, EditorSessionState, InteractionMode, Viewport } from "../session"
@@ -12,6 +13,12 @@ export type ReplayEngineLike = Pick<
 >
 
 export type ReplayEngineFactory = (targetSequence: number) => Promise<ReplayEngineLike>
+
+export interface ReplayControllerOptions {
+  readonly createEngine: ReplayEngineFactory
+  readonly frameDelayMs?: number
+  readonly wait?: (delayMs: number) => Promise<void>
+}
 
 export class EditorSessionReplayAdapter implements ReplaySessionPort {
   readonly #session: EditorSession
@@ -59,6 +66,7 @@ export interface ReplayControllerState {
   readonly targetSequence?: number
   readonly startedAtSequence?: number
   readonly deterministic: boolean
+  readonly frame?: ReplayState
   readonly error?: string
   readonly difference?: ReplayDifference
   readonly nondeterministicFromSequence?: number
@@ -69,6 +77,8 @@ export type ReplayControllerListener = (state: ReplayControllerState) => void
 export interface ReplayControllerPort {
   readonly replayController?: ReplayController
   start(sequence: number): Promise<ReplayControllerState>
+  pause(): ReplayControllerState
+  resume(): Promise<ReplayControllerState>
   stepBackward(): Promise<ReplayControllerState>
   stepForward(): Promise<ReplayControllerState>
   runTo(sequence: number): Promise<ReplayControllerState>
@@ -87,6 +97,7 @@ function stateFromResult(
   result: ReplayResult,
   active: boolean,
   status: ReplayControllerState["status"],
+  previousFrame?: ReplayState,
 ): ReplayControllerState {
   return {
     active,
@@ -95,6 +106,11 @@ function stateFromResult(
     targetSequence: result.targetSequence,
     startedAtSequence: result.startedAtSequence,
     deterministic: result.deterministic,
+    ...(result.state === undefined
+      ? previousFrame === undefined
+        ? {}
+        : { frame: structuredClone(previousFrame) }
+      : { frame: structuredClone(result.state) }),
     ...(result.difference === undefined ? {} : { difference: structuredClone(result.difference) }),
     ...(result.nondeterministicFromSequence === undefined
       ? {}
@@ -104,13 +120,19 @@ function stateFromResult(
 
 export class ReplayController implements ReplayControllerPort {
   readonly #createEngine: ReplayEngineFactory
+  readonly #frameDelayMs: number
+  readonly #wait: (delayMs: number) => Promise<void>
   readonly #listeners = new Set<ReplayControllerListener>()
   #engine: ReplayEngineLike | undefined
   #state: ReplayControllerState = { active: false, status: "idle", deterministic: true }
   #generation = 0
+  #playback: Promise<void> | undefined
 
-  constructor(options: { createEngine: ReplayEngineFactory }) {
+  constructor(options: ReplayControllerOptions) {
     this.#createEngine = options.createEngine
+    this.#frameDelayMs = options.frameDelayMs ?? 300
+    this.#wait =
+      options.wait ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)))
   }
 
   get replayController(): ReplayController {
@@ -136,12 +158,54 @@ export class ReplayController implements ReplayControllerPort {
       const engine = await this.#createEngine(sequence)
       if (generation !== this.#generation) return this.getState()
       this.#engine = engine
-      const result = await engine.runTo(sequence)
-      if (generation !== this.#generation) return this.getState()
-      return this.#applyResult(result, "paused")
+      const checkpoint = engine.getState()
+      const state = this.#publish({
+        active: true,
+        status: checkpoint.sequence >= sequence ? "completed" : "running",
+        currentSequence: checkpoint.sequence,
+        targetSequence: sequence,
+        startedAtSequence: checkpoint.sequence,
+        deterministic: true,
+        frame: structuredClone(checkpoint),
+      })
+      if (checkpoint.sequence < sequence) {
+        const playback = this.#playTo(generation, engine, sequence)
+        this.#playback = playback
+        void playback.catch((error) => {
+          this.#recoverFromError(generation, error)
+        })
+      }
+      return state
     } catch (error) {
       return this.#recoverStartError(generation, error)
     }
+  }
+
+  pause(): ReplayControllerState {
+    if (!this.#state.active || this.#state.status !== "running") return this.getState()
+    this.#generation += 1
+    return this.#publish({ ...this.#state, status: "paused" })
+  }
+
+  async resume(): Promise<ReplayControllerState> {
+    const engine = this.#requireEngine()
+    const targetSequence = this.#state.targetSequence
+    if (targetSequence === undefined) throw new Error("REPLAY_NOT_ACTIVE")
+    if (this.#state.status === "running") return this.getState()
+
+    const generation = ++this.#generation
+    const state = this.#publishRunning()
+    const previousPlayback = this.#playback
+    const playback = (async () => {
+      await previousPlayback
+      if (generation !== this.#generation) return
+      await this.#playTo(generation, engine, targetSequence)
+    })()
+    this.#playback = playback
+    void playback.catch((error) => {
+      this.#recoverFromError(generation, error)
+    })
+    return state
   }
 
   async stepBackward(): Promise<ReplayControllerState> {
@@ -211,9 +275,32 @@ export class ReplayController implements ReplayControllerPort {
     }
   }
 
-  #publishRunning(overrides: Partial<ReplayControllerState> = {}): void {
+  async #playTo(
+    generation: number,
+    engine: ReplayEngineLike,
+    targetSequence: number,
+  ): Promise<void> {
+    while (generation === this.#generation) {
+      await this.#wait(this.#frameDelayMs)
+      if (generation !== this.#generation) return
+
+      const result = await engine.step(targetSequence)
+      if (generation !== this.#generation) return
+      if (result.difference !== undefined) {
+        this.#applyResult(result, "paused")
+        return
+      }
+      if (result.status === "completed" || result.currentSequence >= targetSequence) {
+        this.#applyResult(result, "completed")
+        return
+      }
+      this.#publish(stateFromResult(result, true, "running", this.#state.frame))
+    }
+  }
+
+  #publishRunning(overrides: Partial<ReplayControllerState> = {}): ReplayControllerState {
     const { error: _error, ...withoutError } = this.#state
-    this.#publish({ ...withoutError, ...overrides, active: true, status: "running" })
+    return this.#publish({ ...withoutError, ...overrides, active: true, status: "running" })
   }
 
   #recoverFromError(generation: number, error: unknown): ReplayControllerState {
@@ -243,7 +330,7 @@ export class ReplayController implements ReplayControllerPort {
     completedStatus: "paused" | "completed",
   ): ReplayControllerState {
     const status = result.status === "completed" ? completedStatus : "paused"
-    return this.#publish(stateFromResult(result, true, status))
+    return this.#publish(stateFromResult(result, true, status, this.#state.frame))
   }
 
   #publish(next: ReplayControllerState): ReplayControllerState {

@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
+import { canonicalJson } from "@composeui/operation-log"
 import {
   createModeRegistry,
   mountEditorWorkspace,
@@ -786,6 +787,35 @@ describe("editor workspace", () => {
     }
   })
 
+  it("omits absent Dockview layout fields before recording persisted workspace events", async () => {
+    const fake = createDockviewFake()
+    const events: WorkspaceEvent[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    fake.setLayoutSnapshot({
+      panels: {
+        scene: { id: "scene", renderer: undefined, tabComponent: undefined, title: "Scene" },
+      },
+    })
+    fake.triggerLayoutChange()
+    await mounted.api.flushLayout()
+
+    expect(events).toContainEqual({
+      type: "layout-changed",
+      layout: {
+        version: 1,
+        modeId: "2d",
+        layout: { panels: { scene: { id: "scene", title: "Scene" } } },
+      },
+    })
+    expect(() => canonicalJson(events)).not.toThrow()
+    mounted.dispose()
+  })
+
   it("emits cloneable layout lifecycle and failure events", async () => {
     const failure = Object.assign(new Error("quota exceeded"), { code: "QUOTA" })
     const fake = createDockviewFake(
@@ -809,7 +839,9 @@ describe("editor workspace", () => {
       onEvent: (event) => events.push(event),
     })
 
-    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "layout-loaded" })))
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(expect.objectContaining({ type: "layout-loaded" })),
+    )
     await mounted.api.resetLayout()
     fake.triggerLayoutChange()
     await vi.waitFor(() =>
@@ -859,7 +891,10 @@ describe("editor workspace", () => {
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2))
     resolveSecondSave()
     await Promise.all([firstFlush, secondFlush])
-    expect(save.mock.calls.map(([layout]) => layout.layout)).toEqual([{ revision: 1 }, { revision: 2 }])
+    expect(save.mock.calls.map(([layout]) => layout.layout)).toEqual([
+      { revision: 1 },
+      { revision: 2 },
+    ])
     mounted.dispose()
   })
 
@@ -925,7 +960,11 @@ describe("editor workspace", () => {
     fake.triggerLayoutChange()
     mounted.dispose()
     const completion = mounted.api.flushLayout()
-    await vi.waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ layout: { revision: "dispose" } })))
+    await vi.waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({ layout: { revision: "dispose" } }),
+      ),
+    )
     rejectSave(new Error("late failure"))
     await completion
     expect(events).not.toContainEqual(
@@ -957,11 +996,10 @@ describe("editor workspace", () => {
     const secondRemove = new Promise<void>((resolve) => {
       resolveSecondRemove = resolve
     })
-    const remove = vi.fn(
-      () =>
-        (remove.mock.calls.length === 1 ? firstRemove : secondRemove).then(() => {
-          storedLayout = undefined
-        }),
+    const remove = vi.fn(() =>
+      (remove.mock.calls.length === 1 ? firstRemove : secondRemove).then(() => {
+        storedLayout = undefined
+      }),
     )
     const save = vi.fn(async (layout: StoredWorkspaceLayout) => {
       storedLayout = layout

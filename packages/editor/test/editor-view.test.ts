@@ -6,6 +6,7 @@ import type { PageDocument } from "@composeui/core"
 import { reorderTreeItem } from "../src/component-tree"
 import { mountEditor } from "../src/index"
 import { EditorSession } from "../src/session"
+import type { EditorPreviewFrame, EditorPreviewSource } from "../src/editor-view"
 
 function createDocumentWithPage(): PageDocument {
   const document = createEmptyDocument({ documentId: "doc-1", pageId: "page-1" })
@@ -105,7 +106,114 @@ function createDataTransfer(): DataTransfer {
   } as DataTransfer
 }
 
+function createPreviewSource(initialFrame: EditorPreviewFrame): {
+  source: EditorPreviewSource
+  publish(frame: EditorPreviewFrame): void
+  unsubscribeCount(): number
+} {
+  let frame = initialFrame
+  let unsubscribed = 0
+  const listeners = new Set<(nextFrame: EditorPreviewFrame) => void>()
+  return {
+    source: {
+      getState: () => frame,
+      subscribe(listener) {
+        listeners.add(listener)
+        return () => {
+          unsubscribed += 1
+          listeners.delete(listener)
+        }
+      },
+    },
+    publish(nextFrame) {
+      frame = nextFrame
+      for (const listener of listeners) listener(frame)
+    },
+    unsubscribeCount: () => unsubscribed,
+  }
+}
+
 describe("mountEditor", () => {
+  it("does not expand the source session when mounting an active replay preview", () => {
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1" })
+    const session = new EditorSession()
+    const preview = createPreviewSource({ active: true })
+    const previewRoot = document.createElement("div")
+
+    const previewMounted = mountEditor(previewRoot, editor, {
+      pageId: "page-1",
+      session,
+      preview: preview.source,
+    })
+
+    expect(session.getState().expanded).toEqual([])
+    expect(previewRoot.querySelector("[data-testid='tree-node-1']")).not.toBeNull()
+    previewMounted.destroy()
+
+    const sourceRoot = document.createElement("div")
+    const sourceMounted = mountEditor(sourceRoot, editor, { pageId: "page-1", session })
+    expect(session.getState().expanded).toEqual(["page-1"])
+    sourceMounted.destroy()
+  })
+
+  it("renders replay preview frames read-only and restores the source editor when inactive", () => {
+    const root = document.createElement("div")
+    const editor = createEditor(createDocumentWithPage())
+    addRectangle(editor, { id: "node-1", x: 20, y: 30 })
+    const previewDocument = canonicalizeDocument(editor.getStore())
+    previewDocument.records = previewDocument.records.map((record) =>
+      record.typeName === "node" && record.id === "node-1"
+        ? { ...record, layout: { ...record.layout, x: 140, y: 160 } }
+        : record,
+    )
+    const preview = createPreviewSource({
+      active: true,
+      document: previewDocument,
+      currentSequence: 7,
+      targetSequence: 10,
+    })
+
+    const mounted = mountEditor(root, editor, { pageId: "page-1", preview: preview.source })
+    const shell = root.querySelector<HTMLElement>("[data-testid='editor-shell']")!
+    const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
+
+    expect(node.style.left).toBe("140px")
+    expect(node.style.top).toBe("160px")
+    expect(shell.dataset.replay).toBe("true")
+    expect(root.querySelector("[data-testid='replay-canvas-banner']")?.textContent).toContain(
+      "回放预览",
+    )
+    expect(root.querySelector("[data-testid='replay-canvas-banner']")?.textContent).toContain(
+      "当前 #7",
+    )
+
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-visibility-node-1']")?.click()
+    expect(editor.getRecord("node-1")).toMatchObject({ visible: true })
+    expect(mounted.session.getState().selection).toEqual([])
+
+    node.dispatchEvent(pointerEvent("pointerdown", 145, 165))
+    window.dispatchEvent(pointerEvent("pointermove", 245, 265))
+    window.dispatchEvent(pointerEvent("pointerup", 245, 265))
+    expect(editor.getRecord("node-1")).toMatchObject({ layout: { x: 20, y: 30 } })
+
+    preview.publish({ active: false })
+    expect(root.querySelector<HTMLElement>("[data-node-id='node-1']")?.style.left).toBe("20px")
+    expect(root.querySelector<HTMLElement>("[data-node-id='node-1']")?.style.top).toBe("30px")
+    expect(shell.dataset.replay).toBeUndefined()
+    expect(root.querySelector("[data-testid='replay-canvas-banner']")).toBeNull()
+    expect(mounted.session.getState().expanded).toEqual([])
+    expect(root.querySelector("[data-testid='tree-node-1']")).toBeNull()
+
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-toggle-page-1']")?.click()
+    expect(mounted.session.getState().expanded).toEqual(["page-1"])
+    root.querySelector<HTMLButtonElement>("[data-testid='tree-node-1']")?.click()
+    expect(mounted.session.getState().selection).toEqual(["node-1"])
+
+    mounted.destroy()
+    expect(preview.unsubscribeCount()).toBe(1)
+  })
+
   it("uses an injected session for rendering selection changes", () => {
     const root = document.createElement("div")
     const editor = createEditor(createDocumentWithPage())

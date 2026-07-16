@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
 import { EditorSession } from "../src/index"
+import type { EditorPreviewFrame, EditorPreviewSource } from "../src/editor-view"
 import { mountWorkspaceToolbar } from "../src/workspace/toolbar"
 
 function createToolbarContext() {
@@ -84,5 +85,49 @@ describe("workspace toolbar", () => {
     expect(redo.disabled).toBe(false)
     expect(root.querySelector("[data-testid='workspace-panel-menu']")).toBeNull()
     expect(root.querySelector("[role='menu']")).toBeNull()
+  })
+
+  it("locks source-session toolbar actions while preview is active", () => {
+    const context = createToolbarContext()
+    const root = document.createElement("div")
+    let frame: EditorPreviewFrame = { active: true }
+    const listeners = new Set<(next: EditorPreviewFrame) => void>()
+    const preview: EditorPreviewSource = {
+      getState: () => frame,
+      subscribe(listener) {
+        listeners.add(listener)
+        listener(frame)
+        return () => listeners.delete(listener)
+      },
+    }
+    const dispose = mountWorkspaceToolbar(root, {
+      ...context,
+      panels: [],
+      preview,
+    })
+
+    for (const id of ["select", "pan", "grid", "undo", "redo"]) {
+      expect(
+        root.querySelector<HTMLButtonElement>(`[data-testid='workspace-tool-${id}']`)?.disabled,
+      ).toBe(true)
+    }
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-grid']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-undo']")!.click()
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-redo']")!.click()
+    expect(context.session.getState().interactionMode).toBe("select")
+    expect(context.session.getState().gridVisible).toBe(true)
+    expect(context.api.undo).not.toHaveBeenCalled()
+    expect(context.api.redo).not.toHaveBeenCalled()
+
+    frame = { active: false }
+    for (const listener of listeners) listener(frame)
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")?.disabled,
+    ).toBe(false)
+    root.querySelector<HTMLButtonElement>("[data-testid='workspace-tool-pan']")!.click()
+    expect(context.session.getState().interactionMode).toBe("pan")
+    dispose()
+    expect(listeners).toHaveLength(0)
   })
 })

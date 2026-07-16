@@ -169,6 +169,33 @@ async function workspaceCheckpointBundle(workspaceState: unknown, events: Operat
 }
 
 describe("ReplayEngine", () => {
+  it("starts exact replay targets from the preceding checkpoint", async () => {
+    const events = [event(1, { gridVisible: false }), event(2, { gridVisible: true })]
+    const bundle = bundleWithCheckpoints(events)
+    const initialSessionState = sessionPort().state
+    const checkpointSessionState = { ...initialSessionState, gridVisible: true }
+    bundle.checkpoints.push({
+      sessionId: "session-1",
+      sequence: 2,
+      createdAt: "2026-07-14T00:00:02.000Z",
+      document,
+      sessionState: checkpointSessionState,
+      documentHash: await hashCanonical(document),
+      sessionHash: await hashCanonical(checkpointSessionState),
+    })
+
+    const engine = await ReplayEngine.create({
+      bundle: await importTestBundle(bundle),
+      targetSequence: 2,
+      createSession: () => sessionPort(),
+    })
+
+    expect(engine.getState().sequence).toBe(0)
+    const result = await engine.step(2)
+    expect(result.currentSequence).toBe(1)
+    expect(result.state?.sequence).toBe(1)
+  })
+
   it("starts at the nearest checkpoint and pauses at the first difference", async () => {
     const command = {
       id: "node.create" as const,
