@@ -1,8 +1,8 @@
 /**
  * @module workspace/toolbar
  *
- * 工作区顶栏：选择/平移模式、网格、undo/redo 等。
- * 文档命令代理 Editor；交互模式写 Session；预览激活时可禁用编辑控件。
+ * 工作区顶栏：选择/平移模式、网格可见性/步长、吸附、undo/redo 等。
+ * 文档命令代理 Editor；交互模式与网格/吸附写 Session；预览激活时可禁用编辑控件。
  */
 
 import {
@@ -35,6 +35,8 @@ export interface WorkspaceToolbarOptions {
 
 type ToolId = "select" | "pan"
 
+const GRID_SIZE_PRESETS = [8, 16, 32] as const
+
 function iconButton(
   id: string,
   label: string,
@@ -50,6 +52,37 @@ function iconButton(
   return button
 }
 
+function gridSizeSelect(): HTMLSelectElement {
+  const select = document.createElement("select")
+  select.className = "composeui-editor__toolbar-select"
+  select.dataset.testid = "workspace-grid-size"
+  select.title = "网格步长"
+  select.setAttribute("aria-label", "网格步长")
+  for (const size of GRID_SIZE_PRESETS) {
+    const option = document.createElement("option")
+    option.value = String(size)
+    option.textContent = String(size)
+    select.append(option)
+  }
+  return select
+}
+
+/** 若当前 session 步长不在预设内，补一条 option 以便 select 正确显示。 */
+function syncGridSizeOptions(select: HTMLSelectElement, gridSize: number): void {
+  const value = String(gridSize)
+  const presets = new Set(GRID_SIZE_PRESETS.map(String))
+  for (const option of Array.from(select.options)) {
+    if (!presets.has(option.value) && option.value !== value) option.remove()
+  }
+  if (!Array.from(select.options).some((option) => option.value === value)) {
+    const option = document.createElement("option")
+    option.value = value
+    option.textContent = value
+    select.append(option)
+  }
+  select.value = value
+}
+
 function setPressed(button: HTMLButtonElement, pressed: boolean): void {
   button.setAttribute("aria-pressed", String(pressed))
 }
@@ -62,10 +95,10 @@ function toolbarDivider(): HTMLSpanElement {
   return divider
 }
 
-function toolbarGroup(...buttons: HTMLButtonElement[]): HTMLDivElement {
+function toolbarGroup(...children: HTMLElement[]): HTMLDivElement {
   const group = document.createElement("div")
   group.className = "composeui-editor__toolbar-group"
-  group.append(...buttons)
+  group.append(...children)
   return group
 }
 
@@ -80,23 +113,24 @@ export function mountWorkspaceToolbar(
   const select = iconButton("select", "选择工具", MousePointer2)
   const pan = iconButton("pan", "平移工具", Hand)
   const grid = iconButton("grid", "切换网格", Grid3X3)
+  const snap = iconButton("snap", "吸附到网格", Magnet)
+  const gridSize = gridSizeSelect()
   const undo = iconButton("undo", "撤销", Undo2)
   const redo = iconButton("redo", "重做", Redo2)
   const move = iconButton("move", "移动工具", Move)
   const rotate = iconButton("rotate", "旋转工具", RotateCw)
   const scale = iconButton("scale", "缩放工具", Scale)
-  const snap = iconButton("snap", "吸附到网格", Magnet)
   const lock = iconButton("lock", "锁定选中项", Lock)
   const view = iconButton("view", "视图选项", Eye)
-  for (const button of [move, rotate, scale, snap, lock, view]) button.disabled = true
+  for (const button of [move, rotate, scale, lock, view]) button.disabled = true
   root.replaceChildren(
     toolbarGroup(select, pan),
     toolbarDivider(),
     toolbarGroup(move, rotate, scale),
     toolbarDivider(),
-    toolbarGroup(snap, lock, view),
+    toolbarGroup(lock, view),
     toolbarDivider(),
-    toolbarGroup(grid),
+    toolbarGroup(grid, snap, gridSize),
     toolbarDivider(),
     toolbarGroup(undo, redo),
   )
@@ -108,9 +142,13 @@ export function mountWorkspaceToolbar(
     setPressed(select, state.interactionMode === "select")
     setPressed(pan, state.interactionMode === "pan")
     setPressed(grid, state.gridVisible)
+    setPressed(snap, state.snapEnabled)
+    syncGridSizeOptions(gridSize, state.gridSize)
     select.disabled = readOnly
     pan.disabled = readOnly
     grid.disabled = readOnly
+    snap.disabled = readOnly
+    gridSize.disabled = readOnly
     undo.disabled = readOnly || !options.editor.canUndo()
     redo.disabled = readOnly || !options.editor.canRedo()
   }
@@ -123,6 +161,16 @@ export function mountWorkspaceToolbar(
   grid.addEventListener("click", () => {
     if (readOnly) return
     options.session.setGridVisible(!options.session.getState().gridVisible)
+  })
+  snap.addEventListener("click", () => {
+    if (readOnly) return
+    options.session.setSnapEnabled(!options.session.getState().snapEnabled)
+  })
+  gridSize.addEventListener("change", () => {
+    if (readOnly) return
+    const next = Number(gridSize.value)
+    if (!Number.isFinite(next) || next <= 0) return
+    options.session.setGridSize(next)
   })
   undo.addEventListener("click", () => {
     if (readOnly) return
