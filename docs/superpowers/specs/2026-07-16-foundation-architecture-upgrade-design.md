@@ -2,11 +2,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| 状态 | 已定稿（brainstorm 确认） |
+| 状态 | **正式定稿**（brainstorm 确认 + 契约补丁） |
 | 日期 | 2026-07-16 |
 | 类型 | 架构升级 / 非产品功能里程碑（工作名 M1.5） |
-| 前置 | M0/M1 已完成；目录分层重组可能已在工作区（P0 收口） |
-| 后续 | 实施计划 → 分轨实现 → 再进入 M2 布局 |
+| 前置 | M0/M1 已完成；core/editor **源码目录分层重组已合入**（P0 剩余重点为依赖守卫与文档对齐，勿重复搬家） |
+| 后续 | 实施计划 → 分轨实现（P0 守卫 → P1 命令插件 → P2 canvas/Query）→ 再进入 M2 布局 |
 
 相关文档：
 
@@ -51,7 +51,7 @@ M0/M1 交付了事务内核与 Free Layout 编辑骨架，并叠加 Dockview wor
 ### 3.1 目标
 
 1. 目录与模块边界与写路径一致，并与 `current-architecture` / 包内 README 同步。
-2. 全部文档命令经 **可注册 Command 贡献点** 进入 `transact`；宿主可安装/卸载命令插件。
+2. 全部文档命令经 **可注册 Command 贡献点** 进入 `transact`；宿主可在 Editor 构造时安装命令插件，注册可撤销并随 Editor 释放。
 3. 拆分 canvas 上帝文件为可独立理解的子模块。
 4. Query 层收纳现有树投影，并预留 LayoutProjection **类型与文档位**（无布局算法）。
 5. 依赖方向有机械守卫，接入 `bun run check`（或等价门禁）。
@@ -152,7 +152,7 @@ interface CommandContribution {
    */
   prepare(
     store: RecordStore,
-    command: EditorCommand,
+    command: DispatchCommand,
   ): Result<(draft: TransactionDraft) => void>
   /** 可选：history 标签 / 日志展示 */
   label?: string
@@ -168,6 +168,7 @@ interface CommandPlugin {
 }
 
 interface CommandPluginApi {
+  /** API 作用域属于当前插件；Editor 跟踪其全部注册以支持回滚与统一释放。 */
   registerCommand(contribution: CommandContribution): () => void
 }
 
@@ -175,17 +176,54 @@ interface EditorOptions {
   // 现有字段保留（onDiagnostic, operationObserver, …）
   plugins?: readonly CommandPlugin[]
 }
+
+/** registry、观察与日志链路共同承载的开放命令信封。 */
+interface DispatchCommand {
+  id: CommandId
+  payload?: unknown
+}
+
+interface Editor {
+  /** 内置命令重载保留 id/payload 的字面量提示。 */
+  dispatch(command: EditorCommand): Result<void>
+  /** 开放重载承载宿主插件命令。 */
+  dispatch(command: DispatchCommand): Result<void>
+  /**
+   * 与 `dispatch` 同一实现（别名）。
+   * 保留导出以兼容现有调用方；行为与 dispose 语义与 dispatch 完全一致。
+   */
+  execute(command: EditorCommand | DispatchCommand): Result<void>
+  /** 幂等释放 core 侧插件、命令注册与 Editor 级 listener；释放后不再接受调用。 */
+  dispose(): void
+  undo(): Result<void>
+  redo(): Result<void>
+  jumpToHistory(index: number): Result<void>
+  // canUndo / canRedo / getStore / getHistory / getRecord / getDiagnostics / subscribe：见 §6.4
+}
+
+class EditorInitializationError extends Error {
+  readonly code: "PLUGIN_ID_CONFLICT" | "COMMAND_ID_CONFLICT" | "PLUGIN_INSTALL_FAILED"
+}
 ```
 
 说明：
 
 - 今日全部 `EditorCommand` 变体由 **builtin plugin(s)** 注册，源码位于 `kernel/commands/builtin/`。
+- **Builtin 插件 id（钉死）：** 使用稳定 id `composeui.builtin`（若拆多个 builtin 插件，则使用 `composeui.builtin.<族>`，且均以 `composeui.builtin` 前缀保留）。宿主 `CommandPlugin.id` **不得**与已安装插件 id 冲突，否则 `PLUGIN_ID_CONFLICT`。
 - **命令载荷类型（钉死）：**
   - 内置命令：保留可辨识联合 `EditorCommand`（`id` 字面量 + payload）。
-  - 分发入口：`dispatch(command: EditorCommand | { id: string; payload?: unknown })`（或等价宽松入口），registry 按 `id` 查找；builtin 的 `prepare` 内再收窄类型。
+  - 开放信封：`DispatchCommand` 是 dispatch、registry、operation observer 与 operation-log 存储层共同使用的最小命令形状。
+  - 分发入口：为 `EditorCommand` 与 `DispatchCommand` 提供公开重载；`execute` 与 `dispatch` 同实现。实现统一按 `id` 查 registry，builtin 的 `prepare` 内再收窄为对应 `EditorCommand` 变体。
   - 宿主插件命令：使用自有 `id` 字符串 + `payload`；**不要求**并入 `EditorCommand` 联合。插件侧自行断言 payload。
   - 分发**不得**依赖手写穷尽 `switch` 作为唯一扩展方式。
-- 同一 `CommandId` 重复注册：**失败**。禁止静默覆盖。
+- 同一 `CommandId` 重复注册：**失败**（`COMMAND_ID_CONFLICT`）。禁止静默覆盖。跨插件撞 id 同样冲突。
+- **命令 id 命名约定（文档约定，M1.5 不强制校验）：** 内置使用 `node.*` / `page.*`（及现有 id）；宿主插件宜使用自有前缀（如 `host.*` 或反域名），降低误撞概率。
+- M1.5 不提供运行时 `installPlugin` / `uninstallPlugin`；`options.plugins` 是唯一宿主安装入口。
+- **注册记账（钉死）：**
+  - Editor 在每次 `registerCommand` 时把 `(commandId → contribution)` 与「所属 pluginId」记入 registry。
+  - `registerCommand` 返回的 **unregister** 只移除**该 commandId** 的注册（幂等）；这是测试与插件内部可调用的**单项撤销**，**不是**运行时卸载整个插件的公共 API。
+  - 插件 `register()` 返回的 **disposer** 只负责插件**私有资源**（定时器、外部订阅等）。**不得**依赖 disposer 作为卸载命令的唯一路径；Editor 在释放该插件时仍按 registry 记账移除其全部 command id，并对 disposer 做幂等调用。
+  - 禁止 double-free 导致抛错：unregister / disposer / `Editor.dispose` 均须幂等。
 
 ### 6.3 数据流
 
@@ -195,7 +233,9 @@ createEditor(document, options)
   → 创建 CommandRegistry
   → 安装 builtin plugins
   → 安装 options.plugins（若有）
-  → 任一 register 冲突 → 构造失败（throw 稳定错误码）
+  → 任一插件抛错或 register 冲突
+      → 按安装逆序调用已收集 disposer，清空 registry
+      → 构造失败（throw 带稳定 code 的初始化错误）
 
 dispatch(command)
   → registry.lookup(command.id)
@@ -211,18 +251,34 @@ dispatch(command)
 
 | 事件 | 行为 |
 | --- | --- |
-| Editor 构造 | 安装 builtin + 宿主 plugins |
-| `registerCommand` | 写入 registry；返回对该 id 的 unregister |
-| 插件 dispose / Editor dispose | 移除该插件注册的全部 command id |
-| 进行中的指针预览 | 仍为 Session 草稿；与今日一样，无跨指针的 document 事务悬挂 |
+| Editor 构造 | 先装 `composeui.builtin`（及族），再装 `options.plugins`（若有） |
+| `registerCommand` | 写入 registry 并记账所属 pluginId；返回对该 commandId 的幂等 unregister |
+| 插件安装失败 | 按安装逆序释放已成功安装的插件 disposer 与其命令注册，清空 registry；构造过程不泄漏注册或 core 侧 listener |
+| 插件返回的 disposer | 由 Editor 持有；语义见 §6.2「注册记账」——仅私有资源，命令卸载以 registry 为准 |
+| `Editor.dispose()` | 幂等；按安装逆序：调用插件 disposer → 按记账移除全部 command → 清空 core 侧 `subscribe` listeners 与内部钩子；builtin 与宿主插件均由 Editor 持有 |
+| dispose 后：变更类 API | `dispatch` / `execute` / `undo` / `redo` / `jumpToHistory` 返回 `Result` 失败，`Diagnostic.code === "EDITOR_DISPOSED"`；**store 不变** |
+| dispose 后：只读 API | `getStore` / `getRecord` / `getHistory` / `canUndo` / `canRedo` / `getDiagnostics` 允许继续返回**最后一致快照**（structuredClone 语义与现有一致）；不抛错 |
+| dispose 后：`subscribe` | **不**再保存 listener；返回 no-op disposer；**不**再调用 `onDiagnostic`（避免宿主已拆钩子时二次失败） |
+| dispose 后：`onDiagnostic` / `operationObserver` | dispose **完成之后**不再调用；dispose 过程中因清理而产生的诊断可选记录到内部缓冲，但不依赖宿主钩子仍存活 |
+| core dispose vs UI destroy | **core `Editor.dispose`** 只释放 core 会话资源。`mountEditor` / workspace 的 DOM、Session 订阅、Dockview 由 **editor 侧 `destroy`/`dispose`** 负责，并应在卸 UI 时调用（或先于）`editor.dispose()`。core 不卸载 DOM。 |
+| 进行中的指针预览 | 仍为 Session 草稿；与今日一样，无跨指针的 document 事务悬挂；UI destroy 须取消指针捕获并丢弃预览 |
 
 ### 6.5 错误处理策略
 
 | 阶段 | 策略 |
 | --- | --- |
-| 文档装载失败、插件 id 冲突、重复 command id | **throw** 稳定 `Error.message` 错误码（与现 `fromDocument` 风格一致） |
-| dispatch / prepare / 事务校验失败 | **`Result` + `Diagnostic[]`**，store 不变 |
+| 文档装载失败 | 保持现有构造失败语义（如 `fromDocument` 抛稳定 message code） |
+| 插件抛错、插件 id 冲突、重复 command id | 构造期回滚已安装项后，**throw** 带稳定 `code` 的 `EditorInitializationError`；`message` 仅供描述，不作为机器契约；`PLUGIN_INSTALL_FAILED` 可保留 `cause` |
+| dispatch / execute / prepare / 事务校验失败 | **`Result` + `Diagnostic[]`**，store 不变 |
+| undo / redo / jump 失败 | 保持现有 `Result` + Diagnostic 语义；dispose 后统一 `EDITOR_DISPOSED` |
 | operationObserver / subscribe listener 抛错 | 记诊断或不阻断；**不得**回滚已成功事务 |
+
+### 6.6 Operation observation 与 replay
+
+- `EditorOperation` 的 document command 事件使用 `DispatchCommand`，因此 builtin 与宿主插件命令共享 started / succeeded / failed 观察语义。
+- operation-log 原样保存命令信封，不要求在记录时识别插件 payload；日志格式不得把命令强制断言为 `EditorCommand`。
+- replay 创建 Editor 时必须安装产生该日志所需的同版本插件。若 dispatch 返回 `COMMAND_NOT_REGISTERED`，adapter 转为现有 `missing-handler` 差异，`eventType` 记为 `document.command:<commandId>`；不得静默跳过。
+- replay handler 通过公共 `Editor.dispatch` 重放命令；operation-log 不直接调用 contribution 或事务内核。
 
 ---
 
@@ -249,16 +305,21 @@ interface ResolvedBox {
  */
 interface LayoutProjection {
   /** 解析节点在父局部坐标系中的盒；不存在或不可投影时返回 undefined。 */
-  resolveNodeBox(store: RecordStore, nodeId: string): ResolvedBox | undefined
+  resolveNodeBox(nodeId: string): ResolvedBox | undefined
 }
+
+/** M2 实现：一次绑定 store/snapshot，供同一渲染或命中周期复用计算上下文。 */
+type CreateLayoutProjection = (store: RecordStore) => LayoutProjection
 ```
 
 - 画布 **继续** 直接读取 free `NodeRecord.layout` 渲染，直到 M2 切换到真实 projection。
+- **禁止**在 M1.5 提交「读 free layout 的默认 `LayoutProjection` 实现」并伪装为投影层已完成；类型与文档占位即可。M2 再提供真实实现并切换画布消费路径。
 
 ### 7.2 明确不做
 
 - 增量失效订阅总线。
 - Auto/Grid 计算与 golden。
+- 本轮默认布局投影实现类。
 
 ---
 
@@ -266,7 +327,7 @@ interface LayoutProjection {
 
 ### 8.1 规则
 
-1. `packages/editor`（及 `apps/playground`）只允许 `from "@composeui/core"` 公共入口，禁止：
+1. `packages/editor`、`packages/operation-log` 与 `apps/**` 只允许从 `@composeui/core` 公共入口导入，禁止：
    - `@composeui/core/src/...`
    - 经相对路径跨包引用 core 源文件
 2. `packages/core/src/query/**` 不得 import `kernel/commands` 或 `kernel/plugin`（query → 仅 document/store/shared）。
@@ -298,25 +359,28 @@ interface LayoutProjection {
 
 ### P0 — 收口结构与守卫
 
-- 提交（或完成）core/editor 目录分层重组。
-- 落地依赖守卫 + check 集成。
+- **目录分层若已合入：不再重复 rename**；只核对与 §5 目标树一致（`commands/` 子树可在 P1 再拆）。
+- 落地依赖守卫 + 挂入 `check`；覆盖 editor、operation-log、apps。
+- P0 **不**迁移 Query 实现、**不**引入 Command 插件运行时；Query 收纳归 P2。
 - 更新 `docs/current-architecture.md` 与包内 README（若有漂移）。
-- **验收**：全量现有测试绿；守卫对违规失败。
+- **验收**：全量现有测试绿；故意违规 import 时守卫失败。
 
 ### P1 — Command 插件内核
 
-- `CommandRegistry` + `CommandPlugin` API。
+- `CommandRegistry` + `CommandPlugin` API；builtin 插件 id 见 §6.2。
 - 内置命令迁入 `builtin/` 并以 plugin 安装。
 - `createEditor({ plugins })`；冲突与未知命令语义按 §6。
-- 测试：内置命令回归；测试插件 register → dispatch → unregister；id 冲突。
-- **验收**：无产品行为变化（同一命令序列 → 同一 canonical 文档与 history 语义）。
+- `DispatchCommand` 贯通 dispatch、operation observer 与 operation-log/replay（**触及包：core + operation-log**，及必要的 editor/playground 装配）。
+- 幂等 `Editor.dispose()` 与 dispose 后 API 语义按 §6.4。
+- 测试：内置命令回归；通过 `registerCommand` 返回的 **unregister**（非 runtime uninstallPlugin）做单项撤销；插件命令 observe → replay；plugin/command id 冲突；安装失败逆序回滚；重复 dispose；dispose 后 dispatch/undo/subscribe。
+- **验收**：无产品行为变化（同一命令序列 → 同一 canonical `PageDocument` JSON 意图不变）。
 
 ### P2 — Canvas 拆分与 Query 收纳
 
 - 拆分 `editor-view` 为 §9 模块。
 - Query 路径与 LayoutProjection 类型占位。
 - 文档与 AGENTS 源码地图同步。
-- **验收**：editor 浏览器单测与相关 E2E 绿；golden 文件内容不变。
+- **验收**：`editor-view.ts` 删除或仅保留不拥有交互/渲染状态的薄兼容入口；editor 浏览器单测与相关 E2E 绿；golden 文件内容不变。
 
 允许 P0 与已有工作区改动合并为同一提交序列；P1/P2 建议独立可审阅提交或 PR。
 
@@ -326,10 +390,10 @@ interface LayoutProjection {
 
 | 层 | 要求 |
 | --- | --- |
-| 单元 | registry、plugin dispose、builtin prepare 等价性 |
-| 集成 | createEditor + dispatch 全命令路径；history undo/redo 不回归 |
+| 单元 | registry、安装失败回滚、plugin/editor dispose、builtin prepare 等价性 |
+| 集成 | createEditor + dispatch 全命令路径；插件命令 observe/replay；history undo/redo 不回归；dispose 后 API |
 | 属性 | 既有 fast-check 保持 |
-| Golden | `PageDocument` canonical **字节级意图不变**（无布局产品变更） |
+| Golden | 同一命令序列产生的 **canonical** `PageDocument` JSON **byte-for-byte 不变**（无布局产品变更；不含事务 id / 旁路 log 字节） |
 | E2E | Playground 主路径冒烟；不强制新视觉基线 |
 
 测试优先依赖**包公共导出**；减少对 `packages/*/src/**` 深路径的耦合（破坏性清理允许改测试 import）。
@@ -340,8 +404,8 @@ interface LayoutProjection {
 
 1. `bun run check`（或项目约定的全量门禁）通过。
 2. 源码目录与本设计 §5、包内 README、`current-architecture` 一致。
-3. 宿主可通过 `CommandPlugin` 注册命令，并与内置命令共享 history / operation 观察语义。
-4. `editor-view` 不再以单文件巨石存在；职责落在 §9 模块。
+3. 宿主可通过 `CommandPlugin` 注册命令，并与内置命令共享 history / operation 观察与 replay 语义。
+4. `editor-view.ts` 已删除或仅为薄兼容入口；指针状态、DOM board 渲染和 overlay 分属 §9 模块。
 5. 依赖守卫在故意违规时失败。
 6. 无 Auto/Grid/Adapter 等非目标范围的「半成品功能」混入。
 
@@ -355,7 +419,9 @@ interface LayoutProjection {
 | 拆 canvas 引入交互回归 | P2 单独轨；以现有 editor-view 测试为网 |
 | 破坏性 API 导致本地分支冲突 | 分轨提交；CHANGELOG/提交说明列出删除的导出 |
 | LayoutProjection 空类型腐化 | 类型最小；注释标明 M2 实现；禁止假实现 |
-| 目录重组与升级交织难审 | P0 先合结构，再 P1 行为中立重构 |
+| 目录重组与升级交织难审 | 目录已合入则 P0 只做守卫；P1 行为中立重构单独可审 |
+| dispose 与 UI 生命周期纠缠 | §6.4 明确 core dispose vs editor destroy；UI 负责指针取消 |
+| unregister 与插件 disposer 双路径 | §6.2 记账规则：命令以 registry 为准，disposer 仅私有资源 |
 
 ---
 
@@ -373,3 +439,19 @@ interface LayoutProjection {
 - 新成员打开 `packages/*/src` 能在 5 分钟内指认 Document 写路径与 Session 边界。
 - 新增一个文档命令的主路径是：新增 builtin 或 plugin 文件并注册，而不是改巨型 switch。
 - M2 启动时只需实现布局算法并替换/接入 projection，而不必先拆巨石文件。
+
+---
+
+## 16. 定稿说明
+
+本文档经 brainstorm 确认、作者修订与契约补丁后 **正式定稿**，作为 M1.5 实施与验收的权威范围说明。
+
+定稿补丁摘要（相对初版）：
+
+- 钉死 `execute` 别名、dispose 后变更/只读/`subscribe`/`onDiagnostic` 语义。
+- 钉死 registry 记账、单项 unregister vs 插件 disposer 职责。
+- 钉死 builtin 插件 id、命令 id 命名约定（非强制校验）。
+- 钉死 core dispose vs editor UI destroy 边界。
+- 明确 P0 不重复搬家、P1 跨 core + operation-log、禁止默认 LayoutProjection 假实现。
+
+后续变更须显式修订本文版本说明，并同步实施计划。
