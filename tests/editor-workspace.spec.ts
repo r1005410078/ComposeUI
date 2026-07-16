@@ -59,6 +59,11 @@ test("replays the final operation after reload without mutating the source sessi
   await page.getByRole("tab", { name: "输出" }).click()
   const documentEntries = page.locator("[data-testid='output-entry'][data-category='document']")
   await expect(documentEntries.last()).toBeVisible()
+  await expect(
+    page.locator("[data-testid='output-entry'][data-category='workspace']").filter({
+      hasText: "更新工作区布局",
+    }),
+  ).toBeVisible()
   await waitForOutputRowsToSettle(page)
   const eventCount = await page.getByTestId("output-entry").count()
   await page.evaluate(() => {

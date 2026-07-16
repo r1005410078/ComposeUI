@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest"
 import { createEditor, createEmptyDocument } from "@composeui/core"
+import { canonicalJson } from "@composeui/operation-log"
 import {
   createModeRegistry,
   mountEditorWorkspace,
@@ -784,6 +785,35 @@ describe("editor workspace", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("omits absent Dockview layout fields before recording persisted workspace events", async () => {
+    const fake = createDockviewFake()
+    const events: WorkspaceEvent[] = []
+    const mounted = mountEditorWorkspace(document.createElement("div"), createEditorInstance(), {
+      pageId: "page-1",
+      createDockview: fake.factory,
+      onEvent: (event) => events.push(event),
+    })
+
+    fake.setLayoutSnapshot({
+      panels: {
+        scene: { id: "scene", renderer: undefined, tabComponent: undefined, title: "Scene" },
+      },
+    })
+    fake.triggerLayoutChange()
+    await mounted.api.flushLayout()
+
+    expect(events).toContainEqual({
+      type: "layout-changed",
+      layout: {
+        version: 1,
+        modeId: "2d",
+        layout: { panels: { scene: { id: "scene", title: "Scene" } } },
+      },
+    })
+    expect(() => canonicalJson(events)).not.toThrow()
+    mounted.dispose()
   })
 
   it("emits cloneable layout lifecycle and failure events", async () => {

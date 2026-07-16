@@ -137,6 +137,20 @@ function containsPanel(value: unknown, id: string): boolean {
   return false
 }
 
+function normalizePersistedLayout(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => normalizePersistedLayout(item))
+  if (value !== null && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return value
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, normalizePersistedLayout(item)]),
+    )
+  }
+  return value
+}
+
 function toDisposer(mount: ReturnType<WorkspacePanelMount>): (() => void) | undefined {
   if (typeof mount === "function") return mount
   if (mount !== undefined) return () => mount.destroy()
@@ -536,7 +550,11 @@ export function mountEditorWorkspace(
   }
 
   const getLayoutSnapshot = (): StoredWorkspaceLayout =>
-    structuredClone({ version: 1, modeId: "2d", layout: dockview.toJSON() })
+    structuredClone({
+      version: 1,
+      modeId: "2d",
+      layout: normalizePersistedLayout(dockview.toJSON()),
+    })
 
   const flushLayout = (): Promise<void> => {
     if (layoutTimer !== undefined) {
