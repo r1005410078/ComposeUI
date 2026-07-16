@@ -16,7 +16,12 @@ import type {
   ReplayState,
   ReplaySessionPort,
 } from "@composeui/operation-log"
-import type { EditorSession, EditorSessionState, InteractionMode, Viewport } from "../session/session"
+import type {
+  EditorSession,
+  EditorSessionState,
+  InteractionMode,
+  Viewport,
+} from "../session/session"
 
 export type ReplayEngineLike = Pick<
   ReplayEngine,

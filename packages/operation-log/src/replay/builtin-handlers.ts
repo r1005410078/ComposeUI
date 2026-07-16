@@ -26,7 +26,10 @@ function commandFrom(event: OperationEvent): DispatchCommand | undefined {
 }
 
 function isCommandNotRegistered(result: Result<void>): boolean {
-  return !result.ok && result.diagnostics.some((diagnostic) => diagnostic.code === "COMMAND_NOT_REGISTERED")
+  return (
+    !result.ok &&
+    result.diagnostics.some((diagnostic) => diagnostic.code === "COMMAND_NOT_REGISTERED")
+  )
 }
 
 /** 回放时缺少插件命令 → 现有 missing-handler 差异，不得静默跳过。 */

@@ -36,10 +36,7 @@ export interface DispatchCommand {
  */
 export interface CommandContribution {
   id: CommandId
-  prepare(
-    store: RecordStore,
-    command: DispatchCommand,
-  ): Result<(draft: TransactionDraft) => void>
+  prepare(store: RecordStore, command: DispatchCommand): Result<(draft: TransactionDraft) => void>
   /** 可选：history 标签 / 日志展示 */
   label?: string
 }
