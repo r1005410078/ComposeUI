@@ -249,7 +249,9 @@ describe("mountEditor", () => {
     const editor = createEditor(createDocumentWithPage())
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
     const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
-    const grid = root.querySelector<HTMLElement>("[data-testid='workspace-grid']")!
+    const grid = root.querySelector<HTMLCanvasElement>("[data-testid='workspace-grid']")!
+    expect(grid).toBeInstanceOf(HTMLCanvasElement)
+    expect(grid.classList.contains("composeui-editor__workspace-canvas")).toBe(true)
     workspace.getBoundingClientRect = () =>
       ({ left: 10, top: 20, width: 800, height: 600 }) as DOMRect
 
@@ -267,7 +269,8 @@ describe("mountEditor", () => {
     expect(zoomed.zoom).toBeGreaterThan(1)
     expect((200 - zoomed.x) / zoomed.zoom).toBeCloseTo(200)
     expect((100 - zoomed.y) / zoomed.zoom).toBeCloseTo(100)
-    expect(grid.style.backgroundSize).toBe(`${16 * zoomed.zoom}px ${16 * zoomed.zoom}px`)
+    // Canvas underlay stays mounted; gridVisible only affects redraw content
+    expect(root.querySelector("[data-testid='workspace-grid']")).toBe(grid)
 
     workspace.dispatchEvent(
       new MouseEvent("pointerdown", { bubbles: true, button: 1, clientX: 50, clientY: 60 }),
@@ -285,7 +288,8 @@ describe("mountEditor", () => {
       zoom: zoomed.zoom,
     })
     mounted.session.setGridVisible(false)
-    expect(grid.hidden).toBe(true)
+    expect(mounted.session.getState().gridVisible).toBe(false)
+    expect(root.querySelector("[data-testid='workspace-grid']")).toBe(grid)
   })
 
   it("pans with space plus left drag without starting marquee selection", () => {

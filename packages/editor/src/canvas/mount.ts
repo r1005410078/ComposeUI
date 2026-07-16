@@ -1,24 +1,26 @@
 /**
  * @module mount
  *
- * 画布与可选组合壳的 DOM 挂载装配：shell、board、overlay、pointer、preview 订阅与销毁。
+ * 画布与可选组合壳的 DOM 挂载装配：shell、Canvas 网格底景、board、overlay、pointer、preview。
  *
  * 架构分层：
  * - Document：core Editor + RecordStore（节点几何与属性）
- * - Session：viewport / selection / pan 模式（不入文档）
+ * - Session：viewport / selection / grid / pan 模式（不入文档）
  * - 预览：EditorPreviewSource 可覆盖展示用 document/session（回放只读预览）
  *
- * 数据流：mountEditor → 订阅 editor + session → 重绘 board；交互 → dispatch。
+ * 数据流：mountEditor → 订阅 editor + session → 重绘 board / workspace-canvas；交互 → dispatch。
  */
 
 import type { Editor, EditorChangeEvent } from "@composeui/core"
 import { mountComponentTreeView, treeNeedsUpdate } from "../tree/component-tree"
 import type { MountedComponentTree } from "../tree/component-tree"
+import { screenToWorld } from "../session/coordinates"
 import { EditorSession } from "../session/session"
 import type { EditorSessionState } from "../session/session"
 import { createCanvasView, canvasNeedsRebuild } from "./board-render"
 import { SVG_NAMESPACE, renderSelectionOverlay } from "./overlay"
 import { createPointerController } from "./pointer"
+import { workspacePoint } from "./pointer-helpers"
 import {
   previewStore,
   subscribePreview,
@@ -27,6 +29,7 @@ import {
   type EditorPreviewFrame,
   type EditorPreviewSource,
 } from "./preview"
+import { createWorkspaceCanvas } from "./workspace-canvas"
 
 export type { EditorPreviewFrame, EditorPreviewSource }
 
@@ -96,22 +99,20 @@ export function mountEditor(
   overlay.classList.add("composeui-editor__selection-overlay")
   overlay.dataset.testid = "selection-overlay"
   overlay.setAttribute("aria-label", "Selection overlay")
-  const grid = document.createElement("div")
-  grid.className = "composeui-editor__workspace-grid"
-  grid.dataset.testid = "workspace-grid"
-  grid.setAttribute("aria-hidden", "true")
+  const workspaceCanvas = createWorkspaceCanvas()
   const replayBanner = document.createElement("div")
   replayBanner.dataset.testid = "replay-canvas-banner"
   replayBanner.setAttribute("role", "status")
 
   world.append(board)
-  workspace.append(grid, world, overlay)
+  workspace.append(workspaceCanvas.element, world, overlay)
   if (options.view !== "canvas") shell.append(aside)
   shell.append(workspace)
   root.replaceChildren(shell)
 
   let sourceStore = coreEditor.getStore()
   let currentStore = previewFrame.active ? (previewStore(previewFrame) ?? sourceStore) : sourceStore
+  let cursorWorld: { x: number; y: number } | null = null
 
   const treeMounted: MountedComponentTree | undefined =
     options.view === "canvas"
@@ -138,22 +139,63 @@ export function mountEditor(
     board,
     overlay,
   )
+
+  const redrawWorkspaceCanvas = (): void => {
+    const rect = workspace.getBoundingClientRect()
+    const dpr =
+      typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
+        ? window.devicePixelRatio
+        : 1
+    // jsdom 等无布局环境可能给 0；用 client 尺寸兜底
+    const width = rect.width > 0 ? rect.width : workspace.clientWidth
+    const height = rect.height > 0 ? rect.height : workspace.clientHeight
+    workspaceCanvas.setSize(width, height, dpr > 0 ? dpr : 1)
+    workspaceCanvas.redraw({
+      viewport: sessionState.viewport,
+      gridVisible: sessionState.gridVisible,
+      gridSize: sessionState.gridSize,
+      cursorWorld,
+      showRulers: true,
+    })
+  }
+
   const updateViewport = (): void => {
     world.style.transform = `translate(${sessionState.viewport.x}px, ${sessionState.viewport.y}px) scale(${sessionState.viewport.zoom})`
-    const gridSize = 16 * sessionState.viewport.zoom
-    grid.style.backgroundPosition = `${sessionState.viewport.x}px ${sessionState.viewport.y}px`
-    grid.style.backgroundSize = `${gridSize}px ${gridSize}px`
-    grid.hidden = !sessionState.gridVisible
+    redrawWorkspaceCanvas()
   }
   updateViewport()
   renderSelectionOverlay(overlay, currentStore, canvas.visibleNodes, sessionState)
+
+  let destroyed = false
+
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => {
+          if (destroyed) return
+          redrawWorkspaceCanvas()
+        })
+      : null
+  resizeObserver?.observe(workspace)
+
+  const onWorkspacePointerMove = (event: PointerEvent): void => {
+    if (destroyed) return
+    const point = workspacePoint(event, workspace)
+    cursorWorld = screenToWorld(point, sessionState.viewport)
+    redrawWorkspaceCanvas()
+  }
+  const onWorkspacePointerLeave = (): void => {
+    if (destroyed) return
+    if (cursorWorld === null) return
+    cursorWorld = null
+    redrawWorkspaceCanvas()
+  }
+  workspace.addEventListener("pointermove", onWorkspacePointerMove)
+  workspace.addEventListener("pointerleave", onWorkspacePointerLeave)
 
   const refreshReplayBanner = (): void => {
     updateReplayBanner({ previewFrame, shell, workspace, replayBanner })
   }
   refreshReplayBanner()
-
-  let destroyed = false
 
   const pointer = createPointerController({
     coreEditor,
@@ -192,7 +234,9 @@ export function mountEditor(
       sessionState.viewport.x !== nextState.viewport.x ||
       sessionState.viewport.y !== nextState.viewport.y ||
       sessionState.viewport.zoom !== nextState.viewport.zoom
-    const gridChanged = sessionState.gridVisible !== nextState.gridVisible
+    const gridChanged =
+      sessionState.gridVisible !== nextState.gridVisible ||
+      sessionState.gridSize !== nextState.gridSize
     const expandedChanged = !sameArray(sessionState.expanded, nextState.expanded)
     if (pointer.isGroupResizeActive() && (selectionChanged || viewportChanged)) {
       pointer.cancelActive()
@@ -246,6 +290,10 @@ export function mountEditor(
       unsubscribeCore()
       unsubscribeSession()
       unsubscribePreview?.()
+      resizeObserver?.disconnect()
+      workspace.removeEventListener("pointermove", onWorkspacePointerMove)
+      workspace.removeEventListener("pointerleave", onWorkspacePointerLeave)
+      workspaceCanvas.destroy()
       shell.remove()
     },
   }
