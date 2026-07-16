@@ -7,17 +7,19 @@
  * 边界：
  * - 拖拽中只改 DOM 预览与 session；松手再 dispatch
  * - 通过注入 deps 访问 board/overlay，避免与 mount 循环依赖
+ * - Free Layout 吸附：snapEnabled 且未按 Alt 时，preview/commit 使用同一套 snapped 几何
  *
- * 数据流：pointerdown → session 预览 → pointerup → coreEditor.dispatch
+ * 数据流：pointerdown → session 预览（可选 snap）→ pointerup → coreEditor.dispatch
  */
 
 import type { Editor, NodeRecord, RecordStore } from "@composeui/core"
 import { screenToWorld, zoomAt } from "../session/coordinates"
 import type { EditorSession } from "../session/session"
 import type { EditorSessionState } from "../session/session"
+import { snapPoint, snapRect } from "../session/snap"
 import { applyNodeStyle, isTransformLocked, type CanvasView } from "./board-render"
 import { resizeGroup, selectionBounds } from "./group-resize"
-import type { GroupResizeHandle } from "./group-resize"
+import type { GroupBounds, GroupResizeHandle, GroupResizeItem } from "./group-resize"
 import { createPointerMoveSession } from "./interactions"
 import type { PointerMoveSession } from "./interactions"
 import {
@@ -34,6 +36,89 @@ import {
 } from "./pointer-helpers"
 import { beginMarqueeSelection } from "./pointer-marquee"
 import { beginWorkspacePan } from "./pointer-pan"
+
+/** 吸附开启且未临时按 Alt 时才量化；gridVisible 不影响吸附。 */
+export function shouldSnap(
+  session: Pick<EditorSessionState, "snapEnabled">,
+  event: { altKey?: boolean },
+): boolean {
+  return session.snapEnabled && event.altKey !== true
+}
+
+/** 将组缩放手柄映射为 snapRect 应量化的边。 */
+export function edgesForResizeHandle(handle: GroupResizeHandle): {
+  left?: boolean
+  top?: boolean
+  right?: boolean
+  bottom?: boolean
+} {
+  return {
+    left: handle.includes("w"),
+    right: handle.includes("e"),
+    top: handle.includes("n"),
+    bottom: handle.includes("s"),
+  }
+}
+
+/**
+ * 对 group-resize 结果做边相关吸附。
+ * 单节点：直接 snapRect 该项；多选：吸附包围盒后再按比例映射子项。
+ */
+export function snapGroupResizeResult(
+  resized: { bounds: GroupBounds; items: GroupResizeItem[] },
+  handle: GroupResizeHandle,
+  step: number,
+  initial: GroupBounds,
+  initialItems: readonly GroupResizeItem[],
+): { bounds: GroupBounds; items: GroupResizeItem[] } {
+  const edges = edgesForResizeHandle(handle)
+  if (resized.items.length === 1) {
+    const item = resized.items[0]!
+    const snapped = snapRect(
+      { x: item.x, y: item.y, width: item.width, height: item.height },
+      step,
+      edges,
+    )
+    return {
+      bounds: {
+        left: snapped.x,
+        top: snapped.y,
+        right: snapped.x + snapped.width,
+        bottom: snapped.y + snapped.height,
+      },
+      items: [{ id: item.id, ...snapped }],
+    }
+  }
+
+  const snapped = snapRect(
+    {
+      x: resized.bounds.left,
+      y: resized.bounds.top,
+      width: resized.bounds.right - resized.bounds.left,
+      height: resized.bounds.bottom - resized.bounds.top,
+    },
+    step,
+    edges,
+  )
+  const bounds: GroupBounds = {
+    left: snapped.x,
+    top: snapped.y,
+    right: snapped.x + snapped.width,
+    bottom: snapped.y + snapped.height,
+  }
+  const scaleX = (bounds.right - bounds.left) / (initial.right - initial.left)
+  const scaleY = (bounds.bottom - bounds.top) / (initial.bottom - initial.top)
+  return {
+    bounds,
+    items: initialItems.map((item) => ({
+      id: item.id,
+      x: bounds.left + (item.x - initial.left) * scaleX,
+      y: bounds.top + (item.y - initial.top) * scaleY,
+      width: Math.max(1, item.width * scaleX),
+      height: Math.max(1, item.height * scaleY),
+    })),
+  }
+}
 
 export interface PointerControllerDeps {
   coreEditor: Editor
@@ -140,6 +225,9 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
 
     const pointerId = event.pointerId
     let ended = false
+    // 与 preview 一致的最终几何，避免 Alt/吸附在 commit 时跳动
+    let lastMoveDelta = { x: 0, y: 0 }
+    let lastResizeSize = { width: node.layout.width, height: node.layout.height }
     const matchesPointer = (nextEvent: PointerEvent): boolean =>
       pointerId === undefined ||
       nextEvent.pointerId === undefined ||
@@ -182,19 +270,38 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
       try {
         pointerSession.update({ x: nextEvent.clientX, y: nextEvent.clientY })
         const preview = pointerSession.preview()
+        const liveSession = getSessionState()
+        const snap = shouldSnap(liveSession, nextEvent)
         if (kind === "move") {
-          const offset = { x: preview.x - node.layout.x, y: preview.y - node.layout.y }
+          // 吸附主拖拽节点的绝对 parent-local，再反算统一 delta 给 node.move
+          const target = snap
+            ? snapPoint({ x: preview.x, y: preview.y }, liveSession.gridSize)
+            : { x: preview.x, y: preview.y }
+          const offset = { x: target.x - node.layout.x, y: target.y - node.layout.y }
+          lastMoveDelta = offset
           const transform = `translate(${offset.x}px, ${offset.y}px)`
           for (const previewElement of previewElements) {
             previewElement.style.transform = transform
           }
           setSelectionOutlinePreview(overlay, {
-            x: offset.x * getSessionState().viewport.zoom,
-            y: offset.y * getSessionState().viewport.zoom,
+            x: offset.x * liveSession.viewport.zoom,
+            y: offset.y * liveSession.viewport.zoom,
           })
         } else {
-          element.style.width = `${Math.max(1, preview.x)}px`
-          element.style.height = `${Math.max(1, preview.y)}px`
+          let width = Math.max(1, preview.x)
+          let height = Math.max(1, preview.y)
+          if (snap) {
+            const snapped = snapRect(
+              { x: node.layout.x, y: node.layout.y, width, height },
+              liveSession.gridSize,
+              { right: true, bottom: true },
+            )
+            width = snapped.width
+            height = snapped.height
+          }
+          lastResizeSize = { width, height }
+          element.style.width = `${width}px`
+          element.style.height = `${height}px`
         }
         return true
       } catch {
@@ -206,17 +313,26 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
       updatePreview(nextEvent)
     }
     const commitPreview = (): void => {
-      const delta = pointerSession.commit()
       cancel()
       if (kind === "move") {
-        if (delta.x === 0 && delta.y === 0) return
-        coreEditor.dispatch({ id: "node.move", payload: { ids: moveIds, delta } })
+        if (lastMoveDelta.x === 0 && lastMoveDelta.y === 0) return
+        coreEditor.dispatch({ id: "node.move", payload: { ids: moveIds, delta: lastMoveDelta } })
         return
       }
-      const width = Math.max(1, node.layout.width + delta.x)
-      const height = Math.max(1, node.layout.height + delta.y)
-      if (width === node.layout.width && height === node.layout.height) return
-      coreEditor.dispatch({ id: "node.resize", payload: { id: node.id, width, height } })
+      if (
+        lastResizeSize.width === node.layout.width &&
+        lastResizeSize.height === node.layout.height
+      ) {
+        return
+      }
+      coreEditor.dispatch({
+        id: "node.resize",
+        payload: {
+          id: node.id,
+          width: lastResizeSize.width,
+          height: lastResizeSize.height,
+        },
+      })
     }
     function onPointerUp(nextEvent: PointerEvent): void {
       if (updatePreview(nextEvent)) commitPreview()
@@ -279,6 +395,10 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
 
     const pointerId = event.pointerId
     let ended = false
+    let lastResized: { bounds: GroupBounds; items: GroupResizeItem[] } = {
+      bounds: initialBounds,
+      items: initialItems,
+    }
     const matchesPointer = (nextEvent: PointerEvent): boolean =>
       pointerId === undefined ||
       nextEvent.pointerId === undefined ||
@@ -314,11 +434,26 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
         }
       }
     }
+    const resolveResized = (nextEvent: PointerEvent) => {
+      pointerSession.update(workspacePoint(nextEvent, workspace))
+      let resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
+      const liveSession = getSessionState()
+      if (shouldSnap(liveSession, nextEvent)) {
+        resized = snapGroupResizeResult(
+          resized,
+          handle,
+          liveSession.gridSize,
+          initialBounds,
+          initialItems,
+        )
+      }
+      return resized
+    }
     const updatePreview = (nextEvent: PointerEvent): boolean => {
       if (!matchesPointer(nextEvent)) return false
       try {
-        pointerSession.update(workspacePoint(nextEvent, workspace))
-        const resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
+        const resized = resolveResized(nextEvent)
+        lastResized = resized
         for (const item of resized.items) {
           const element = canvas.nodeElements.get(item.id)
           if (element === undefined) continue
@@ -343,7 +478,7 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
       updatePreview(nextEvent)
     }
     const commitPreview = (): void => {
-      const resized = resizeGroup(initialItems, initialBounds, handle, pointerSession.preview())
+      const resized = lastResized
       const changed = resized.items.some((item, index) => {
         const initial = initialItems[index]!
         return (

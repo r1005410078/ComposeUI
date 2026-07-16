@@ -601,6 +601,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-1", x: 20, y: 30 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setViewport({ x: 0, y: 0, zoom: 2 })
     const shell = root.querySelector<HTMLElement>("[data-testid='editor-shell']")!
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
@@ -638,6 +639,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-b", x: 200, y: 160 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setSelection(["node-a", "node-b"])
     const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
     const second = root.querySelector<HTMLElement>("[data-node-id='node-b']")!
@@ -684,6 +686,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-1" })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setSelection(["node-1"])
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
 
@@ -708,6 +711,7 @@ describe("mountEditor", () => {
       addRectangle(editor, { id: "node-1" })
       const dispatch = vi.spyOn(editor, "dispatch")
       const mounted = mountEditor(root, editor, { pageId: "page-1" })
+      mounted.session.setSnapEnabled(false)
       const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
       const setPointerCapture = vi.fn()
       const releasePointerCapture = vi.fn()
@@ -748,6 +752,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-1" })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
     node.setPointerCapture = vi.fn()
     node.releasePointerCapture = vi.fn()
@@ -794,6 +799,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-1", width: 120, height: 80 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setSelection(["node-1"])
     const node = root.querySelector<HTMLElement>("[data-node-id='node-1']")!
     const handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
@@ -833,6 +839,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-b", x: 200, y: 160, width: 120, height: 80 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setSelection(["node-a", "node-b"])
 
     const handles = [...root.querySelectorAll<SVGRectElement>("[data-group-resize-handle]")]
@@ -914,6 +921,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-1", x: 20, y: 30, width: 100, height: 80 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setSelection(["node-1"])
 
     expect(root.querySelectorAll("[data-group-resize-handle]")).toHaveLength(8)
@@ -943,6 +951,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-b", x: 200, y: 160 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     const workspace = root.querySelector<HTMLElement>("[data-testid='workspace']")!
     workspace.getBoundingClientRect = () =>
       ({ left: 50, top: 40, right: 1050, bottom: 840, width: 1000, height: 800 }) as DOMRect
@@ -1034,6 +1043,7 @@ describe("mountEditor", () => {
       addRectangle(editor, { id: "node-b", x: 200, y: 160 })
       const dispatch = vi.spyOn(editor, "dispatch")
       const mounted = mountEditor(root, editor, { pageId: "page-1" })
+      mounted.session.setSnapEnabled(false)
       mounted.session.setSelection(["node-a", "node-b"])
       const handle = root.querySelector<SVGRectElement>("[data-testid='group-resize-se']")!
       const first = root.querySelector<HTMLElement>("[data-node-id='node-a']")!
@@ -1069,6 +1079,7 @@ describe("mountEditor", () => {
     addRectangle(editor, { id: "node-1", x: 20, y: 30, width: 120, height: 80 })
     const dispatch = vi.spyOn(editor, "dispatch")
     const mounted = mountEditor(root, editor, { pageId: "page-1" })
+    mounted.session.setSnapEnabled(false)
     mounted.session.setSelection(["node-1"])
     const overlay = root.querySelector<SVGSVGElement>("[data-testid='selection-overlay']")!
     overlay.setPointerCapture = vi.fn()
