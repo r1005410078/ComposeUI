@@ -112,6 +112,11 @@ test("replays a pointer-driven node move through the persisted operation bundle"
   await page.reload()
   await expect(sourceNode).toHaveCSS("left", `${sourcePosition.left}px`)
   await page.getByRole("tab", { name: "输出" }).click()
+  await expect(
+    page.locator("[data-testid='output-entry'][data-category='workspace']").filter({
+      hasText: "更新工作区布局",
+    }),
+  ).toBeVisible()
   const moveEntry = page
     .locator("[data-testid='output-entry'][data-category='document']")
     .filter({ hasText: "移动“node-blue”" })
