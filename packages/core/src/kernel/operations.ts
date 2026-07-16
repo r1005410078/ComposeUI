@@ -7,12 +7,13 @@
  * - 仅描述“发生了什么文档命令或 history 动作”，不写 Yjs、不写 UI。
  * - Observer 失败不得阻断编辑主路径（由 Editor 吞错并记诊断）。
  * - Session 操作（选中、视口等）在 `@composeui/editor` 的 SessionOperation，不在此联合类型。
+ * - document.command 使用 `DispatchCommand`，builtin 与宿主插件共享观察语义。
  *
  * 数据流：Editor.dispatch / undo / redo / jump → observe → operation-log 适配器。
  */
 
 import type { Diagnostic } from "../shared/diagnostics"
-import type { EditorCommand } from "./commands"
+import type { DispatchCommand } from "./commands/types"
 import type { HistoryEntry } from "./history"
 import type { PageDocument } from "../document/schema"
 
@@ -21,11 +22,11 @@ import type { PageDocument } from "../document/schema"
  * command 路径含 started/succeeded/failed；history 路径含 succeeded/failed。
  */
 export type EditorOperation =
-  | { type: "document.command"; status: "started"; command: EditorCommand }
+  | { type: "document.command"; status: "started"; command: DispatchCommand }
   | {
       type: "document.command"
       status: "succeeded"
-      command: EditorCommand
+      command: DispatchCommand
       transaction: HistoryEntry
       /** 规范化后的 before/after，供 log 与 golden 稳定对比。 */
       before: PageDocument
@@ -34,7 +35,7 @@ export type EditorOperation =
   | {
       type: "document.command"
       status: "failed"
-      command: EditorCommand
+      command: DispatchCommand
       diagnostics: Diagnostic[]
     }
   | {

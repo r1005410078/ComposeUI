@@ -10,10 +10,14 @@
 
 export type { Diagnostic, Result } from "./shared/diagnostics"
 export { createEditor } from "./kernel/commands"
-export type { EditorOperation, EditorOperationObserver } from "./kernel/operations"
 export type {
+  CommandContribution,
+  CommandId,
+  CommandPlugin,
+  CommandPluginApi,
   CreateNodeCommand,
   DeleteNodeCommand,
+  DispatchCommand,
   Editor,
   EditorChangeEvent,
   EditorCommand,
@@ -27,6 +31,8 @@ export type {
   SetNodeLockedCommand,
   SetNodeVisibleCommand,
 } from "./kernel/commands"
+export { EditorInitializationError } from "./kernel/commands"
+export type { EditorOperation, EditorOperationObserver } from "./kernel/operations"
 export { History } from "./kernel/history"
 export type { HistoryChange, HistoryEntry } from "./kernel/history"
 export { getChildren, getTreeItems } from "./query/projections"

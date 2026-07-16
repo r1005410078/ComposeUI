@@ -21,7 +21,7 @@ export interface CommandPluginInstallation {
 
 interface InstalledPlugin {
   pluginId: string
-  disposer?: () => void
+  disposer?: (() => void) | undefined
 }
 
 /**
