@@ -21,6 +21,7 @@ ComposeUI is not a general low-code platform and is not a Figma replacement. Its
 
 Read the relevant documents before changing architecture or behavior:
 
+- [**Current implemented architecture**](docs/current-architecture.md) — what the code actually does today (packages, write path, Document/Session/Workspace). Prefer this over design docs when answering “is X implemented?”
 - [Project overview](docs/project-overview.md)
 - [Main product design](docs/superpowers/specs/2026-07-11-embeddable-visual-page-composer-design.md)
 - [Transactional editor microkernel](docs/superpowers/specs/2026-07-11-transactional-editor-microkernel-architecture-design.md)
@@ -35,11 +36,18 @@ Read the relevant documents before changing architecture or behavior:
 If documents conflict, use this priority:
 
 1. Explicit current user instruction.
-2. Main product design.
+2. Main product design (target product behavior).
 3. Relevant specialized design.
 4. Project overview.
 
-Do not silently resolve a material contradiction. Document the decision or ask for direction.
+When the question is **what exists in the repository now**, prefer:
+
+1. Explicit current user instruction.
+2. [Current implemented architecture](docs/current-architecture.md) and the source/tests it describes.
+3. Milestone implementation plans and their exit criteria.
+4. Design documents (may describe not-yet-built systems).
+
+Do not silently resolve a material contradiction. Document the decision or ask for direction. Do not claim design-only features are implemented.
 
 ## Non-Negotiable Product Rules
 
