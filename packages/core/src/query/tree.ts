@@ -1,7 +1,7 @@
 /**
- * @module projections
+ * @module query/tree
  *
- * 只读投影：组件树等 UI 读模型。
+ * 组件树只读投影：深度优先扁平列表与子节点查询。
  *
  * 边界：
  * - 不修改 Store，不产生事务。

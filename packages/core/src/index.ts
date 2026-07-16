@@ -35,8 +35,13 @@ export { EditorInitializationError } from "./kernel/commands"
 export type { EditorOperation, EditorOperationObserver } from "./kernel/operations"
 export { History } from "./kernel/history"
 export type { HistoryChange, HistoryEntry } from "./kernel/history"
-export { getChildren, getTreeItems } from "./query/projections"
-export type { TreeItem } from "./query/projections"
+export { getChildren, getTreeItems } from "./query/tree"
+export type { TreeItem } from "./query/tree"
+export type {
+  CreateLayoutProjection,
+  LayoutProjection,
+  ResolvedBox,
+} from "./query/types"
 export { createEmptyDocument } from "./document/schema"
 export type {
   BaseRecord,
