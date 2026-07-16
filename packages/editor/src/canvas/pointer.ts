@@ -1,17 +1,18 @@
 /**
  * @module pointer
  *
- * 画布指针状态机：move/resize/group-resize/pan/marquee → session 或单次 dispatch。
+ * 画布指针状态机：move/resize/group-resize → session 或单次 dispatch。
+ * pan/marquee 见 pointer-pan / pointer-marquee。
  *
  * 边界：
- * - 拖拽中只改 DOM 预览与 session（pan/zoom/selection）；松手再 dispatch
+ * - 拖拽中只改 DOM 预览与 session；松手再 dispatch
  * - 通过注入 deps 访问 board/overlay，避免与 mount 循环依赖
  *
  * 数据流：pointerdown → session 预览 → pointerup → coreEditor.dispatch
  */
 
 import type { Editor, NodeRecord, RecordStore } from "@composeui/core"
-import { screenToWorld, worldToScreen, zoomAt } from "../session/coordinates"
+import { screenToWorld, zoomAt } from "../session/coordinates"
 import type { EditorSession } from "../session/session"
 import type { EditorSessionState } from "../session/session"
 import { applyNodeStyle, isTransformLocked, type CanvasView } from "./board-render"
@@ -21,15 +22,18 @@ import { createPointerMoveSession } from "./interactions"
 import type { PointerMoveSession } from "./interactions"
 import {
   GROUP_RESIZE_HANDLES,
-  SVG_NAMESPACE,
   getGroupSelection,
   renderSelectionOverlay,
   setSelectionOutlinePreview,
 } from "./overlay"
-
-interface ActivePointerInteraction {
-  cancel(): void
-}
+import {
+  hasSelectionModifier,
+  toggleSelection,
+  workspacePoint,
+  type ActivePointerInteraction,
+} from "./pointer-helpers"
+import { beginMarqueeSelection } from "./pointer-marquee"
+import { beginWorkspacePan } from "./pointer-pan"
 
 export interface PointerControllerDeps {
   coreEditor: Editor
@@ -49,26 +53,6 @@ export interface PointerController {
   cancelActive(): void
   attach(): void
   detach(): void
-}
-
-function hasSelectionModifier(
-  event: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey">,
-): boolean {
-  return event.shiftKey || event.ctrlKey || event.metaKey
-}
-
-function toggleSelection(selection: readonly string[], id: string): string[] {
-  return selection.includes(id)
-    ? selection.filter((selectedId) => selectedId !== id)
-    : [...selection, id]
-}
-
-function workspacePoint(event: MouseEvent, workspace: HTMLElement): { x: number; y: number } {
-  const bounds = workspace.getBoundingClientRect()
-  return {
-    x: event.clientX - bounds.left + workspace.scrollLeft,
-    y: event.clientY - bounds.top + workspace.scrollTop,
-  }
 }
 
 /** 绑定 board/overlay/workspace/shell/window 指针与快捷键；detach 时卸监听。 */
@@ -424,52 +408,33 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
     startGroupResizeInteraction(event, handle as GroupResizeHandle)
   }
 
-  const startWorkspacePan = (event: PointerEvent): void => {
-    if (isPreviewActive()) return
-    activeInteraction?.cancel()
-    event.preventDefault()
-    event.stopPropagation()
-    workspace.dataset.panActive = "true"
-    shell.dataset.panActive = "true"
-    const start = { x: event.clientX, y: event.clientY }
-    const viewport = getSessionState().viewport
-    let ended = false
-    const cancel = (): void => {
-      if (ended) return
-      ended = true
-      window.removeEventListener("pointermove", onPointerMove)
-      window.removeEventListener("pointerup", onPointerUp)
-      window.removeEventListener("pointercancel", onPointerUp)
-      delete workspace.dataset.panActive
-      delete shell.dataset.panActive
-      if (activeInteraction?.cancel === cancel) activeInteraction = undefined
-    }
-    function onPointerMove(nextEvent: PointerEvent): void {
-      session.setViewport({
-        x: viewport.x + nextEvent.clientX - start.x,
-        y: viewport.y + nextEvent.clientY - start.y,
-        zoom: viewport.zoom,
-      })
-    }
-    function onPointerUp(nextEvent: PointerEvent): void {
-      onPointerMove(nextEvent)
-      cancel()
-    }
-    activeInteraction = { cancel }
-    window.addEventListener("pointermove", onPointerMove)
-    window.addEventListener("pointerup", onPointerUp)
-    window.addEventListener("pointercancel", onPointerUp)
+  const panOptions = {
+    session,
+    getSessionState,
+    isPreviewActive,
+    shell,
+    workspace,
+    getActiveInteraction: () => activeInteraction,
+    setActiveInteraction: (next: ActivePointerInteraction | undefined) => {
+      activeInteraction = next
+    },
+  }
+
+  const marqueeOptions = {
+    ...panOptions,
+    overlay,
+    canvas,
   }
 
   const onBoardPointerDown = (event: PointerEvent): void => {
     if (isPreviewActive()) return
     const sessionState = getSessionState()
     if (sessionState.interactionMode === "pan") {
-      startWorkspacePan(event)
+      beginWorkspacePan(event, panOptions)
       return
     }
     if (shell.dataset.mode === "stage-edit" && (spacePressed || event.pointerType === "touch")) {
-      startWorkspacePan(event)
+      beginWorkspacePan(event, panOptions)
       return
     }
     const target = event.target
@@ -483,89 +448,21 @@ export function createPointerController(deps: PointerControllerDeps): PointerCon
     startPointerInteraction(event, record, nodeElement, target, "move")
   }
 
-  const startMarqueeSelection = (event: PointerEvent): void => {
-    if (isPreviewActive()) return
-    activeInteraction?.cancel()
-    event.preventDefault()
-    shell.focus()
-    const sessionState = getSessionState()
-    const start = workspacePoint(event, workspace)
-    const initialSelection = sessionState.selection
-    const additive = hasSelectionModifier(event)
-    const marquee = document.createElementNS(SVG_NAMESPACE, "rect")
-    marquee.dataset.testid = "marquee-selection"
-    marquee.dataset.marquee = "true"
-    overlay.append(marquee)
-    let current = start
-    let ended = false
-    const render = (): void => {
-      marquee.setAttribute("x", String(Math.min(start.x, current.x)))
-      marquee.setAttribute("y", String(Math.min(start.y, current.y)))
-      marquee.setAttribute("width", String(Math.abs(current.x - start.x)))
-      marquee.setAttribute("height", String(Math.abs(current.y - start.y)))
-    }
-    const cancel = (): void => {
-      if (ended) return
-      ended = true
-      window.removeEventListener("pointermove", onPointerMove)
-      window.removeEventListener("pointerup", onPointerUp)
-      window.removeEventListener("pointercancel", onPointerCancel)
-      marquee.remove()
-      if (activeInteraction?.cancel === cancel) activeInteraction = undefined
-    }
-    function onPointerMove(nextEvent: PointerEvent): void {
-      current = workspacePoint(nextEvent, workspace)
-      render()
-    }
-    function onPointerUp(nextEvent: PointerEvent): void {
-      onPointerMove(nextEvent)
-      const left = Math.min(start.x, current.x)
-      const top = Math.min(start.y, current.y)
-      const right = Math.max(start.x, current.x)
-      const bottom = Math.max(start.y, current.y)
-      const matches: string[] = []
-      const viewport = getSessionState().viewport
-      for (const [id, visible] of canvas.visibleNodes) {
-        const origin = worldToScreen({ x: visible.worldX, y: visible.worldY }, viewport)
-        const end = worldToScreen(
-          {
-            x: visible.worldX + visible.node.layout.width,
-            y: visible.worldY + visible.node.layout.height,
-          },
-          viewport,
-        )
-        if (origin.x <= right && end.x >= left && origin.y <= bottom && end.y >= top) {
-          matches.push(id)
-        }
-      }
-      cancel()
-      session.setSelection(additive ? [...new Set([...initialSelection, ...matches])] : matches)
-    }
-    function onPointerCancel(): void {
-      cancel()
-    }
-    render()
-    activeInteraction = { cancel }
-    window.addEventListener("pointermove", onPointerMove)
-    window.addEventListener("pointerup", onPointerUp)
-    window.addEventListener("pointercancel", onPointerCancel)
-  }
-
   const onWorkspacePointerDown = (event: PointerEvent): void => {
     if (isPreviewActive() || event.defaultPrevented || shell.dataset.mode !== "stage-edit") return
     const sessionState = getSessionState()
     if (sessionState.interactionMode === "pan") {
-      startWorkspacePan(event)
+      beginWorkspacePan(event, panOptions)
       return
     }
     if (spacePressed || event.pointerType === "touch" || event.button === 1) {
-      startWorkspacePan(event)
+      beginWorkspacePan(event, panOptions)
       return
     }
     if (event.button !== 0) return
     const target = event.target
     if (target instanceof Element && target.closest("[data-node-id]")) return
-    startMarqueeSelection(event)
+    beginMarqueeSelection(event, marqueeOptions)
   }
 
   const onWorkspaceWheel = (event: WheelEvent): void => {

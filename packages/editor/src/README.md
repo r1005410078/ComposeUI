@@ -13,7 +13,10 @@ src/
 │   ├── mount.ts             # mountEditor 装配与订阅
 │   ├── board-render.ts      # page board / 节点 DOM
 │   ├── overlay.ts           # SVG 选框与手柄
-│   ├── pointer.ts           # 指针控制器
+│   ├── pointer.ts           # move/resize/group-resize 状态机
+│   ├── pointer-pan.ts       # 平移手势
+│   ├── pointer-marquee.ts   # 框选
+│   ├── pointer-helpers.ts   # 坐标 / 修饰键
 │   ├── preview.ts           # 预览帧 / 回放 banner
 │   ├── interactions.ts      # 拖拽草稿
 │   ├── group-resize.ts      # 多选缩放几何

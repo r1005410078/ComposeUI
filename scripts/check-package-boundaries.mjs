@@ -5,6 +5,8 @@
  * 1. packages/editor, packages/operation-log, apps/** may only import core as
  *    bare `@composeui/core` (no deep subpaths, no packages/core/src paths).
  * 2. packages/core/src/query/** must not import kernel/commands or kernel/plugin.
+ * 3. packages/core must not import editor, DOM-oriented packages, or framework UI
+ *    (vue/react/angular/dockview/lucide, etc.).
  *
  * Usage: node scripts/check-package-boundaries.mjs
  */
@@ -52,6 +54,26 @@ function isIllegalQueryImport(spec) {
   )
 }
 
+/** Packages core must never depend on (framework / editor chrome). */
+const CORE_FORBIDDEN_PACKAGES = [
+  "@composeui/editor",
+  "@composeui/operation-log",
+  "dockview",
+  "lucide",
+  "vue",
+  "react",
+  "react-dom",
+  "angular",
+  "@angular/core",
+]
+
+function isIllegalCoreDependency(spec) {
+  if (CORE_FORBIDDEN_PACKAGES.includes(spec)) return true
+  if (CORE_FORBIDDEN_PACKAGES.some((pkg) => spec.startsWith(`${pkg}/`))) return true
+  if (spec.includes("packages/editor/") || spec.includes("packages/operation-log/")) return true
+  return false
+}
+
 function checkFile(file) {
   const rel = relative(root, file).split("\\").join("/")
   const text = readFileSync(file, "utf8")
@@ -66,6 +88,10 @@ function checkFile(file) {
 
     if (rel.startsWith("packages/core/src/query/") && isIllegalQueryImport(spec)) {
       errors.push(`${rel}: query must not import commands/plugin (${spec})`)
+    }
+
+    if (rel.startsWith("packages/core/") && isIllegalCoreDependency(spec)) {
+      errors.push(`${rel}: core must not depend on ${spec}`)
     }
   }
 }

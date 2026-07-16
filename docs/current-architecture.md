@@ -359,6 +359,16 @@ toolbar/api.undo → editor.undo → History.undo → applyPatch(inverse)
 | Yjs 协同端口与 Awareness | 未实现 |
 | Figma SVG/结构化导入 | 未实现 |
 | Worker 数据平面、GPU Layer、空间索引/视口裁剪 | 未实现 |
+
+### 10.1 M1.5 收尾说明
+
+Foundation Upgrade（目录、Command 插件、canvas 拆分、`boundaries`）已在 `main` 落地。
+
+工程债（可选，非阻塞）：
+
+- `pointer.ts` 的 move/resize 手势仍可再拆（**pan / marquee 已拆到独立模块**）。
+- 历史 `docs/superpowers/plans/*` 可能仍写旧路径（如 `editor-view.ts`）；**以本文与包内 README 为准**。
+- 依赖守卫：`bun run boundaries`（含 core 不得依赖 editor/DOM 框架包）。
 | 完整 Shadow DOM 编辑器 chrome 隔离产品形态 | 未按终态落地 |
 | 多 page、多 document 协作模型 | M1 固定单 page |
 | 发布态 npm 多包独立版本策略 | 现为 private workspace |
