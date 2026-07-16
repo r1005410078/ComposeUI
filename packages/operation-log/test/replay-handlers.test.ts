@@ -118,6 +118,63 @@ describe("built-in replay handlers", () => {
     expect(replay.editor.getHistory().entries).toHaveLength(0)
   })
 
+  it("accepts open DispatchCommand envelopes without requiring EditorCommand payload shape", async () => {
+    const replay = context()
+    const openEnvelope = { id: "plugin.custom-command" }
+    expect(
+      await handleDocumentCommand(
+        event("document.command", "started", { command: openEnvelope }),
+        replay,
+      ),
+    ).toBeUndefined()
+    expect(replay.editor.getHistory().entries).toHaveLength(0)
+
+    await expect(
+      handleDocumentCommand(
+        event("document.command", "succeeded", {
+          command: openEnvelope,
+          transaction: {
+            transactionId: "transaction-1",
+            label: openEnvelope.id,
+            forward: { created: [], updated: [], removed: [] },
+            inverse: { created: [], updated: [], removed: [] },
+          },
+        }),
+        replay,
+      ),
+    ).resolves.toEqual({
+      type: "missing-handler",
+      sequence: 1,
+      eventType: "document.command:plugin.custom-command",
+    })
+  })
+
+  it("converts COMMAND_NOT_REGISTERED dispatch failure to missing-handler", async () => {
+    const replay = context()
+    const command = { id: "plugin.unregistered", payload: { any: true } }
+    await expect(
+      handleDocumentCommand(event("document.command", "succeeded", { command }), replay),
+    ).resolves.toEqual({
+      type: "missing-handler",
+      sequence: 1,
+      eventType: "document.command:plugin.unregistered",
+    })
+    await expect(
+      handleDocumentCommand(
+        {
+          ...event("document.command", "failed", { command }),
+          diagnostics: [{ code: "COMMAND_NOT_REGISTERED", severity: "error", message: "missing" }],
+        },
+        replay,
+      ),
+    ).resolves.toEqual({
+      type: "missing-handler",
+      sequence: 1,
+      eventType: "document.command:plugin.unregistered",
+    })
+    expect(replay.editor.getHistory().entries).toHaveLength(0)
+  })
+
   it("requires failed commands to preserve state and diagnostic codes", async () => {
     const replay = context()
     const before = replay.editor.getStore().all()

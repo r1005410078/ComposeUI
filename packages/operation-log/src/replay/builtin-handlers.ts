@@ -1,4 +1,4 @@
-import type { Diagnostic, EditorCommand, Result } from "@composeui/core"
+import type { Diagnostic, DispatchCommand, Result } from "@composeui/core"
 import type { OperationEvent } from "../events"
 import type { ReplayDifference, ReplayHandlerContext } from "./types"
 
@@ -8,17 +8,39 @@ function isRecord(value: unknown): value is UnknownRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-function isEditorCommand(value: unknown): value is EditorCommand {
-  return isRecord(value) && typeof value.id === "string" && isRecord(value.payload)
-}
-
 function payloadRecord(event: OperationEvent): UnknownRecord | undefined {
   return isRecord(event.payload) ? event.payload : undefined
 }
 
-function commandFrom(event: OperationEvent): EditorCommand | undefined {
+/**
+ * 从日志 payload 提取开放命令信封。
+ * 不强制 `EditorCommand` 联合或 payload 为 record；未注册命令在 dispatch 后转为 missing-handler。
+ */
+function commandFrom(event: OperationEvent): DispatchCommand | undefined {
   const payload = payloadRecord(event)
-  return payload !== undefined && isEditorCommand(payload.command) ? payload.command : undefined
+  const command = isRecord(payload?.command) ? payload.command : undefined
+  if (command === undefined || typeof command.id !== "string") return undefined
+  return Object.prototype.hasOwnProperty.call(command, "payload")
+    ? { id: command.id, payload: command.payload }
+    : { id: command.id }
+}
+
+function isCommandNotRegistered(result: Result<void>): boolean {
+  return !result.ok && result.diagnostics.some((diagnostic) => diagnostic.code === "COMMAND_NOT_REGISTERED")
+}
+
+/** 回放时缺少插件命令 → 现有 missing-handler 差异，不得静默跳过。 */
+function missingCommandHandler(
+  event: OperationEvent,
+  command: DispatchCommand,
+  result: Result<void>,
+): ReplayDifference | undefined {
+  if (!isCommandNotRegistered(result)) return undefined
+  return {
+    type: "missing-handler",
+    sequence: event.sequence,
+    eventType: `document.command:${command.id}`,
+  }
 }
 
 function diagnosticsOf(value: unknown): Diagnostic[] {
@@ -249,6 +271,8 @@ export async function handleDocumentCommand(
         error instanceof Error ? error.message : String(error),
       )
     }
+    const unregistered = missingCommandHandler(event, command, result)
+    if (unregistered !== undefined) return unregistered
     if (
       result.ok ||
       JSON.stringify(resultDiagnostics(result)) !== JSON.stringify(expectedDiagnostics(event))
@@ -271,6 +295,8 @@ export async function handleDocumentCommand(
     return { type: "schema-incompatible", sequence: event.sequence, version: event.schemaVersion }
   const historyLength = context.editor.getHistory().entries.length
   const result = context.editor.dispatch(command)
+  const unregistered = missingCommandHandler(event, command, result)
+  if (unregistered !== undefined) return unregistered
   if (!result.ok)
     return commandMismatch(event, "succeeded", {
       status: "failed",
